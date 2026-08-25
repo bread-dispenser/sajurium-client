@@ -14,7 +14,7 @@ export function AppHeader({ title, backHref }: { title?: string; backHref?: stri
         </Link>
       )}
       <Link className="wordmark app-wordmark" href="/home">
-        <span>{title ?? "결"}</span>
+        <span>{title ?? "사주리움"}</span>
         {!title && <small>오늘의 마음을 읽는 시간</small>}
       </Link>
     </header>

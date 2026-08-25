@@ -135,7 +135,7 @@ export function SettingsScreen() {
       return;
     }
     setConfirmClear(false);
-    setMessage("결 서비스가 만든 기기 저장 정보를 모두 삭제했어요.");
+    setMessage("사주리움이 만든 기기 저장 정보를 모두 삭제했어요.");
   }
 
   return (

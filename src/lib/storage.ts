@@ -23,10 +23,10 @@ import type {
 } from "./domain";
 import { isFeedbackId, isProductId, isTopicId } from "./fixtures";
 
-const REPORT_KEY = "gyeol-saju-report";
-const FEEDBACK_KEY = "gyeol-saju-feedback";
-const BIRTH_DRAFT_KEY = "gyeol-birth-draft";
-const TRANSACTION_KEY = "gyeol-storage-transaction";
+const REPORT_KEY = "sajurium-saju-report";
+const FEEDBACK_KEY = "sajurium-saju-feedback";
+const BIRTH_DRAFT_KEY = "sajurium-birth-draft";
+const TRANSACTION_KEY = "sajurium-storage-transaction";
 
 type StorageScope = "local" | "session";
 
@@ -38,14 +38,14 @@ const OWNED_STORE_SCOPES: Readonly<Record<string, StorageScope>> = {
   [REPORT_KEY]: "local",
   [FEEDBACK_KEY]: "local",
   [BIRTH_DRAFT_KEY]: "session",
-  "gyeol-profile": "local",
-  "gyeol-library": "local",
-  "gyeol-consultations": "local",
-  "gyeol-people": "local",
-  "gyeol-compatibility": "local",
-  "gyeol-commerce": "local",
-  "gyeol-settings": "local",
-  "gyeol-feedback-list": "local",
+  "sajurium-profile": "local",
+  "sajurium-library": "local",
+  "sajurium-consultations": "local",
+  "sajurium-people": "local",
+  "sajurium-compatibility": "local",
+  "sajurium-commerce": "local",
+  "sajurium-settings": "local",
+  "sajurium-feedback-list": "local",
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -323,7 +323,7 @@ function createBrowserStore<T>(key: string, validate: (value: unknown) => value 
     if (encoded.status !== "ok" || encoded.raw === null) return false;
     try {
       storage().setItem(key, encoded.raw);
-      window.dispatchEvent(new CustomEvent(`gyeol-storage:${key}`));
+      window.dispatchEvent(new CustomEvent(`sajurium-storage:${key}`));
       return true;
     } catch {
       return false;
@@ -337,7 +337,7 @@ function createBrowserStore<T>(key: string, validate: (value: unknown) => value 
     try {
       storage().removeItem(key);
       if (storage().getItem(key) !== null) return false;
-      window.dispatchEvent(new CustomEvent(`gyeol-storage:${key}`));
+      window.dispatchEvent(new CustomEvent(`sajurium-storage:${key}`));
       return true;
     } catch {
       return false;
@@ -346,7 +346,7 @@ function createBrowserStore<T>(key: string, validate: (value: unknown) => value 
 
   function subscribe(onStoreChange: () => void): () => void {
     if (typeof window === "undefined") return () => undefined;
-    const customEvent = `gyeol-storage:${key}`;
+    const customEvent = `sajurium-storage:${key}`;
     const handleStorage = (event: StorageEvent) => {
       if (event.key === key) onStoreChange();
     };
@@ -408,7 +408,7 @@ type TransactionStep = {
   afterKnown: boolean;
 };
 
-const TRANSACTION_STEP_TOKEN = Symbol("gyeol-transaction-step");
+const TRANSACTION_STEP_TOKEN = Symbol("sajurium-transaction-step");
 type PreparedTransactionStep = TransactionStep & { readonly [TRANSACTION_STEP_TOKEN]: true };
 const PREPARED_STEP_AUTHORITY = new WeakMap<PreparedTransactionStep, Readonly<TransactionStep>>();
 
@@ -481,7 +481,7 @@ function captureStepRaw(step: TransactionStep): { status: "ok"; value: string | 
 
 function notifyTransaction(steps: TransactionStep[]) {
   for (const key of new Set(steps.map((step) => step.key))) {
-    window.dispatchEvent(new CustomEvent(`gyeol-storage:${key}`));
+    window.dispatchEvent(new CustomEvent(`sajurium-storage:${key}`));
   }
 }
 
@@ -620,14 +620,14 @@ export function clearCorruptStorageTransaction(): boolean {
 export const reportStore = createBrowserStore(REPORT_KEY, isSavedReport);
 export const feedbackStore = createBrowserStore(FEEDBACK_KEY, isFeedbackRecord);
 export const birthDraftStore = createBrowserStore(BIRTH_DRAFT_KEY, isBirthDraft, "session");
-export const profileStore = createBrowserStore("gyeol-profile", isBirthDraft);
-export const libraryStore = createBrowserStore("gyeol-library", isLibraryData);
-export const consultationStore = createBrowserStore("gyeol-consultations", isConsultationData);
-export const peopleStore = createBrowserStore("gyeol-people", isPeopleData);
-export const compatibilityStore = createBrowserStore("gyeol-compatibility", isCompatibilityData);
-export const commerceStore = createBrowserStore("gyeol-commerce", isCommerceData);
-export const settingsStore = createBrowserStore("gyeol-settings", isSettingsData);
-export const feedbackListStore = createBrowserStore("gyeol-feedback-list", isFeedbackData);
+export const profileStore = createBrowserStore("sajurium-profile", isBirthDraft);
+export const libraryStore = createBrowserStore("sajurium-library", isLibraryData);
+export const consultationStore = createBrowserStore("sajurium-consultations", isConsultationData);
+export const peopleStore = createBrowserStore("sajurium-people", isPeopleData);
+export const compatibilityStore = createBrowserStore("sajurium-compatibility", isCompatibilityData);
+export const commerceStore = createBrowserStore("sajurium-commerce", isCommerceData);
+export const settingsStore = createBrowserStore("sajurium-settings", isSettingsData);
+export const feedbackListStore = createBrowserStore("sajurium-feedback-list", isFeedbackData);
 
 function saveLocalValueAndClearBirthDraft<T>(
   store: {

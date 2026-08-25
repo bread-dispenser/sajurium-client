@@ -34,7 +34,7 @@ function PublicHeader({ step, backHref }: { step?: string; backHref?: string }) 
       {backHref && (
         <Link className="back-button" href={backHref} aria-label="이전 화면으로 돌아가기">‹</Link>
       )}
-      <Link className="wordmark" href="/" aria-label="결 시작 화면">결</Link>
+      <Link className="wordmark" href="/" aria-label="사주리움 시작 화면">사주리움</Link>
       {step && <span className="step-indicator" aria-label={`${step} 단계`}>{step}</span>}
     </header>
   );
@@ -91,15 +91,15 @@ export function LandingScreen({ initialCalculationFailure }: { initialCalculatio
       <div className="screen-content landing-content">
         <div className="landing-hero">
           <div className="landing-heading">
-            <p className="eyebrow">오늘의 결</p>
+            <p className="eyebrow">오늘의 흐름</p>
             <h1 id="landing-title">오늘, 어떤 흐름을<br />마주하고 있나요?</h1>
             <p className="lead">답을 정해주는 대신, 잠시 멈춰 지금의 마음과 선택을 돌아보는 시간을 건네요.</p>
           </div>
-          <div className="gyeol-orbit" aria-hidden="true">
+          <div className="sajurium-orbit" aria-hidden="true">
             <span />
             <span />
             <span />
-            <i>결</i>
+            <i />
           </div>
         </div>
         <article className="landing-preview" aria-label="체험용 결과 예시">

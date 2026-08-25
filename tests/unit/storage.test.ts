@@ -142,7 +142,7 @@ describe("validated local stores", () => {
       expect(commerceStore.write(invalid)).toBe(false);
       expect(runStorageTransaction([createTransactionStep(commerceStore, invalid)])).toBe("unreconciled");
       expect(window.localStorage.getItem(commerceStore.key)).toBe(before);
-      expect(window.localStorage.getItem("gyeol-storage-transaction")).toBeNull();
+      expect(window.localStorage.getItem("sajurium-storage-transaction")).toBeNull();
     }
   });
 
@@ -153,7 +153,7 @@ describe("validated local stores", () => {
     const fabricated = { ...prepared, key: "unowned-control" } as typeof prepared;
     expect(runStorageTransaction([fabricated])).toBe("unreconciled");
     expect(window.localStorage.getItem("unowned-control")).toBe("keep");
-    expect(window.localStorage.getItem("gyeol-storage-transaction")).toBeNull();
+    expect(window.localStorage.getItem("sajurium-storage-transaction")).toBeNull();
   });
 
   it("rejects copied steps retargeted to owned keys or altered payloads", () => {
@@ -168,7 +168,7 @@ describe("validated local stores", () => {
     expect(runStorageTransaction([altered])).toBe("unreconciled");
     expect(window.localStorage.getItem(commerceStore.key)).toBe(commerceBefore);
     expect(window.localStorage.getItem(peopleStore.key)).toBe(peopleBefore);
-    expect(window.localStorage.getItem("gyeol-storage-transaction")).toBeNull();
+    expect(window.localStorage.getItem("sajurium-storage-transaction")).toBeNull();
   });
 
   it("rejects transaction steps minted by structural store lookalikes", () => {
@@ -182,7 +182,7 @@ describe("validated local stores", () => {
     };
     expect(runStorageTransaction([createTransactionStep(foreignStore, INITIAL_PEOPLE_DATA)])).toBe("unreconciled");
     expect(window.localStorage.getItem(peopleStore.key)).toBe(before);
-    expect(window.localStorage.getItem("gyeol-storage-transaction")).toBeNull();
+    expect(window.localStorage.getItem("sajurium-storage-transaction")).toBeNull();
   });
 
   it("rejects stale prepared steps without overwriting newer values", () => {
@@ -192,7 +192,7 @@ describe("validated local stores", () => {
     commerceStore.write(newer);
     expect(runStorageTransaction([stale])).toBe("unreconciled");
     expect(commerceStore.read()).toEqual(newer);
-    expect(window.localStorage.getItem("gyeol-storage-transaction")).toBeNull();
+    expect(window.localStorage.getItem("sajurium-storage-transaction")).toBeNull();
   });
 
   it("rejects session-scoped steps without persisting their payloads", () => {
@@ -201,12 +201,12 @@ describe("validated local stores", () => {
     const before = window.sessionStorage.getItem(birthDraftStore.key);
     expect(runStorageTransaction([createTransactionStep(birthDraftStore, null)])).toBe("unreconciled");
     expect(window.sessionStorage.getItem(birthDraftStore.key)).toBe(before);
-    expect(window.localStorage.getItem("gyeol-storage-transaction")).toBeNull();
+    expect(window.localStorage.getItem("sajurium-storage-transaction")).toBeNull();
   });
 
   it("classifies persisted session-scoped journals as corrupt without replay", () => {
     const draft = { version: 1 as const, birth: INITIAL_BIRTH };
-    window.localStorage.setItem("gyeol-storage-transaction", JSON.stringify({
+    window.localStorage.setItem("sajurium-storage-transaction", JSON.stringify({
       version: 1,
       state: "pending",
       steps: [{
@@ -220,7 +220,7 @@ describe("validated local stores", () => {
     }));
     expect(inspectStorageTransaction().status).toBe("corrupt");
     expect(window.sessionStorage.getItem(birthDraftStore.key)).toBeNull();
-    expect(window.localStorage.getItem("gyeol-storage-transaction")).not.toBeNull();
+    expect(window.localStorage.getItem("sajurium-storage-transaction")).not.toBeNull();
   });
 
   it("rejects invalid preimages before creating a transaction journal", () => {
@@ -228,7 +228,7 @@ describe("validated local stores", () => {
     const before = window.localStorage.getItem(commerceStore.key);
     expect(runStorageTransaction([createTransactionStep(commerceStore, INITIAL_COMMERCE_DATA)])).toBe("unreconciled");
     expect(window.localStorage.getItem(commerceStore.key)).toBe(before);
-    expect(window.localStorage.getItem("gyeol-storage-transaction")).toBeNull();
+    expect(window.localStorage.getItem("sajurium-storage-transaction")).toBeNull();
   });
 
   it("preserves corrupt preimages in dedicated session-clearing saves", () => {
@@ -259,41 +259,41 @@ describe("validated local stores", () => {
     expect(saveProfileAndClearBirthDraft(draft)).toBe("unreconciled");
     expect(window.localStorage.getItem(profileStore.key)).toBeNull();
     expect(window.sessionStorage.getItem(birthDraftStore.key)).toBe("{broken");
-    expect(window.localStorage.getItem("gyeol-storage-transaction")).toBeNull();
+    expect(window.localStorage.getItem("sajurium-storage-transaction")).toBeNull();
   });
 
   it("rejects foreign or unknown persisted journal steps without mutation", () => {
     window.localStorage.setItem("unowned-control", "keep");
-    window.localStorage.setItem("gyeol-storage-transaction", JSON.stringify({
+    window.localStorage.setItem("sajurium-storage-transaction", JSON.stringify({
       version: 1,
       state: "pending",
       steps: [{ key: "unowned-control", scope: "local", before: "keep", beforeKnown: true, after: null, afterKnown: true }],
     }));
     expect(reportStore.inspect().status).toBe("corrupt");
     expect(window.localStorage.getItem("unowned-control")).toBe("keep");
-    expect(window.localStorage.getItem("gyeol-storage-transaction")).not.toBeNull();
+    expect(window.localStorage.getItem("sajurium-storage-transaction")).not.toBeNull();
   });
 
   it("rejects persisted journals with unknown before or after states", () => {
     commerceStore.write(INITIAL_COMMERCE_DATA);
     const before = window.localStorage.getItem(commerceStore.key);
     for (const known of [{ beforeKnown: false, afterKnown: true }, { beforeKnown: true, afterKnown: false }]) {
-      window.localStorage.setItem("gyeol-storage-transaction", JSON.stringify({
+      window.localStorage.setItem("sajurium-storage-transaction", JSON.stringify({
         version: 1,
         state: "pending",
         steps: [{ key: commerceStore.key, scope: "local", before, after: null, ...known }],
       }));
       expect(commerceStore.inspect().status).toBe("corrupt");
       expect(window.localStorage.getItem(commerceStore.key)).toBe(before);
-      expect(window.localStorage.getItem("gyeol-storage-transaction")).not.toBeNull();
-      window.localStorage.removeItem("gyeol-storage-transaction");
+      expect(window.localStorage.getItem("sajurium-storage-transaction")).not.toBeNull();
+      window.localStorage.removeItem("sajurium-storage-transaction");
     }
   });
 
   it("does not replay schema-invalid journal snapshots", () => {
     commerceStore.write(INITIAL_COMMERCE_DATA);
     const before = window.localStorage.getItem(commerceStore.key);
-    window.localStorage.setItem("gyeol-storage-transaction", JSON.stringify({
+    window.localStorage.setItem("sajurium-storage-transaction", JSON.stringify({
       version: 1,
       state: "pending",
       steps: [{
@@ -307,7 +307,7 @@ describe("validated local stores", () => {
     }));
     expect(commerceStore.inspect().status).toBe("corrupt");
     expect(window.localStorage.getItem(commerceStore.key)).toBe(before);
-    expect(window.localStorage.getItem("gyeol-storage-transaction")).not.toBeNull();
+    expect(window.localStorage.getItem("sajurium-storage-transaction")).not.toBeNull();
   });
 
   it("rejects duplicate persisted entity identities", () => {
@@ -330,7 +330,7 @@ describe("validated local stores", () => {
     try {
       expect(saveProfileAndClearBirthDraft(profile)).toBe("rolled-back");
       expect(window.localStorage.getItem(profileStore.key)).toBeNull();
-      expect(window.localStorage.getItem("gyeol-storage-transaction")).toBeNull();
+      expect(window.localStorage.getItem("sajurium-storage-transaction")).toBeNull();
       expect(window.sessionStorage.getItem(birthDraftStore.key)).not.toBeNull();
     } finally {
       window.sessionStorage.removeItem = originalRemoveItem;
@@ -338,7 +338,7 @@ describe("validated local stores", () => {
     expect(saveProfileAndClearBirthDraft(profile)).toBe("committed");
     expect(profileStore.read()).toEqual(profile);
     expect(birthDraftStore.inspect().status).toBe("empty");
-    expect(window.localStorage.getItem("gyeol-storage-transaction")).toBeNull();
+    expect(window.localStorage.getItem("sajurium-storage-transaction")).toBeNull();
   });
 
   it("does not report committed when journal cleanup cannot be verified", () => {
@@ -347,17 +347,17 @@ describe("validated local stores", () => {
     const step = createTransactionStep(commerceStore, next);
     const originalRemoveItem = window.localStorage.removeItem;
     window.localStorage.removeItem = (key) => {
-      if (key === "gyeol-storage-transaction") throw new Error("injected journal cleanup failure");
+      if (key === "sajurium-storage-transaction") throw new Error("injected journal cleanup failure");
       originalRemoveItem.call(window.localStorage, key);
     };
     try {
       expect(runStorageTransaction([step])).toBe("unreconciled");
-      expect(window.localStorage.getItem("gyeol-storage-transaction")).not.toBeNull();
+      expect(window.localStorage.getItem("sajurium-storage-transaction")).not.toBeNull();
     } finally {
       window.localStorage.removeItem = originalRemoveItem;
     }
     expect(commerceStore.read()).toEqual(next);
-    expect(window.localStorage.getItem("gyeol-storage-transaction")).toBeNull();
+    expect(window.localStorage.getItem("sajurium-storage-transaction")).toBeNull();
   });
 
   it("retains a recovery journal when rollback fails and recovers later", () => {

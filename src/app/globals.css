@@ -538,33 +538,33 @@ h2 {
   font-size: 14px;
   line-height: 1.7;
 }
-.gyeol-orbit {
+.sajurium-orbit {
   position: absolute;
   right: -25px;
   bottom: -18px;
   width: 148px;
   height: 148px;
 }
-.gyeol-orbit span {
+.sajurium-orbit span {
   position: absolute;
   border-radius: 50%;
   mix-blend-mode: multiply;
 }
-.gyeol-orbit span:nth-child(1) {
+.sajurium-orbit span:nth-child(1) {
   inset: 8px 21px 26px 3px;
   background: rgb(200 72 50 / 16%);
   animation: orbit-drift 7s ease-in-out infinite alternate;
 }
-.gyeol-orbit span:nth-child(2) {
+.sajurium-orbit span:nth-child(2) {
   inset: 21px 1px 4px 25px;
   background: rgb(77 48 42 / 12%);
   animation: orbit-drift 8s ease-in-out -2s infinite alternate-reverse;
 }
-.gyeol-orbit span:nth-child(3) {
+.sajurium-orbit span:nth-child(3) {
   inset: 39px 33px 14px 22px;
   border: 1px solid rgb(32 30 27 / 26%);
 }
-.gyeol-orbit i {
+.sajurium-orbit i {
   position: absolute;
   right: 47px;
   bottom: 43px;
@@ -2714,14 +2714,14 @@ details[open] summary::after { content: "−"; }
     font-size: 15px;
   }
 
-  .landing-screen .gyeol-orbit {
+  .landing-screen .sajurium-orbit {
     right: 10px;
     bottom: -20px;
     width: 210px;
     height: 210px;
   }
 
-  .landing-screen .gyeol-orbit i {
+  .landing-screen .sajurium-orbit i {
     right: 68px;
     bottom: 61px;
     width: 44px;
@@ -2931,7 +2931,7 @@ details[open] summary::after { content: "−"; }
   h1 { font-size: 30px; }
   .landing-heading h1 { font-size: 39px; }
   .landing-hero { min-height: 225px; }
-  .gyeol-orbit { right: -38px; width: 136px; height: 136px; }
+  .sajurium-orbit { right: -38px; width: 136px; height: 136px; }
   .birth-fields { padding: 16px 0 0; }
   .topic-card { grid-template-columns: 30px minmax(0, 1fr) 18px; gap: 6px; }
   .feedback-card { grid-template-columns: 30px minmax(0, 1fr); gap: 6px; }

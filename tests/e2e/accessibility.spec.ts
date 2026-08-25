@@ -36,7 +36,7 @@ test("honors reduced motion and exposes visible keyboard focus", async ({ page }
 
 test("navigation accessible names include their visible labels", async ({ page }) => {
   await page.goto("/home");
-  await expect(page.getByRole("link", { name: /결.*오늘의 마음을 읽는 시간/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /사주리움.*오늘의 마음을 읽는 시간/ })).toBeVisible();
   for (const label of ["홈", "사주", "상담", "궁합", "보관함"]) {
     await expect(page.getByRole("navigation", { name: "주요 메뉴" }).getByRole("link", { name: new RegExp(label) })).toBeVisible();
   }

@@ -25,7 +25,7 @@ test("completes routed onboarding and stores the local report", async ({ page })
   await page.getByRole("button", { name: "평가 저장하기" }).click();
   await page.getByRole("button", { name: "이 기기에 결과 저장" }).click();
 
-  await expect.poll(() => page.evaluate(() => Boolean(localStorage.getItem("gyeol-saju-report")))).toBe(true);
+  await expect.poll(() => page.evaluate(() => Boolean(localStorage.getItem("sajurium-saju-report")))).toBe(true);
   await page.goto("/");
   await expect(page.getByRole("button", { name: "이 기기에 저장한 결과 이어보기" })).toBeVisible();
 });
@@ -58,10 +58,10 @@ test("continues without persistently saving birth data", async ({ page }) => {
   await page.getByRole("link", { name: "저장하지 않고 계속 보기" }).click();
   await expect(page).toHaveURL(/\/report$/);
   const persistence = await page.evaluate(() => ({
-    localBirthDraft: localStorage.getItem("gyeol-birth-draft"),
-    profile: localStorage.getItem("gyeol-profile"),
-    report: localStorage.getItem("gyeol-saju-report"),
-    transientDraft: sessionStorage.getItem("gyeol-birth-draft"),
+    localBirthDraft: localStorage.getItem("sajurium-birth-draft"),
+    profile: localStorage.getItem("sajurium-profile"),
+    report: localStorage.getItem("sajurium-saju-report"),
+    transientDraft: sessionStorage.getItem("sajurium-birth-draft"),
   }));
   expect(persistence.localBirthDraft).toBeNull();
   expect(persistence.profile).toBeNull();
@@ -77,12 +77,12 @@ test("surfaces unavailable report storage instead of treating it as empty", asyn
     topic: "career",
     feedback: null,
   });
-  await page.evaluate((raw) => localStorage.setItem("gyeol-saju-report", raw), storedReport);
+  await page.evaluate((raw) => localStorage.setItem("sajurium-saju-report", raw), storedReport);
   await page.addInitScript(() => {
     const original = Storage.prototype.getItem;
     Object.defineProperty(window, "__restoreReportRead", { value: () => { Storage.prototype.getItem = original; }, configurable: true });
     Storage.prototype.getItem = function getItem(key) {
-      if (key === "gyeol-saju-report") throw new Error("injected unavailable report storage");
+      if (key === "sajurium-saju-report") throw new Error("injected unavailable report storage");
       return original.call(this, key);
     };
   });
@@ -93,7 +93,7 @@ test("surfaces unavailable report storage instead of treating it as empty", asyn
   await expect(page.getByRole("button", { name: "다시 확인하기" })).toBeVisible();
   expect(await page.evaluate(() => {
     (window as typeof window & { __restoreReportRead?: () => void }).__restoreReportRead?.();
-    return localStorage.getItem("gyeol-saju-report");
+    return localStorage.getItem("sajurium-saju-report");
   })).toBe(storedReport);
 });
 
@@ -105,7 +105,7 @@ test("preserves data when transaction-journal access or all storage reads are de
     topic: "career",
     feedback: null,
   });
-  await page.evaluate((raw) => localStorage.setItem("gyeol-saju-report", raw), storedReport);
+  await page.evaluate((raw) => localStorage.setItem("sajurium-saju-report", raw), storedReport);
   await page.addInitScript(() => {
     const original = Storage.prototype.getItem;
     Object.defineProperty(window, "__restoreAllReads", { value: () => { Storage.prototype.getItem = original; }, configurable: true });
@@ -119,13 +119,13 @@ test("preserves data when transaction-journal access or all storage reads are de
   await expect(page.getByRole("button", { name: "손상 데이터 초기화" })).toHaveCount(0);
   expect(await page.evaluate(() => {
     (window as typeof window & { __restoreAllReads?: () => void }).__restoreAllReads?.();
-    return localStorage.getItem("gyeol-saju-report");
+    return localStorage.getItem("sajurium-saju-report");
   })).toBe(storedReport);
 });
 
 test("does not confuse an older report with the current onboarding result", async ({ page }) => {
   await page.evaluate(() => {
-    localStorage.setItem("gyeol-saju-report", JSON.stringify({
+    localStorage.setItem("sajurium-saju-report", JSON.stringify({
       version: 1,
       savedAt: "2026-08-24T00:00:00.000Z",
       birth: { nickname: "이전", calendar: "solar", birthDate: "1988-03-03", birthTime: "08:00", unknownTime: false },
@@ -142,7 +142,7 @@ test("does not confuse an older report with the current onboarding result", asyn
   await page.getByRole("button", { name: "이 기기에 결과 저장" }).click();
   await expect(page.getByRole("heading", { name: "이 기기에 저장했어요" })).toBeVisible();
   expect(await page.evaluate(() => {
-    const saved = JSON.parse(localStorage.getItem("gyeol-saju-report") ?? "null");
+    const saved = JSON.parse(localStorage.getItem("sajurium-saju-report") ?? "null");
     return { nickname: saved?.birth?.nickname, topic: saved?.topic, feedback: saved?.feedback };
   })).toEqual({ nickname: "서연", topic: "career", feedback: "helpful" });
 });

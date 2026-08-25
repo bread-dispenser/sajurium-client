@@ -38,7 +38,7 @@ export function HomeScreen() {
     <main className="screen-content home-content" aria-labelledby="home-title">
       <div className="editorial-hero">
         <p className="section-kicker">오늘의 흐름</p>
-        <h1 id="home-title">{birth.nickname}님,<br />오늘의 결을 살펴보세요</h1>
+        <h1 id="home-title">{birth.nickname}님,<br />오늘의 흐름을 살펴보세요</h1>
         <p className="supporting">실제 사주를 계산하지 않으며, 날짜에 따라 정해진 예시 문장을 보여드려요.</p>
       </div>
       <section className="home-summary" aria-labelledby="today-summary-title">

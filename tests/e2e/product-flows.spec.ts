@@ -46,17 +46,17 @@ test("persists a fixture consultation and follow-up", async ({ page }) => {
   await expect(page).toHaveURL(/\/consult\/session\//, { timeout: 5_000 });
   const sessionPath = new URL(page.url()).pathname;
   await expect(page.locator(".message-list article")).toHaveCount(2);
-  await expect(page.getByText("결 · 체험용 예시")).toBeVisible();
+  await expect(page.getByText("사주리움 · 체험용 예시")).toBeVisible();
   await page.locator(".follow-up-suggestions button").first().click();
   await page.getByRole("button", { name: "예시 답변 추가" }).click();
   await expect(page.locator(".message-list article")).toHaveCount(4);
-  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("gyeol-commerce") ?? "{}").consultationCredits)).toBe(4);
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("sajurium-commerce") ?? "{}").consultationCredits)).toBe(4);
   await page.getByRole("button", { name: "이 상담 삭제" }).click();
   await page.getByRole("button", { name: "상담 삭제 확정" }).click();
   await expect(page).toHaveURL(/\/consult$/);
   const deletion = await page.evaluate((deletedSessionPath) => ({
-    sessions: JSON.parse(localStorage.getItem("gyeol-consultations") ?? "{\"sessions\":[]}").sessions.length,
-    links: JSON.parse(localStorage.getItem("gyeol-library") ?? "{\"items\":[]}").items.filter((item: { href: string }) => item.href === deletedSessionPath).length,
+    sessions: JSON.parse(localStorage.getItem("sajurium-consultations") ?? "{\"sessions\":[]}").sessions.length,
+    links: JSON.parse(localStorage.getItem("sajurium-library") ?? "{\"items\":[]}").items.filter((item: { href: string }) => item.href === deletedSessionPath).length,
   }), sessionPath);
   expect(deletion).toEqual({ sessions: 0, links: 0 });
 });
@@ -120,7 +120,7 @@ test("records demo commerce state without enabling real payment", async ({ page 
 
 test("clears every service-owned local key from settings", async ({ page }) => {
   await page.goto("/settings");
-  await page.evaluate(() => localStorage.setItem("gyeol-library", JSON.stringify({ version: 1, items: [] })));
+  await page.evaluate(() => localStorage.setItem("sajurium-library", JSON.stringify({ version: 1, items: [] })));
   await page.reload();
   await expect(page.locator(".data-inventory article")).toHaveCount(12);
   await expect(page.getByText("항상 마스킹됩니다")).toBeVisible();
@@ -128,18 +128,18 @@ test("clears every service-owned local key from settings", async ({ page }) => {
   await page.getByRole("button", { name: "모두 삭제 확정" }).click();
   await expect(page.getByRole("status")).toContainText("모두 삭제");
   expect(await page.evaluate(() => ({
-    local: Object.keys(localStorage).filter((key) => key.startsWith("gyeol-")),
-    session: Object.keys(sessionStorage).filter((key) => key.startsWith("gyeol-")),
+    local: Object.keys(localStorage).filter((key) => key.startsWith("sajurium-")),
+    session: Object.keys(sessionStorage).filter((key) => key.startsWith("sajurium-")),
   }))).toEqual({ local: [], session: [] });
 });
 
 test("confirms individual settings and feedback deletion", async ({ page }) => {
   await page.evaluate(() => {
-    localStorage.setItem("gyeol-profile", JSON.stringify({
+    localStorage.setItem("sajurium-profile", JSON.stringify({
       version: 1,
       birth: { nickname: "서연", calendar: "solar", gender: "female", birthDate: "1992-06-18", birthTime: "14:30", unknownTime: false },
     }));
-    localStorage.setItem("gyeol-feedback-list", JSON.stringify({
+    localStorage.setItem("sajurium-feedback-list", JSON.stringify({
       version: 1,
       entries: [{ id: "feedback-confirm", topic: "career", rating: "helpful", reason: "구체적이고 이해하기 쉬워요", comment: "", reported: false, createdAt: "2026-08-25T00:00:00.000Z" }],
     }));
@@ -149,17 +149,17 @@ test("confirms individual settings and feedback deletion", async ({ page }) => {
   const profileRow = page.locator(".data-inventory article").filter({ hasText: "저장 프로필" });
   await profileRow.getByRole("button", { name: "삭제" }).click();
   await expect(profileRow.getByRole("button", { name: "삭제 확정" })).toBeVisible();
-  expect(await page.evaluate(() => localStorage.getItem("gyeol-profile"))).not.toBeNull();
+  expect(await page.evaluate(() => localStorage.getItem("sajurium-profile"))).not.toBeNull();
   await profileRow.getByRole("button", { name: "취소" }).click();
-  expect(await page.evaluate(() => localStorage.getItem("gyeol-profile"))).not.toBeNull();
+  expect(await page.evaluate(() => localStorage.getItem("sajurium-profile"))).not.toBeNull();
   await profileRow.getByRole("button", { name: "삭제" }).click();
   await profileRow.getByRole("button", { name: "삭제 확정" }).click();
-  expect(await page.evaluate(() => localStorage.getItem("gyeol-profile"))).toBeNull();
+  expect(await page.evaluate(() => localStorage.getItem("sajurium-profile"))).toBeNull();
 
   await page.goto("/settings/feedback");
   await page.getByRole("button", { name: "삭제" }).click();
   await expect(page.getByRole("button", { name: "피드백 삭제 확정" })).toBeVisible();
-  expect(await page.evaluate(() => localStorage.getItem("gyeol-feedback-list"))).toContain("feedback-confirm");
+  expect(await page.evaluate(() => localStorage.getItem("sajurium-feedback-list"))).toContain("feedback-confirm");
   await page.getByRole("button", { name: "취소" }).click();
   await page.getByRole("button", { name: "삭제" }).click();
   await page.getByRole("button", { name: "피드백 삭제 확정" }).click();
@@ -178,15 +178,15 @@ test("confirms individual settings and feedback deletion", async ({ page }) => {
 
 test("surfaces corrupt domain stores before explicit recovery", async ({ page }) => {
   const cases = [
-    { key: "gyeol-saju-report", route: "/", title: "저장한 리포트를 읽을 수 없어요" },
-    { key: "gyeol-profile", route: "/home", title: "출생 정보를 읽을 수 없어요" },
-    { key: "gyeol-consultations", route: "/consult", title: "상담 데이터를 읽을 수 없어요" },
-    { key: "gyeol-people", route: "/people", title: "사람 데이터를 읽을 수 없어요" },
-    { key: "gyeol-compatibility", route: "/compatibility", title: "궁합 데이터를 읽을 수 없어요" },
-    { key: "gyeol-library", route: "/library", title: "보관함 데이터를 읽을 수 없어요" },
-    { key: "gyeol-commerce", route: "/products", title: "체험 구매 기록을 읽을 수 없어요" },
-    { key: "gyeol-settings", route: "/settings", title: "환경설정을 읽을 수 없어요" },
-    { key: "gyeol-feedback-list", route: "/settings/feedback", title: "피드백 데이터를 읽을 수 없어요" },
+    { key: "sajurium-saju-report", route: "/", title: "저장한 리포트를 읽을 수 없어요" },
+    { key: "sajurium-profile", route: "/home", title: "출생 정보를 읽을 수 없어요" },
+    { key: "sajurium-consultations", route: "/consult", title: "상담 데이터를 읽을 수 없어요" },
+    { key: "sajurium-people", route: "/people", title: "사람 데이터를 읽을 수 없어요" },
+    { key: "sajurium-compatibility", route: "/compatibility", title: "궁합 데이터를 읽을 수 없어요" },
+    { key: "sajurium-library", route: "/library", title: "보관함 데이터를 읽을 수 없어요" },
+    { key: "sajurium-commerce", route: "/products", title: "체험 구매 기록을 읽을 수 없어요" },
+    { key: "sajurium-settings", route: "/settings", title: "환경설정을 읽을 수 없어요" },
+    { key: "sajurium-feedback-list", route: "/settings/feedback", title: "피드백 데이터를 읽을 수 없어요" },
   ];
   for (const entry of cases) {
     await page.evaluate(({ key }) => {
@@ -203,13 +203,13 @@ test("surfaces corrupt domain stores before explicit recovery", async ({ page })
 test("recovers a corrupt transaction record before reading settings stores", async ({ page }) => {
   const before = await page.evaluate(() => {
     const settings = JSON.stringify({ version: 1, notifications: { dailyFlow: true, monthlyFlow: false, email: false } });
-    localStorage.setItem("gyeol-settings", settings);
+    localStorage.setItem("sajurium-settings", settings);
     localStorage.setItem("unowned-key", "keep-me");
-    localStorage.setItem("gyeol-storage-transaction", JSON.stringify({
+    localStorage.setItem("sajurium-storage-transaction", JSON.stringify({
       version: 1,
       state: "pending",
       steps: [{
-        key: "gyeol-birth-draft",
+        key: "sajurium-birth-draft",
         scope: "session",
         before: null,
         beforeKnown: true,
@@ -228,9 +228,9 @@ test("recovers a corrupt transaction record before reading settings stores", asy
   await page.getByRole("button", { name: "손상 데이터 초기화" }).click();
   await expect(page.getByRole("heading", { name: /이 기기에 저장된/ })).toBeVisible();
   expect(await page.evaluate(() => ({
-    journal: localStorage.getItem("gyeol-storage-transaction"),
-    draft: sessionStorage.getItem("gyeol-birth-draft"),
-    settings: localStorage.getItem("gyeol-settings"),
+    journal: localStorage.getItem("sajurium-storage-transaction"),
+    draft: sessionStorage.getItem("sajurium-birth-draft"),
+    settings: localStorage.getItem("sajurium-settings"),
     unowned: localStorage.getItem("unowned-key"),
   }))).toEqual({ journal: null, draft: null, settings: before, unowned: "keep-me" });
 });
@@ -248,15 +248,15 @@ test("rolls back linked consultation writes when library persistence fails", asy
   await page.goto("/consult/new");
   await page.getByRole("button", { name: "이직을 고민할 때 어떤 조건을 먼저 봐야 하나요?" }).click();
   const before = await page.evaluate(() => ({
-    consultation: localStorage.getItem("gyeol-consultations"),
-    library: localStorage.getItem("gyeol-library"),
+    consultation: localStorage.getItem("sajurium-consultations"),
+    library: localStorage.getItem("sajurium-library"),
   }));
   await page.evaluate(() => {
     const original = Storage.prototype.setItem;
     let failLibraryOnce = true;
     Object.defineProperty(window, "__restoreSetItem", { value: () => { Storage.prototype.setItem = original; }, configurable: true });
     Storage.prototype.setItem = function setItem(key, value) {
-      if (key === "gyeol-library" && failLibraryOnce) {
+      if (key === "sajurium-library" && failLibraryOnce) {
         failLibraryOnce = false;
         throw new Error("injected library failure");
       }
@@ -268,9 +268,9 @@ test("rolls back linked consultation writes when library persistence fails", asy
   const state = await page.evaluate(() => {
     (window as typeof window & { __restoreSetItem?: () => void }).__restoreSetItem?.();
     return {
-      consultation: localStorage.getItem("gyeol-consultations"),
-      library: localStorage.getItem("gyeol-library"),
-      journal: localStorage.getItem("gyeol-storage-transaction"),
+      consultation: localStorage.getItem("sajurium-consultations"),
+      library: localStorage.getItem("sajurium-library"),
+      journal: localStorage.getItem("sajurium-storage-transaction"),
     };
   });
   expect(state).toEqual({ ...before, journal: null });
@@ -279,11 +279,11 @@ test("rolls back linked consultation writes when library persistence fails", asy
 test("reports partial failure instead of claiming full local deletion", async ({ page }) => {
   await page.goto("/settings");
   await page.evaluate(() => {
-    localStorage.setItem("gyeol-profile", JSON.stringify({ version: 1, birth: { nickname: "남김", calendar: "solar", birthDate: "1990-01-01", birthTime: "12:00", unknownTime: false } }));
+    localStorage.setItem("sajurium-profile", JSON.stringify({ version: 1, birth: { nickname: "남김", calendar: "solar", birthDate: "1990-01-01", birthTime: "12:00", unknownTime: false } }));
     const original = Storage.prototype.removeItem;
     Object.defineProperty(window, "__restoreRemoveItem", { value: () => { Storage.prototype.removeItem = original; }, configurable: true });
     Storage.prototype.removeItem = function removeItem(key) {
-      if (key === "gyeol-profile") throw new Error("injected remove failure");
+      if (key === "sajurium-profile") throw new Error("injected remove failure");
       return original.call(this, key);
     };
   });
@@ -292,7 +292,7 @@ test("reports partial failure instead of claiming full local deletion", async ({
     const original = Storage.prototype.removeItem;
     Object.defineProperty(window, "__restoreRemoveItem", { value: () => { Storage.prototype.removeItem = original; }, configurable: true });
     Storage.prototype.removeItem = function removeItem(key) {
-      if (key === "gyeol-profile") throw new Error("injected remove failure");
+      if (key === "sajurium-profile") throw new Error("injected remove failure");
       return original.call(this, key);
     };
   });
@@ -301,7 +301,7 @@ test("reports partial failure instead of claiming full local deletion", async ({
   await expect(page.getByRole("status")).toContainText("일부 기기 저장 정보를 삭제하지 못했어요: profile");
   expect(await page.evaluate(() => {
     (window as typeof window & { __restoreRemoveItem?: () => void }).__restoreRemoveItem?.();
-    return localStorage.getItem("gyeol-profile");
+    return localStorage.getItem("sajurium-profile");
   })).not.toBeNull();
 });
 
@@ -309,14 +309,14 @@ test("disables destructive settings actions for unavailable owned storage", asyn
   const commerce = JSON.stringify({ version: 1, orders: [], consultationCredits: 3, creditHistory: [] });
   const settings = JSON.stringify({ version: 1, notifications: { dailyFlow: false, monthlyFlow: false, email: false } });
   await page.evaluate(({ commerceRaw, settingsRaw }) => {
-    localStorage.setItem("gyeol-commerce", commerceRaw);
-    localStorage.setItem("gyeol-settings", settingsRaw);
+    localStorage.setItem("sajurium-commerce", commerceRaw);
+    localStorage.setItem("sajurium-settings", settingsRaw);
   }, { commerceRaw: commerce, settingsRaw: settings });
   await page.addInitScript(() => {
     const original = Storage.prototype.getItem;
     Object.defineProperty(window, "__restoreCommerceRead", { value: () => { Storage.prototype.getItem = original; }, configurable: true });
     Storage.prototype.getItem = function getItem(key) {
-      if (key === "gyeol-commerce") throw new Error("injected commerce read denial");
+      if (key === "sajurium-commerce") throw new Error("injected commerce read denial");
       return original.call(this, key);
     };
   });
@@ -329,18 +329,18 @@ test("disables destructive settings actions for unavailable owned storage", asyn
   await expect(page.getByRole("button", { name: "전체 기기 저장 정보 삭제 · 사용 불가" })).toBeDisabled();
   expect(await page.evaluate(() => {
     (window as typeof window & { __restoreCommerceRead?: () => void }).__restoreCommerceRead?.();
-    return { commerce: localStorage.getItem("gyeol-commerce"), settings: localStorage.getItem("gyeol-settings") };
+    return { commerce: localStorage.getItem("sajurium-commerce"), settings: localStorage.getItem("sajurium-settings") };
   })).toEqual({ commerce, settings });
 });
 
 test("keeps corrupt recovery visible when reset removal fails", async ({ page }) => {
   await page.goto("/");
   await page.evaluate(() => {
-    localStorage.setItem("gyeol-saju-report", "{broken");
+    localStorage.setItem("sajurium-saju-report", "{broken");
     const original = Storage.prototype.removeItem;
     Object.defineProperty(window, "__restoreCorruptRemove", { value: () => { Storage.prototype.removeItem = original; }, configurable: true });
     Storage.prototype.removeItem = function removeItem(key) {
-      if (key === "gyeol-saju-report") throw new Error("injected corrupt reset failure");
+      if (key === "sajurium-saju-report") throw new Error("injected corrupt reset failure");
       return original.call(this, key);
     };
   });
@@ -349,7 +349,7 @@ test("keeps corrupt recovery visible when reset removal fails", async ({ page })
     const original = Storage.prototype.removeItem;
     Object.defineProperty(window, "__restoreCorruptRemove", { value: () => { Storage.prototype.removeItem = original; }, configurable: true });
     Storage.prototype.removeItem = function removeItem(key) {
-      if (key === "gyeol-saju-report") throw new Error("injected corrupt reset failure");
+      if (key === "sajurium-saju-report") throw new Error("injected corrupt reset failure");
       return original.call(this, key);
     };
   });
@@ -357,6 +357,6 @@ test("keeps corrupt recovery visible when reset removal fails", async ({ page })
   await expect(page.locator(".form-error[role=alert]")).toContainText("초기화하지 못했어요");
   expect(await page.evaluate(() => {
     (window as typeof window & { __restoreCorruptRemove?: () => void }).__restoreCorruptRemove?.();
-    return localStorage.getItem("gyeol-saju-report");
+    return localStorage.getItem("sajurium-saju-report");
   })).toBe("{broken");
 });
