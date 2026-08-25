@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { INITIAL_BIRTH } from "@/lib/fixtures";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/");
@@ -22,6 +23,7 @@ test("completes routed onboarding and stores the local report", async ({ page })
   await expect(page).toHaveURL(/\/report\/topics\/career$/);
   await page.getByRole("link", { name: "이 해석 저장하기" }).click();
   await page.getByRole("radio", { name: /도움이 됐어요/ }).click();
+  await page.getByLabel("상세 사유").selectOption("too_generic");
   await page.getByRole("button", { name: "평가 저장하기" }).click();
   await page.getByRole("button", { name: "이 기기에 결과 저장" }).click();
 
@@ -73,7 +75,7 @@ test("surfaces unavailable report storage instead of treating it as empty", asyn
   const storedReport = JSON.stringify({
     version: 1,
     savedAt: "2026-08-25T00:00:00.000Z",
-    birth: { nickname: "보존", calendar: "solar", birthDate: "1991-01-01", birthTime: "11:00", unknownTime: false },
+    birth: { ...INITIAL_BIRTH, displayName: "보존", birthDate: "1991-01-01", birthTime: "11:00" },
     topic: "career",
     feedback: null,
   });
@@ -101,7 +103,7 @@ test("preserves data when transaction-journal access or all storage reads are de
   const storedReport = JSON.stringify({
     version: 1,
     savedAt: "2026-08-25T00:00:00.000Z",
-    birth: { nickname: "전체보존", calendar: "solar", birthDate: "1992-06-18", birthTime: "14:30", unknownTime: false },
+    birth: { ...INITIAL_BIRTH, displayName: "전체보존", birthDate: "1992-06-18", birthTime: "14:30" },
     topic: "career",
     feedback: null,
   });
@@ -124,15 +126,15 @@ test("preserves data when transaction-journal access or all storage reads are de
 });
 
 test("does not confuse an older report with the current onboarding result", async ({ page }) => {
-  await page.evaluate(() => {
+  await page.evaluate((birth) => {
     localStorage.setItem("sajurium-saju-report", JSON.stringify({
       version: 1,
       savedAt: "2026-08-24T00:00:00.000Z",
-      birth: { nickname: "이전", calendar: "solar", birthDate: "1988-03-03", birthTime: "08:00", unknownTime: false },
+      birth: { ...birth, displayName: "이전", birthDate: "1988-03-03", birthTime: "08:00" },
       topic: "love",
       feedback: "unclear",
     }));
-  });
+  }, INITIAL_BIRTH);
   await page.reload();
   await page.getByRole("button", { name: "내 흐름 살펴보기" }).click();
   await page.getByRole("button", { name: "다음" }).click();
@@ -143,6 +145,6 @@ test("does not confuse an older report with the current onboarding result", asyn
   await expect(page.getByRole("heading", { name: "이 기기에 저장했어요" })).toBeVisible();
   expect(await page.evaluate(() => {
     const saved = JSON.parse(localStorage.getItem("sajurium-saju-report") ?? "null");
-    return { nickname: saved?.birth?.nickname, topic: saved?.topic, feedback: saved?.feedback };
-  })).toEqual({ nickname: "서연", topic: "career", feedback: "helpful" });
+    return { displayName: saved?.birth?.displayName, topic: saved?.topic, feedback: saved?.feedback };
+  })).toEqual({ displayName: "서연", topic: "career", feedback: "helpful" });
 });

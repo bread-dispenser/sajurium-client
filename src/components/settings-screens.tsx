@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useState, useSyncExternalStore } from "react";
 import type { FormEvent } from "react";
-import type { FeedbackEntry, SettingsData } from "@/lib/domain";
+import type { NotificationPreferenceView } from "@/lib/contracts";
+import type { FeedbackEntry, FeedbackReason, SettingsData } from "@/lib/domain";
 import { INITIAL_BIRTH, INITIAL_SETTINGS_DATA, getTopic } from "@/lib/fixtures";
 import { useHydrated } from "@/hooks/use-hydrated";
 import {
@@ -35,8 +36,28 @@ function getSettings(): SettingsData | null {
   const inspection = settingsStore.inspect();
   if (inspection.status === "ok") return inspection.value;
   if (inspection.status !== "empty") return null;
-  return { ...INITIAL_SETTINGS_DATA, notifications: { ...INITIAL_SETTINGS_DATA.notifications } };
+  return {
+    ...INITIAL_SETTINGS_DATA,
+    notifications: INITIAL_SETTINGS_DATA.notifications.map((preference) => ({
+      ...preference,
+      topics: { ...preference.topics },
+      quietHours: { ...preference.quietHours },
+    })),
+  };
 }
+
+type NotificationTopicCode = keyof NotificationPreferenceView["topics"];
+
+const notificationTopics: readonly { code: NotificationTopicCode; label: string; classification: "서비스" | "마케팅" }[] = [
+  { code: "payment_completed", label: "결제 완료", classification: "서비스" },
+  { code: "monthly_flow", label: "이번 달 흐름 시작", classification: "마케팅" },
+  { code: "important_period", label: "중요한 시기 진입", classification: "마케팅" },
+  { code: "report_completed", label: "구매 리포트 생성 완료", classification: "서비스" },
+  { code: "consultation_completed", label: "상담 답변 완료", classification: "서비스" },
+  { code: "low_credits", label: "이용권 부족", classification: "서비스" },
+  { code: "resume_consultation", label: "이전 상담 이어보기", classification: "마케팅" },
+  { code: "interest_change", label: "관심 주제 관련 변화", classification: "마케팅" },
+];
 
 export function SettingsScreen() {
   const hydrated = useHydrated();
@@ -106,19 +127,25 @@ export function SettingsScreen() {
     setMessage(clearOwnedStorage(id) ? "선택한 기기 저장 정보를 삭제했어요." : "선택한 기기 저장 정보를 삭제하지 못했어요.");
   }
 
-  function updateNotification(key: keyof SettingsData["notifications"], checked: boolean) {
-    updateSettings({ notifications: { ...activeSettings.notifications, [key]: checked } });
+  function updateNotification(channel: NotificationPreferenceView["channel"], update: (preference: NotificationPreferenceView) => NotificationPreferenceView) {
+    updateSettings({ notifications: activeSettings.notifications.map((preference) => preference.channel === channel ? update(preference) : preference) });
   }
 
   function saveBirth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const nickname = String(form.get("nickname") ?? "").trim();
+    const displayName = String(form.get("displayName") ?? "").trim();
     const birthDate = String(form.get("birthDate") ?? "");
     const birthTime = String(form.get("birthTime") ?? "");
-    const unknownTime = form.get("unknownTime") === "on";
-    if (!nickname || !/^\d{4}-\d{2}-\d{2}$/.test(birthDate)) return setMessage("이름과 올바른 생년월일을 입력해 주세요.");
-    const profile = { version: 1 as const, birth: { ...birth, nickname, birthDate, birthTime, unknownTime } };
+    const birthTimeUnknown = form.get("birthTimeUnknown") === "on";
+    const [year, month, day] = birthDate.split("-").map(Number);
+    const parsedDate = new Date(Date.UTC(year, month - 1, day));
+    const validDate = /^\d{4}-\d{2}-\d{2}$/.test(birthDate) && parsedDate.getUTCFullYear() === year && parsedDate.getUTCMonth() === month - 1 && parsedDate.getUTCDate() === day;
+    if (!displayName || !validDate) return setMessage("이름과 실제 존재하는 생년월일을 입력해 주세요.");
+    const [hour, minute] = birthTime.split(":").map(Number);
+    const validTime = /^\d{2}:\d{2}$/.test(birthTime) && hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59;
+    if (!birthTimeUnknown && !validTime) return setMessage("출생 시간을 HH:mm 형식으로 입력하거나 ‘출생 시간을 몰라요’를 선택해 주세요.");
+    const profile = { version: 1 as const, birth: { ...birth, displayName, birthDate, birthTime: birthTimeUnknown ? null : birthTime, birthTimeUnknown } };
     const transaction = saveProfileAndClearBirthDraft(profile);
     if (transaction === "committed") setMessage("출생 정보를 이 기기에 저장했어요.");
     else setMessage(transaction === "rolled-back" ? "출생 정보 저장에 실패해 변경을 취소했어요." : "저장 복구가 필요해 기기 저장 정보를 확인해 주세요.");
@@ -143,8 +170,25 @@ export function SettingsScreen() {
       <p className="section-kicker">설정과 개인정보</p>
       <h1 id="settings-title">이 기기에 저장된<br />정보를 관리하세요</h1>
       <p className="supporting">계정 기능이 없으므로 모든 설정은 현재 브라우저에만 적용됩니다.</p>
-      <section className="settings-section"><h2>출생 정보</h2><p>개인정보 보호를 위해 사람 목록의 생년월일은 항상 마스킹됩니다.</p><form className="settings-birth-form" onSubmit={saveBirth}><label>이름 또는 닉네임<input name="nickname" defaultValue={birth.nickname} /></label><label>생년월일<input name="birthDate" type="date" defaultValue={birth.birthDate} /></label><label>출생 시간<input name="birthTime" type="time" defaultValue={birth.birthTime} /></label><label className="check-card"><input name="unknownTime" type="checkbox" defaultChecked={birth.unknownTime} /> 출생 시간을 몰라요</label><button className="secondary-button" type="submit">출생 정보 저장</button></form></section>
-      <section className="settings-section"><h2>알림 환경설정</h2><p>실제 푸시·이메일 발송은 제공되지 않으며 선호도만 저장됩니다.</p><label className="setting-toggle"><span><strong>오늘의 흐름</strong><small>이 기기 선호도</small></span><input type="checkbox" checked={settings.notifications.dailyFlow} onChange={(event) => updateNotification("dailyFlow", event.target.checked)} /></label><label className="setting-toggle"><span><strong>이번 달 흐름</strong><small>이 기기 선호도</small></span><input type="checkbox" checked={settings.notifications.monthlyFlow} onChange={(event) => updateNotification("monthlyFlow", event.target.checked)} /></label><label className="setting-toggle"><span><strong>이메일</strong><small>이메일 주소를 수집하지 않음</small></span><input type="checkbox" checked={settings.notifications.email} onChange={(event) => updateNotification("email", event.target.checked)} /></label></section>
+      <section className="settings-section"><h2>출생 정보</h2><p>현재 프로필의 핵심 값만 수정합니다. 달력·윤달·출생지·시간대·계산 기준과 관심사는 전체 프로필에서 관리하세요.</p><form className="settings-birth-form" onSubmit={saveBirth}><label>이름 또는 닉네임<input name="displayName" defaultValue={birth.displayName} /></label><label>생년월일<input name="birthDate" type="date" defaultValue={birth.birthDate} /></label><label>출생 시간<input name="birthTime" type="time" defaultValue={birth.birthTime ?? ""} /></label><label className="check-card"><input name="birthTimeUnknown" type="checkbox" defaultChecked={birth.birthTimeUnknown} /> 출생 시간을 몰라요</label><button className="secondary-button" type="submit">출생 정보 저장</button><Link className="text-link" href="/profile">전체 프로필 관리</Link></form></section>
+      <section className="settings-section">
+        <h2>알림 환경설정</h2>
+        <p>실제 푸시·이메일 발송은 제공되지 않으며 선호도만 현재 브라우저에 저장됩니다.</p>
+        {settings.notifications.map((preference) => (
+          <article key={preference.channel}>
+            <h3>{preference.channel === "push" ? "푸시" : "이메일"}</h3>
+            <label className="setting-toggle"><span><strong>채널 사용</strong><small>{preference.channel === "push" ? "운영체제 권한을 요청하지 않음" : "이메일 주소를 수집하지 않음"}</small></span><input type="checkbox" checked={preference.enabled} onChange={(event) => updateNotification(preference.channel, (current) => ({ ...current, enabled: event.target.checked }))} /></label>
+            {notificationTopics.map((topic) => <label className="setting-toggle" key={topic.code}><span><strong>{topic.label} · {topic.classification}</strong><small>topic · {topic.code}</small></span><input type="checkbox" checked={preference.topics[topic.code]} onChange={(event) => updateNotification(preference.channel, (current) => ({ ...current, topics: { ...current.topics, [topic.code]: event.target.checked } }))} /></label>)}
+            <label className="setting-toggle"><span><strong>조용한 시간 사용</strong><small>{preference.quietHours.start}–{preference.quietHours.end} · {preference.quietHours.timezone}</small></span><input type="checkbox" checked={preference.quietHours.enabled} onChange={(event) => updateNotification(preference.channel, (current) => ({ ...current, quietHours: { ...current.quietHours, enabled: event.target.checked } }))} /></label>
+            <div className="settings-birth-form">
+              <label>시작<input type="time" value={preference.quietHours.start} onChange={(event) => updateNotification(preference.channel, (current) => ({ ...current, quietHours: { ...current.quietHours, start: event.target.value } }))} /></label>
+              <label>종료<input type="time" value={preference.quietHours.end} onChange={(event) => updateNotification(preference.channel, (current) => ({ ...current, quietHours: { ...current.quietHours, end: event.target.value } }))} /></label>
+              <label>시간대<select value={preference.quietHours.timezone} onChange={(event) => updateNotification(preference.channel, (current) => ({ ...current, quietHours: { ...current.quietHours, timezone: event.target.value } }))}><option value="Asia/Seoul">Asia/Seoul (KST)</option><option value="UTC">UTC</option></select></label>
+            </div>
+            <label className="setting-toggle"><span><strong>동일 내용 중복 억제</strong><small>같은 본문과 대상의 반복 알림을 합침</small></span><input type="checkbox" checked={preference.suppressDuplicates} onChange={(event) => updateNotification(preference.channel, (current) => ({ ...current, suppressDuplicates: event.target.checked }))} /></label>
+          </article>
+        ))}
+      </section>
       <section className="settings-section"><h2>기기 저장 정보</h2><div className="data-inventory">{inventory.map((item) => <article key={item.id}><span>{item.label}<small>{item.scope === "session" ? "현재 탭" : "현재 브라우저"}</small></span><strong>{item.status === "unavailable" ? "사용 불가" : item.status === "corrupt" ? "확인 필요" : `${item.count}개`}</strong>{pendingClearId === item.id ? <div className="danger-confirm inventory-confirm"><p>{item.label} 정보를 이 기기에서 {item.status === "corrupt" ? "초기화" : "삭제"}할까요?</p><button type="button" onClick={() => { clearInventoryItem(item.id, item.status); setPendingClearId(null); }}>{item.status === "corrupt" ? "초기화 확정" : "삭제 확정"}</button><button type="button" onClick={() => setPendingClearId(null)}>취소</button></div> : <button type="button" onClick={() => item.status === "unavailable" ? clearInventoryItem(item.id, item.status) : setPendingClearId(item.id)} disabled={item.status === "empty" || (hasUnavailableStorage && item.status !== "unavailable")}>{item.status === "unavailable" ? "다시 확인" : item.status === "corrupt" ? "초기화" : "삭제"}</button>}</article>)}</div>{hasUnavailableStorage ? <><p className="form-error" role="alert">확인할 수 없는 저장소가 있어 삭제 기능을 사용할 수 없어요.</p><button className="secondary-button" type="button" disabled>전체 기기 저장 정보 삭제 · 사용 불가</button></> : confirmClear ? <div className="danger-confirm"><p>결 서비스가 만든 기기 저장 정보를 모두 삭제합니다.</p><button type="button" onClick={clearAllLocalData}>모두 삭제 확정</button><button type="button" onClick={() => setConfirmClear(false)}>취소</button></div> : <button className="secondary-button" type="button" onClick={() => setConfirmClear(true)}>전체 기기 저장 정보 삭제</button>}</section>
       <section className="settings-section"><h2>안내와 기록</h2><nav className="settings-links"><Link href="/settings/feedback">피드백과 신고 관리</Link><Link href="/settings/about-ai">AI 사용 안내</Link><Link href="/settings/privacy">개인정보 안내</Link><Link href="/settings/terms">이용약관</Link><Link href="/settings/safety">콘텐츠 안전 안내</Link></nav></section>
       <section className="settings-section"><h2>계정 삭제</h2><p>현재 계정 기능과 다른 기기 저장이 없어 실제 계정 삭제는 제공되지 않습니다.</p><button className="disabled-login" type="button" disabled>계정 삭제 · 이용 불가</button></section>
@@ -181,10 +225,26 @@ export function FeedbackManagementScreen() {
   return (
     <main className="screen-content feedback-management" aria-labelledby="feedback-management-title">
       <p className="section-kicker">이 기기의 피드백</p><h1 id="feedback-management-title">평가와 신고를<br />관리하세요</h1>
-      <div className="feedback-history">{data.entries.map((entry) => <article key={entry.id}><small>{getTopic(entry.topic).title} · {entry.createdAt.slice(0, 10)}</small><h2>{entry.reason || "상세 사유 없음"}</h2><p>{entry.comment || "자유 의견 없음"}</p><div><Link href={`/settings/feedback/${entry.id}`}>수정</Link><button type="button" onClick={() => updateEntry(entry.id, (current) => ({ ...current, reported: !current.reported }))}>{entry.reported ? "신고 취소" : "부적절한 표현 신고"}</button>{pendingDeleteId === entry.id ? <div className="danger-confirm feedback-delete-confirm"><p>이 피드백을 기기에서 삭제할까요?</p><button type="button" onClick={() => deleteEntry(entry.id)}>피드백 삭제 확정</button><button type="button" onClick={() => setPendingDeleteId(null)}>취소</button></div> : <button type="button" onClick={() => setPendingDeleteId(entry.id)}>삭제</button>}</div></article>)}</div>
+      <div className="feedback-history">{data.entries.map((entry) => <article key={entry.id}><small>{feedbackTargetLabel(entry)} · {getTopic(entry.topic).title} · {entry.createdAt.slice(0, 10)}</small><h2>{FEEDBACK_REASON_LABELS[entry.reason]}</h2><p>{entry.comment || "자유 의견 없음"}</p><p>프로필 스냅샷 · {entry.provenance.profileSnapshotId}<br />차트 스냅샷 · {entry.provenance.chartSnapshotIds.join(", ")}<br />모델 · {entry.provenance.modelVersion ?? "고정 예시(모델 없음)"}<br />프롬프트 · {entry.provenance.promptVersion ?? "고정 예시(프롬프트 없음)"}<br />템플릿 · {entry.provenance.templateVersion}</p><div><Link href={`/settings/feedback/${entry.id}`}>수정</Link><button type="button" onClick={() => updateEntry(entry.id, (current) => ({ ...current, reported: !current.reported }))}>{entry.reported ? "신고 취소" : "부적절한 표현 신고"}</button>{pendingDeleteId === entry.id ? <div className="danger-confirm feedback-delete-confirm"><p>이 피드백을 기기에서 삭제할까요?</p><button type="button" onClick={() => deleteEntry(entry.id)}>피드백 삭제 확정</button><button type="button" onClick={() => setPendingDeleteId(null)}>취소</button></div> : <button type="button" onClick={() => setPendingDeleteId(entry.id)}>삭제</button>}</div></article>)}</div>
       {error && <p className="form-error" role="alert">{error}</p>}
     </main>
   );
+}
+
+const FEEDBACK_REASON_LABELS: Record<FeedbackReason, string> = {
+  too_generic: "내용이 너무 일반적임",
+  repetitive: "같은 말이 반복됨",
+  incorrect_chart: "사주 정보가 잘못됨",
+  unanswered: "질문에 답하지 않음",
+  inappropriate: "표현이 불쾌하거나 과도함",
+  purchase_mismatch: "결제 내용과 다름",
+  other: "기타",
+};
+
+function feedbackTargetLabel(entry: FeedbackEntry): string {
+  if (entry.target.type === "report") return `report · ${entry.target.reportId}`;
+  if (entry.target.type === "consultation_message") return `consultation_message · ${entry.target.sessionId} / ${entry.target.messageId}`;
+  return `compatibility · ${entry.target.compatibilityId}`;
 }
 
 export function FeedbackEditScreen({ feedbackId }: { feedbackId: string }) {
@@ -204,10 +264,10 @@ function FeedbackEditForm({ entry, entries }: { entry: FeedbackEntry; entries: F
   const [saved, setSaved] = useState(false);
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const updated = { ...entry, reason: reason.trim(), comment: comment.trim() };
+    const updated = { ...entry, reason, comment: comment.trim() };
     setSaved(feedbackListStore.write({ version: 1, entries: entries.map((candidate) => candidate.id === entry.id ? updated : candidate) }));
   }
-  return <form className="screen-content feedback-edit" onSubmit={submit} aria-labelledby="feedback-edit-title"><p className="section-kicker">피드백 수정</p><h1 id="feedback-edit-title">상세 사유와 의견</h1><label>상세 사유<input value={reason} onChange={(event) => { setReason(event.target.value); setSaved(false); }} /></label><label>자유 의견<textarea rows={6} value={comment} onChange={(event) => { setComment(event.target.value); setSaved(false); }} /></label><button className="primary-button" type="submit">변경 내용 저장</button>{saved && <p role="status">이 기기에 저장했어요.</p>}<Link className="text-button inline-action" href="/settings/feedback">목록으로</Link></form>;
+  return <form className="screen-content feedback-edit" onSubmit={submit} aria-labelledby="feedback-edit-title"><p className="section-kicker">피드백 수정</p><h1 id="feedback-edit-title">상세 사유와 의견</h1><p>{feedbackTargetLabel(entry)}<br />프로필 스냅샷 · {entry.provenance.profileSnapshotId}<br />차트 스냅샷 · {entry.provenance.chartSnapshotIds.join(", ")}<br />템플릿 · {entry.provenance.templateVersion}</p><label>상세 사유<select value={reason} onChange={(event) => { setReason(event.target.value as FeedbackReason); setSaved(false); }}>{Object.entries(FEEDBACK_REASON_LABELS).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></label><label>자유 의견<textarea rows={6} value={comment} onChange={(event) => { setComment(event.target.value); setSaved(false); }} /></label><button className="primary-button" type="submit">변경 내용 저장</button>{saved && <p role="status">이 기기에 저장했어요.</p>}<Link className="text-button inline-action" href="/settings/feedback">목록으로</Link></form>;
 }
 
 export function InformationScreen({ kind }: { kind: "ai" | "privacy" | "terms" | "safety" }) {

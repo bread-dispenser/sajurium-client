@@ -3,11 +3,11 @@ import { CheckoutScreen } from "@/components/commerce-screens";
 import { isProductId } from "@/lib/fixtures";
 
 type CheckoutPageProps = {
-  params: Promise<{ id: string }>;
+  params: Promise<{ productId: string }>;
 };
 
 export default async function CheckoutPage({ params }: CheckoutPageProps) {
-  const { id } = await params;
-  if (!isProductId(id)) notFound();
-  return <CheckoutScreen productId={id} />;
+  const { productId } = await params;
+  if (!isProductId(productId)) notFound();
+  return <CheckoutScreen productId={productId} />;
 }

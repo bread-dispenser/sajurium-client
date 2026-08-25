@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useState, useSyncExternalStore } from "react";
 import type { FormEvent } from "react";
 import type { CommerceData, ConsultationData, ConsultationDraft, ConsultationSession, LibraryData, TopicId } from "@/lib/domain";
+import { withAllowedLibraryActions } from "@/lib/contracts";
 import {
   INITIAL_COMMERCE_DATA,
   INITIAL_CONSULTATION_DATA,
@@ -33,7 +34,7 @@ function getCommerceData(): CommerceData | null {
   const inspection = commerceStore.inspect();
   if (inspection.status === "ok") return inspection.value;
   if (inspection.status !== "empty") return null;
-  return { ...INITIAL_COMMERCE_DATA, orders: [], creditHistory: [] };
+  return { ...INITIAL_COMMERCE_DATA, orders: [], generations: [], creditHistory: [] };
 }
 
 function buildLibraryWithSession(session: ConsultationSession): LibraryData | null {
@@ -44,15 +45,20 @@ function buildLibraryWithSession(session: ConsultationSession): LibraryData | nu
   return {
     version: 1,
     items: [
-      {
+      withAllowedLibraryActions({
         id: `library-${session.id}`,
         type: "consultation",
         title: session.title,
         subtitle: "기기에 저장한 예시 상담",
         createdAt: session.updatedAt,
         href: `/consult/session/${session.id}`,
+        access: "available",
+        purchased: false,
+        read: false,
         hidden: false,
-      },
+        profile: { id: session.context.profileId, displayName: "서연" },
+        topic: session.context.topic,
+      }),
       ...withoutExisting,
     ],
   };
@@ -87,7 +93,7 @@ export function ConsultationHomeScreen() {
         {sessions.length === 0 ? (
           <EmptyState title="저장된 상담이 없어요" description="첫 질문을 작성하면 이 기기에 상담 내역이 저장됩니다." />
         ) : (
-          <div className="session-list">{sessions.map((session) => <Link href={`/consult/session/${session.id}`} key={session.id}><small>{getTopic(session.topic).title}</small><strong>{session.title}</strong><span>{session.messages.length}개 메시지 · {session.updatedAt.slice(0, 10)}</span></Link>)}</div>
+          <div className="session-list">{sessions.map((session) => <Link href={`/consult/session/${session.id}`} key={session.id}><small>{getTopic(session.context.topic as TopicId).title} · {session.status}</small><strong>{session.title}</strong><span>{session.messages.length}개 메시지 · {session.updatedAt.slice(0, 10)}</span></Link>)}</div>
         )}
       </section>
     </main>
@@ -135,16 +141,25 @@ function ConsultationComposer({ initialDraft, failFirstResponse }: { initialDraf
       return;
     }
     const now = new Date().toISOString();
-    const id = `consult-${now.replace(/\D/g, "")}`;
+    const id = `cns_${crypto.randomUUID().replaceAll("-", "")}`;
     const session: ConsultationSession = {
       id,
-      topic: draft.topic,
       title: draft.question.trim().slice(0, 36),
+      status: "completed",
+      context: {
+        profileId: "prf_01J62Z7M4Q8Y3T1K9A5C6N2R0X",
+        chartSnapshotId: "chart_fixture_primary",
+        periodKey: now.slice(0, 7),
+        topic: draft.topic,
+        situation: draft.situation.trim() || null,
+        referencedProfileIds: [],
+      },
       createdAt: now,
       updatedAt: now,
+      summary: "브라우저에 저장된 체험용 상담입니다.",
       messages: [
-        { id: `${id}-user`, role: "user", content: draft.question.trim(), createdAt: now, fixture: false },
-        { id: `${id}-fixture`, role: "assistant", content: getFixtureConsultationResponse(draft), createdAt: now, fixture: true },
+        { id: `${id}-user`, role: "user", status: "completed", content: draft.question.trim(), createdAt: now, completedAt: now, provenance: null },
+        { id: `${id}-fixture`, role: "assistant", status: "completed", content: getFixtureConsultationResponse(draft), createdAt: now, completedAt: now, provenance: null },
       ],
     };
     const nextData: ConsultationData = {
@@ -157,7 +172,7 @@ function ConsultationComposer({ initialDraft, failFirstResponse }: { initialDraf
     const nextCommerce: CommerceData = usesPaidCredit ? {
       ...commerce,
       consultationCredits: commerce.consultationCredits - 1,
-      creditHistory: [{ id: `credit-use-${id}`, label: "상담 예시 질문 사용", delta: -1, createdAt: now }, ...commerce.creditHistory],
+      creditHistory: [{ id: `credit-use-${id}`, description: "상담 예시 질문 사용", delta: -1, balanceAfter: commerce.consultationCredits - 1, source: "consultation", sourceId: id, reason: "consultation_use", createdAt: now }, ...commerce.creditHistory],
     } : commerce;
     const nextLibrary = buildLibraryWithSession(session);
     if (!nextLibrary) {
@@ -236,6 +251,7 @@ export function ConsultationSessionScreen({ sessionId }: { sessionId: string }) 
   const commerceRaw = useSyncExternalStore(commerceStore.subscribe, commerceStore.rawSnapshot, () => null);
   const router = useRouter();
   const [followUp, setFollowUp] = useState("");
+  const [titleDraft, setTitleDraft] = useState("");
   const [error, setError] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   if (!hydrated) return <LoadingState title="상담 내용을 불러오고 있어요" />;
@@ -258,21 +274,21 @@ export function ConsultationSessionScreen({ sessionId }: { sessionId: string }) 
     if (isRestrictedConsultationQuestion(question)) return setError("전문 판단이 필요한 제한 질문에는 체험용 예시 답변을 추가하지 않아요.");
     if (activeCommerce.consultationCredits <= 0) return setError("추가 질문에 사용할 체험용 이용권이 없어요.");
     const now = new Date().toISOString();
-    const messageSuffix = `${now.replace(/\D/g, "")}-${activeSession.messages.length}`;
-    const response = getFixtureConsultationResponse({ topic: activeSession.topic, question, situation: "" });
+    const messageSuffix = crypto.randomUUID().replaceAll("-", "");
+    const response = getFixtureConsultationResponse({ topic: activeSession.context.topic as TopicId, question, situation: "" });
     const updated: ConsultationSession = {
       ...activeSession,
       updatedAt: now,
       messages: [
         ...activeSession.messages,
-        { id: `${activeSession.id}-user-${messageSuffix}`, role: "user", content: question, createdAt: now, fixture: false },
-        { id: `${activeSession.id}-fixture-${messageSuffix}`, role: "assistant", content: response, createdAt: now, fixture: true },
+        { id: `${activeSession.id}-user-${messageSuffix}`, role: "user", status: "completed", content: question, createdAt: now, completedAt: now, provenance: null },
+        { id: `${activeSession.id}-fixture-${messageSuffix}`, role: "assistant", status: "completed", content: response, createdAt: now, completedAt: now, provenance: null },
       ],
     };
     const nextCommerce: CommerceData = {
       ...activeCommerce,
       consultationCredits: activeCommerce.consultationCredits - 1,
-      creditHistory: [{ id: `credit-follow-up-${messageSuffix}`, label: "상담 예시 추가 질문 사용", delta: -1, createdAt: now }, ...activeCommerce.creditHistory],
+      creditHistory: [{ id: `credit-follow-up-${messageSuffix}`, description: "상담 예시 추가 질문 사용", delta: -1, balanceAfter: activeCommerce.consultationCredits - 1, source: "consultation", sourceId: activeSession.id, reason: "consultation_use", createdAt: now }, ...activeCommerce.creditHistory],
     };
     const nextData: ConsultationData = { ...activeData, sessions: activeData.sessions.map((candidate) => candidate.id === activeSession.id ? updated : candidate) };
     const nextLibrary = buildLibraryWithSession(updated);
@@ -301,13 +317,33 @@ export function ConsultationSessionScreen({ sessionId }: { sessionId: string }) 
     router.push("/consult");
   }
 
+  function renameSession(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const title = titleDraft.trim();
+    if (!title) return setError("새 상담 제목을 입력해 주세요.");
+    const now = new Date().toISOString();
+    const renamed = { ...activeSession, title, updatedAt: now };
+    const nextData: ConsultationData = { ...activeData, sessions: activeData.sessions.map((candidate) => candidate.id === activeSession.id ? renamed : candidate) };
+    const nextLibrary = buildLibraryWithSession(renamed);
+    if (!nextLibrary) return setError("보관함 데이터를 확인한 뒤 다시 시도해 주세요.");
+    const transaction = runStorageTransaction([
+      createTransactionStep(consultationStore, nextData),
+      createTransactionStep(libraryStore, nextLibrary),
+    ]);
+    if (transaction !== "committed") return setError("상담 제목을 저장하지 못했어요.");
+    setTitleDraft("");
+    setError("");
+  }
+
   return (
     <main className="screen-content consultation-session" aria-labelledby="session-title">
-      <p className="section-kicker">{getTopic(session.topic).title} · 고민 상담</p>
+      <p className="section-kicker">{getTopic(session.context.topic as TopicId).title} · {session.status} · 고민 상담</p>
       <h1 id="session-title">{session.title}</h1>
       <p className="supporting">실제 AI 상담이 아니며 중요한 결정은 현실 조건과 전문가 의견을 함께 확인하세요.</p>
-      <div className="message-list" aria-label="상담 메시지">{session.messages.map((message) => <article key={message.id} className={message.role}><small>{message.role === "user" ? "나" : "사주리움 · 체험용 예시"}</small>{message.content.split("\n").map((paragraph) => paragraph && <p key={paragraph}>{paragraph}</p>)}</article>)}</div>
-      <section className="follow-up-suggestions"><h2>이어볼 질문</h2>{RECOMMENDED_QUESTIONS[session.topic].slice(0, 2).map((question) => <button type="button" key={question} onClick={() => setFollowUp(question)}>{question}</button>)}</section>
+      <aside className="check-list"><strong>상담 기준 정보</strong><span>프로필 ID · {session.context.profileId}</span><span>차트 스냅샷 ID · {session.context.chartSnapshotId}</span><span>기간 · {session.context.periodKey}</span><span>참조 프로필 ID · {session.context.referencedProfileIds.length ? session.context.referencedProfileIds.join(", ") : "없음"}</span></aside>
+      <form className="follow-up-form" onSubmit={renameSession}><label htmlFor="session-title-edit">상담 제목 바꾸기</label><input id="session-title-edit" value={titleDraft} onChange={(event) => setTitleDraft(event.target.value)} placeholder={session.title} /><button type="submit">제목 저장</button></form>
+      <div className="message-list" aria-label="상담 메시지">{session.messages.map((message) => <article key={message.id} className={message.role}><small>{message.role === "user" ? "나" : "사주리움 · 체험용 예시"} · {message.status}</small>{message.content?.split("\n").map((paragraph) => paragraph && <p key={paragraph}>{paragraph}</p>)}</article>)}</div>
+      <section className="follow-up-suggestions"><h2>이어볼 질문</h2>{RECOMMENDED_QUESTIONS[session.context.topic as TopicId].slice(0, 2).map((question) => <button type="button" key={question} onClick={() => setFollowUp(question)}>{question}</button>)}</section>
       <form className="follow-up-form" onSubmit={appendFollowUp}><label htmlFor="follow-up">추가 질문</label><textarea id="follow-up" rows={3} value={followUp} onChange={(event) => setFollowUp(event.target.value)} /><p className="action-note">추가 질문은 체험용 이용권 1회를 사용해요 · 남은 {activeCommerce.consultationCredits}회</p>{error && <p className="form-error" role="alert">{error}</p>}<button className="primary-button" type="submit">예시 답변 추가</button></form>
       {confirmDelete ? <div className="danger-confirm"><p>이 상담과 보관함 링크를 이 기기에서 삭제합니다.</p><button type="button" onClick={deleteSession}>상담 삭제 확정</button><button type="button" onClick={() => setConfirmDelete(false)}>취소</button></div> : <button className="secondary-button" type="button" onClick={() => setConfirmDelete(true)}>이 상담 삭제</button>}
     </main>

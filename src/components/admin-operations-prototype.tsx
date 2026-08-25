@@ -2,11 +2,18 @@
 
 import { useMemo, useState } from "react";
 import type { CSSProperties } from "react";
+import type { AdminCommand, AdminCommandType, AuditView } from "@/lib/contracts";
 
 type OperationTab = "users" | "orders" | "reports" | "templates" | "consultations" | "audit";
-type Fixture = { id: string; title: string; status: string; summary: string; facts: readonly [string, string][] };
-type AuditEntry = { id: string; time: string; actor: string; action: string; target: string; reason: string };
-type Action = { label: string; risk?: boolean };
+type Fixture = { id: string; title: string; status: string; summary: string; expectedVersion: string; facts: readonly [string, string][] };
+type AuditEntry = AuditView & { requestId: string; label: string; beforeSummary: string; afterSummary: string };
+type Action = {
+  label: string;
+  risk: boolean;
+  command: { type: AdminCommandType; targetType: AdminCommand["targetType"] };
+  beforeSummary: string;
+  afterSummary: string;
+};
 
 const panel: CSSProperties = { border: "var(--rule)", borderRadius: "var(--radius-md)", background: "var(--surface-strong)", padding: 16 };
 const field: CSSProperties = { width: "100%", minHeight: 44, border: "var(--rule)", borderRadius: 12, background: "var(--surface-strong)", color: "var(--ink)", padding: "0 12px" };
@@ -18,44 +25,58 @@ const TAB_LABELS: Record<OperationTab, string> = {
 
 const FIXTURES: Record<OperationTab, Fixture[]> = {
   users: [
-    { id: "USR-0214", title: "봄빛 독자", status: "활성 · 삭제 요청 없음", summary: "프로필 2개 · 상담 이용권 3회", facts: [["계정 상태", "활성 예시"], ["프로필", "해온 · 1992년생 / 달빛 · 1990년생 (마스킹)"], ["보유 이용권", "상담 3회 · 원장 예시"], ["개인정보 요청", "없음"]] },
-    { id: "USR-0198", title: "저녁별 독자", status: "검토 · 삭제 요청 접수", summary: "프로필 1개 · 요청 기한 D-12", facts: [["계정 상태", "검토 예시"], ["프로필", "별하 · 생년 정보 마스킹"], ["보유 이용권", "0회"], ["개인정보 요청", "삭제 접수 PRIV-0081 · 본인 확인 예시"]] },
+    { id: "USR-0214", title: "봄빛 독자", status: "활성 · 삭제 요청 없음", summary: "프로필 2개 · 상담 이용권 3회", expectedVersion: "account-v12", facts: [["계정 상태", "활성 예시"], ["프로필", "해온 · 1992년생 / 달빛 · 1990년생 (마스킹)"], ["보유 이용권", "상담 3회 · 원장 예시"], ["개인정보 요청", "없음"]] },
+    { id: "USR-0198", title: "저녁별 독자", status: "검토 · 삭제 요청 접수", summary: "프로필 1개 · 요청 기한 D-12", expectedVersion: "account-v8", facts: [["계정 상태", "검토 예시"], ["프로필", "별하 · 생년 정보 마스킹"], ["보유 이용권", "0회"], ["개인정보 요청", "삭제 접수 PRIV-0081 · 본인 확인 예시"]] },
   ],
   orders: [
-    { id: "ORD-1042", title: "월간 흐름 리포트", status: "결제 완료 · 지급 완료", summary: "29,000원 표시 · 상태 일치", facts: [["결제", "완료 PAY-7712"], ["상품 생성", "완료 RPT-0831"], ["지급 원장", "+1 · 결제 지급"], ["중복 탐지", "없음"]] },
-    { id: "ORD-1039", title: "상담 이용권 5회", status: "결제 완료 · 지급 확인 필요", summary: "49,000원 표시 · 비교 불일치", facts: [["결제", "완료 PAY-7701"], ["상품 생성", "해당 없음"], ["지급 원장", "대기 예시"], ["중복 탐지", "콜백 2건 · 지급 1건"]] },
+    { id: "ORD-1042", title: "월간 흐름 리포트", status: "결제 완료 · 지급 완료", summary: "29,000원 표시 · 상태 일치", expectedVersion: "order-v6", facts: [["결제", "완료 PAY-7712"], ["상품 생성", "완료 RPT-0831"], ["지급 원장", "+1 · 결제 지급"], ["중복 탐지", "없음"]] },
+    { id: "ORD-1039", title: "상담 이용권 5회", status: "결제 완료 · 지급 확인 필요", summary: "49,000원 표시 · 비교 불일치", expectedVersion: "order-v4", facts: [["결제", "완료 PAY-7701"], ["상품 생성", "해당 없음"], ["지급 원장", "대기 예시"], ["중복 탐지", "콜백 2건 · 지급 1건"]] },
   ],
   reports: [
-    { id: "RPT-0831", title: "을목의 8월 흐름", status: "발행 · 신고 1건", summary: "월간 리포트 · 입력/버전 추적 예시", facts: [["입력 스냅샷", "INP-22A · 원문 비공개"], ["계산 버전", "saju-core 2.4.1"], ["모델", "example-model-2026-08"], ["프롬프트", "monthly-prompt v18"], ["템플릿", "monthly-flow v7"]] },
-    { id: "RPT-0828", title: "관계에서 지킬 간격", status: "비공개 검토 · 신고 2건", summary: "관계 리포트 · 품질 검수 예시", facts: [["입력 스냅샷", "INP-21C · 권한 필요 표시"], ["계산 버전", "saju-core 2.4.1"], ["모델", "example-model-2026-08"], ["프롬프트", "relation-prompt v11"], ["템플릿", "relationship v5"]] },
+    { id: "RPT-0831", title: "을목의 8월 흐름", status: "발행 · 신고 1건", summary: "월간 리포트 · 입력/버전 추적 예시", expectedVersion: "report-v7", facts: [["입력 스냅샷", "INP-22A · 원문 비공개"], ["계산 버전", "saju-core 2.4.1"], ["모델", "example-model-2026-08"], ["프롬프트", "monthly-prompt v18"], ["템플릿", "monthly-flow v7"]] },
+    { id: "RPT-0828", title: "관계에서 지킬 간격", status: "비공개 검토 · 신고 2건", summary: "관계 리포트 · 품질 검수 예시", expectedVersion: "report-v5", facts: [["입력 스냅샷", "INP-21C · 권한 필요 표시"], ["계산 버전", "saju-core 2.4.1"], ["모델", "example-model-2026-08"], ["프롬프트", "relation-prompt v11"], ["템플릿", "relationship v5"]] },
   ],
   templates: [
-    { id: "TPL-007", title: "월간 흐름", status: "v7 활성 · 검수 완료", summary: "카테고리: 월간 · 금지 표현 규칙 8개", facts: [["활성 버전", "v7"], ["검수", "완료 예시"], ["직전 버전", "v6"], ["금지 표현", "확정적 질병·사망·투자 보장 등 8개"]] },
-    { id: "TPL-011", title: "관계 해석", status: "v6 검수 대기 · v5 활성", summary: "카테고리: 관계 · 변경 메모 포함", facts: [["활성 버전", "v5"], ["후보 버전", "v6"], ["검수", "대기 예시"], ["금지 표현", "공포 유도·상대 단정 등 6개"]] },
+    { id: "TPL-007", title: "월간 흐름", status: "v7 활성 · 검수 완료", summary: "카테고리: 월간 · 금지 표현 규칙 8개", expectedVersion: "template-v7", facts: [["활성 버전", "v7"], ["검수", "완료 예시"], ["직전 버전", "v6"], ["금지 표현", "확정적 질병·사망·투자 보장 등 8개"]] },
+    { id: "TPL-011", title: "관계 해석", status: "v6 검수 대기 · v5 활성", summary: "카테고리: 관계 · 변경 메모 포함", expectedVersion: "template-v6", facts: [["활성 버전", "v5"], ["후보 버전", "v6"], ["검수", "대기 예시"], ["금지 표현", "공포 유도·상대 단정 등 6개"]] },
   ],
   consultations: [
-    { id: "CNS-0417", title: "직업 방향 상담", status: "신고 검토 · 안전 필터 1회", summary: "이용권 정상 차감 · 개인정보 로그 제한", facts: [["신고", "부적절한 확정 표현"], ["차감 원장", "-1 정상"], ["재생성", "0회"], ["안전 필터", "전문가 대체 위험 · 제한 응답"], ["로그 접근", "민감 필드 잠금"]] },
-    { id: "CNS-0406", title: "건강 관련 질문", status: "응답 제한 · 차감 복구 후보", summary: "안전 정책 제한 · 이용권 미차감 원칙 비교", facts: [["신고", "없음"], ["차감 원장", "-1 오류 예시"], ["재생성", "0회"], ["안전 필터", "의료 판단 요청 · 차단"], ["로그 접근", "보안 역할 전용"]] },
+    { id: "CNS-0417", title: "직업 방향 상담", status: "신고 검토 · 안전 필터 1회", summary: "이용권 정상 차감 · 개인정보 로그 제한", expectedVersion: "consultation-v9", facts: [["신고", "부적절한 확정 표현"], ["차감 원장", "-1 정상"], ["재생성", "0회"], ["안전 필터", "전문가 대체 위험 · 제한 응답"], ["로그 접근", "민감 필드 잠금"]] },
+    { id: "CNS-0406", title: "건강 관련 질문", status: "응답 제한 · 차감 복구 후보", summary: "안전 정책 제한 · 이용권 미차감 원칙 비교", expectedVersion: "consultation-v3", facts: [["신고", "없음"], ["차감 원장", "-1 오류 예시"], ["재생성", "0회"], ["안전 필터", "의료 판단 요청 · 차단"], ["로그 접근", "보안 역할 전용"]] },
   ],
   audit: [
-    { id: "ACL-0902", title: "민감 프로필 열람", status: "사유 기록됨", summary: "품질 담당자 · USR-0198 · 오늘 14:12", facts: [["운영자 역할", "품질 검수자"], ["대상", "프로필 마스킹 보기"], ["근거", "삭제 요청 확인 예시"], ["결과", "읽기 전용"]] },
-    { id: "ACL-0899", title: "상담 로그 접근 거부", status: "권한 부족 · 차단", summary: "정산 담당자 · CNS-0417 · 오늘 11:08", facts: [["운영자 역할", "정산 담당자"], ["대상", "상담 민감 로그"], ["근거", "업무 범위 외 예시"], ["결과", "거부"]] },
+    { id: "ACL-0902", title: "민감 프로필 열람", status: "사유 기록됨", summary: "품질 담당자 · USR-0198 · 오늘 14:12", expectedVersion: "audit-v2", facts: [["운영자 역할", "품질 검수자"], ["대상", "프로필 마스킹 보기"], ["근거", "삭제 요청 확인 예시"], ["결과", "읽기 전용"]] },
+    { id: "ACL-0899", title: "상담 로그 접근 거부", status: "권한 부족 · 차단", summary: "정산 담당자 · CNS-0417 · 오늘 11:08", expectedVersion: "audit-v1", facts: [["운영자 역할", "정산 담당자"], ["대상", "상담 민감 로그"], ["근거", "업무 범위 외 예시"], ["결과", "거부"]] },
   ],
 };
 
 const ACTIONS: Record<OperationTab, readonly Action[]> = {
-  users: [{ label: "계정 제한 표시", risk: true }, { label: "제한 해제 표시", risk: true }, { label: "삭제 요청 처리 표시", risk: true }, { label: "프로필 마스킹 보기" }],
-  orders: [{ label: "환불 처리 표시", risk: true }, { label: "수동 이용권 지급 표시", risk: true }, { label: "중복 지급 검토" }, { label: "결제·지급 다시 비교" }],
-  reports: [{ label: "리포트 재생성 표시", risk: true }, { label: "결과 비공개 전환", risk: true }, { label: "신고 검토 완료" }, { label: "입력 스냅샷 권한 확인" }],
-  templates: [{ label: "새 템플릿 등록 표시", risk: true }, { label: "새 버전 생성 표시", risk: true }, { label: "카테고리 활성화", risk: true }, { label: "검수 상태 전환" }, { label: "이전 버전 롤백", risk: true }, { label: "금지 표현 규칙 반영", risk: true }],
-  consultations: [{ label: "차감 오류 복구", risk: true }, { label: "상담 결과 재생성", risk: true }, { label: "신고 검토 완료" }, { label: "민감 로그 접근 제한", risk: true }],
-  audit: [{ label: "접근 사유 재검토" }, { label: "접근 제한 표시", risk: true }],
+  users: [
+    { label: "계정 제한 표시", risk: true, command: { type: "restrict_account", targetType: "account" }, beforeSummary: "[마스킹] 계정 상태: 활성", afterSummary: "[마스킹] 계정 상태: 제한" },
+    { label: "제한 해제 표시", risk: true, command: { type: "restore_account", targetType: "account" }, beforeSummary: "[마스킹] 계정 상태: 제한", afterSummary: "[마스킹] 계정 상태: 활성" },
+    { label: "삭제 요청 처리 표시", risk: true, command: { type: "process_deletion", targetType: "account" }, beforeSummary: "[마스킹] 삭제 요청: 본인 확인 완료", afterSummary: "[마스킹] 삭제 요청: 처리 접수" },
+  ],
+  orders: [
+    { label: "환불 처리 표시", risk: true, command: { type: "refund_order", targetType: "order" }, beforeSummary: "[마스킹] 주문 상태: 결제 완료", afterSummary: "[마스킹] 주문 상태: 환불 접수" },
+    { label: "수동 이용권 지급 표시", risk: true, command: { type: "grant_credits", targetType: "order" }, beforeSummary: "[마스킹] 지급 원장: 변경 전", afterSummary: "[마스킹] 지급 원장: 관리자 조정" },
+  ],
+  reports: [
+    { label: "리포트 재생성 표시", risk: true, command: { type: "regenerate_report", targetType: "report" }, beforeSummary: "[마스킹] 생성 버전: 기존", afterSummary: "[마스킹] 재생성 작업: 접수" },
+    { label: "결과 비공개 전환", risk: true, command: { type: "hide_report", targetType: "report" }, beforeSummary: "[마스킹] 공개 상태: 발행", afterSummary: "[마스킹] 공개 상태: 비공개" },
+  ],
+  templates: [],
+  consultations: [
+    { label: "차감 오류 복구", risk: true, command: { type: "restore_credits", targetType: "consultation" }, beforeSummary: "[마스킹] 이용권 원장: 오류 차감", afterSummary: "[마스킹] 이용권 원장: 복구 접수" },
+    { label: "상담 결과 재생성", risk: true, command: { type: "regenerate_report", targetType: "consultation" }, beforeSummary: "[마스킹] 상담 생성 상태: 완료", afterSummary: "[마스킹] 상담 재생성: 접수" },
+    { label: "민감 로그 접근 제한", risk: true, command: { type: "restrict_sensitive_access", targetType: "consultation" }, beforeSummary: "[마스킹] 민감 로그 접근: 역할 기반", afterSummary: "[마스킹] 민감 로그 접근: 제한" },
+  ],
+  audit: [],
 };
 
 const initialAudit: AuditEntry[] = [
-  { id: "AUD-0003", time: "오늘 14:12", actor: "품질 검수자(예시)", action: "민감정보 마스킹 조회", target: "USR-0198", reason: "PRIV-0081 요청 확인" },
-  { id: "AUD-0002", time: "오늘 11:08", actor: "정산 담당자(예시)", action: "접근 거부", target: "CNS-0417", reason: "상담 로그 권한 없음" },
-  { id: "AUD-0001", time: "어제 17:40", actor: "콘텐츠 관리자(예시)", action: "템플릿 검수 조회", target: "TPL-011", reason: "v6 배포 전 검수" },
+  { id: "AUD-0003", requestId: "req_demo_0902", actorId: "operator_quality_redacted", actorRole: "quality_reviewer", label: "민감 로그 접근 제한", command: { type: "restrict_sensitive_access", targetType: "account", targetId: "USR-0198", reason: "PRIV-0081 요청 확인", expectedVersion: "account-v8" }, outcome: "accepted", occurredAt: "2026-08-25T05:12:16.000Z", beforeSummary: "[마스킹] 민감 필드 접근: 역할 기반", afterSummary: "[마스킹] 민감 필드 접근: 제한" },
+  { id: "AUD-0002", requestId: "req_demo_0899", actorId: "operator_billing_redacted", actorRole: "billing_operator", label: "상담 로그 접근 제한", command: { type: "restrict_sensitive_access", targetType: "consultation", targetId: "CNS-0417", reason: "상담 로그 권한 없음", expectedVersion: "consultation-v9" }, outcome: "rejected", occurredAt: "2026-08-25T02:08:41.000Z", beforeSummary: "[마스킹] 민감 로그 접근: 요청됨", afterSummary: "[마스킹] 민감 로그 접근: 거부" },
+  { id: "AUD-0001", requestId: "req_demo_0884", actorId: "operator_content_redacted", actorRole: "content_operator", label: "리포트 비공개 전환", command: { type: "hide_report", targetType: "report", targetId: "RPT-0828", reason: "신고 검토", expectedVersion: "report-v5" }, outcome: "failed", occurredAt: "2026-08-24T08:40:03.000Z", beforeSummary: "[마스킹] 공개 상태: 검토", afterSummary: "[마스킹] 변경 없음" },
 ];
 
 export function AdminOperationsPrototypeScreen() {
@@ -80,10 +101,29 @@ export function AdminOperationsPrototypeScreen() {
   }
   function commitAction(action: Action) {
     if (!selected) return;
-    const entry: AuditEntry = { id: `AUD-${String(audit.length + 1).padStart(4, "0")}`, time: "방금 · 로컬", actor: "현재 운영자(프로토타입)", action: action.label, target: selected.id, reason: reason.trim() || "화면 상호작용 확인" };
+    const command: AdminCommand = {
+      type: action.command.type,
+      targetType: action.command.targetType,
+      targetId: selected.id,
+      reason: reason.trim(),
+      expectedVersion: selected.expectedVersion,
+    };
+    const sequence = String(audit.length + 1).padStart(4, "0");
+    const entry: AuditEntry = {
+      id: `AUD-${sequence}`,
+      requestId: `req_demo_${sequence}`,
+      actorId: "operator_current_redacted",
+      actorRole: "operations_admin",
+      label: action.label,
+      command,
+      outcome: "accepted",
+      occurredAt: new Date().toISOString(),
+      beforeSummary: action.beforeSummary,
+      afterSummary: action.afterSummary,
+    };
     setAudit((current) => [entry, ...current]);
     setPending(null); setReason("");
-    setMessage(`${selected.id}에 “${action.label}” 상태를 로컬 감사 목록에만 추가했습니다. 실제 변경은 없습니다.`);
+    setMessage(`${command.type} 명령을 ${command.targetType}:${command.targetId} 대상으로 로컬 감사 목록에만 추가했습니다. 실제 변경은 없습니다.`);
   }
 
   return <main className="screen-content" aria-labelledby="operations-title" style={{ gap: 24 }}>
@@ -109,17 +149,17 @@ export function AdminOperationsPrototypeScreen() {
 
     {tab === "templates" && <section data-slop-allow="overstuffed-row" aria-labelledby="template-editor-title" style={{ ...panel, display: "grid", gap: 10 }}><div><p className="section-kicker">등록·버전 예시</p><h2 id="template-editor-title">템플릿 변경안</h2></div><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8 }}><label><span style={muted}>카테고리</span><select style={field} defaultValue="월간"><option>월간</option><option>관계</option><option>직업</option><option>재물</option></select></label><label><span style={muted}>버전 이름</span><input style={field} defaultValue="v8-draft" /></label><label><span style={muted}>검수 상태</span><select style={field} defaultValue="검수 대기"><option>초안</option><option>검수 대기</option><option>승인</option><option>반려</option></select></label></div><label><span style={muted}>금지 표현 규칙(화면 메모)</span><textarea style={{ ...field, minHeight: 82, paddingTop: 10 }} defaultValue="질병·사망 단정, 투자 수익 보장, 공포를 유도하는 확정 표현" /></label><p style={muted}>입력값은 전송되지 않으며 “등록/반영” 작업을 선택해도 로컬 감사 표시만 추가됩니다.</p></section>}
 
-    <section data-slop-allow="overstuffed-row" aria-labelledby="actions-title" style={{ display: "grid", gap: 10 }}><div><p className="section-kicker">로컬 작업 시뮬레이션</p><h2 id="actions-title">{TAB_LABELS[tab]} 작업</h2></div><label><span style={muted}>작업 사유 · 위험 작업 확인에 사용</span><input value={reason} onChange={(event) => setReason(event.target.value)} style={field} placeholder="예: 신고 검토 및 주문 상태 대조" /></label><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 8 }}>{ACTIONS[tab].map((action) => <button key={action.label} className={action.risk ? "secondary-button" : "primary-button"} type="button" onClick={() => requestAction(action)}>{action.label}{action.risk ? " · 확인 필요" : ""}</button>)}</div></section>
+    <section data-slop-allow="overstuffed-row" aria-labelledby="actions-title" style={{ display: "grid", gap: 10 }}><div><p className="section-kicker">로컬 작업 시뮬레이션</p><h2 id="actions-title">{TAB_LABELS[tab]} 작업</h2></div><label><span style={muted}>작업 사유 · 위험 작업 확인에 사용</span><input value={reason} onChange={(event) => setReason(event.target.value)} style={field} placeholder="예: 신고 검토 및 주문 상태 대조" /></label>{ACTIONS[tab].length > 0 ? <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 8 }}>{ACTIONS[tab].map((action) => <button key={action.command.type} className={action.risk ? "secondary-button" : "primary-button"} type="button" onClick={() => requestAction(action)} data-command-type={action.command.type}>{action.label}{action.risk ? " · 확인 필요" : ""}</button>)}</div> : <p style={muted}>이 영역에는 canonical AdminCommand로 정의된 변경 작업이 없습니다.</p>}</section>
 
-    {pending && selected && <section data-slop-allow="overstuffed-row" role="alertdialog" aria-modal="false" aria-labelledby="confirm-title" aria-describedby="confirm-description" style={{ ...panel, border: "1px solid var(--vermilion)", background: "var(--surface-warm)" }}><p className="section-kicker">위험 작업 확인</p><h2 id="confirm-title">“{pending.label}”을 시뮬레이션할까요?</h2><p id="confirm-description" style={{ ...muted, margin: "8px 0 14px" }}>대상 {selected.id} · 실제 운영에서는 권한, 사유, 이중 확인이 필요합니다. 여기서는 로컬 감사 행만 추가되고 실제 제한·삭제·환불·지급·재생성·배포는 없습니다.</p>{!reason.trim() && <p style={{ color: "var(--vermilion-dark)", fontSize: 12 }}>위 작업 사유를 입력해야 확정할 수 있습니다.</p>}<div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><button className="primary-button" type="button" disabled={!reason.trim()} onClick={() => commitAction(pending)}>로컬 시뮬레이션 확정</button><button className="secondary-button" type="button" onClick={() => { setPending(null); setMessage("위험 작업을 취소했습니다."); }}>취소</button></div></section>}
+    {pending && selected && <section data-slop-allow="overstuffed-row" role="alertdialog" aria-modal="false" aria-labelledby="confirm-title" aria-describedby="confirm-description" style={{ ...panel, border: "1px solid var(--vermilion)", background: "var(--surface-warm)" }}><p className="section-kicker">위험 작업 확인</p><h2 id="confirm-title">“{pending.label}”을 시뮬레이션할까요?</h2><p id="confirm-description" style={{ ...muted, margin: "8px 0 14px" }}>명령 {pending.command.type} · 대상 {pending.command.targetType}:{selected.id} · 예상 버전 {selected.expectedVersion}. 실제 운영에서는 권한, 사유, 이중 확인이 필요합니다. 여기서는 로컬 감사 행만 추가되고 실제 제한·삭제·환불·지급·재생성·배포는 없습니다.</p>{!reason.trim() && <p style={{ color: "var(--vermilion-dark)", fontSize: 12 }}>위 작업 사유를 입력해야 확정할 수 있습니다.</p>}<div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><button className="primary-button" type="button" disabled={!reason.trim()} onClick={() => commitAction(pending)}>로컬 시뮬레이션 확정</button><button className="secondary-button" type="button" onClick={() => { setPending(null); setMessage("위험 작업을 취소했습니다."); }}>취소</button></div></section>}
 
-    <section data-slop-allow="overstuffed-row" aria-labelledby="audit-title" style={{ display: "grid", gap: 10 }}><div><p className="section-kicker">추가 전용 표시 · 수정/삭제 불가</p><h2 id="audit-title">운영자 접근·작업 감사 기록</h2><p style={muted}>현재 화면에서 만든 행은 위에만 추가됩니다. 브라우저를 새로 열면 초기화되는 감사 UI 예시이며 실제 감사 로그가 아닙니다.</p></div><div style={{ overflowX: "auto", border: "var(--rule)", borderRadius: 14 }}><table data-slop-allow="overstuffed-row" style={{ width: "100%", minWidth: 720, borderCollapse: "collapse", fontSize: 12 }}><thead><tr>{["기록 ID", "시각", "운영자/역할", "작업", "대상", "사유"].map((label) => <th key={label} scope="col" style={{ padding: 11, textAlign: "left", background: "var(--surface-warm)" }}>{label}</th>)}</tr></thead><tbody>{audit.map((entry) => <tr key={entry.id} style={{ borderTop: "var(--rule)" }}><td style={{ padding: 11, fontWeight: 800 }}>{entry.id}</td><td style={{ padding: 11 }}>{entry.time}</td><td style={{ padding: 11 }}>{entry.actor}</td><td style={{ padding: 11 }}>{entry.action}</td><td style={{ padding: 11 }}>{entry.target}</td><td style={{ padding: 11 }}>{entry.reason}</td></tr>)}</tbody></table></div></section>
+    <section data-slop-allow="overstuffed-row" aria-labelledby="audit-title" style={{ display: "grid", gap: 10 }}><div><p className="section-kicker">추가 전용 표시 · 수정/삭제 불가</p><h2 id="audit-title">운영자 접근·작업 감사 기록</h2><p style={muted}>현재 화면에서 만든 행은 위에만 추가됩니다. 브라우저를 새로 열면 초기화되는 감사 UI 예시이며 실제 감사 로그가 아닙니다.</p></div><div role="region" aria-label="운영 감사 기록 표" tabIndex={0} style={{ overflowX: "auto", border: "var(--rule)", borderRadius: 14 }}><table data-slop-allow="overstuffed-row" style={{ width: "100%", minWidth: 1180, borderCollapse: "collapse", fontSize: 12 }}><thead><tr data-slop-allow="overstuffed-row">{["기록 ID / 요청 ID", "발생 시각", "운영자 역할", "명령", "대상 / 버전", "결과", "사유", "변경 전 / 변경 후"].map((label) => <th key={label} scope="col" style={{ padding: 11, textAlign: "left", background: "var(--surface-warm)" }}>{label}</th>)}</tr></thead><tbody>{audit.map((entry) => <tr data-slop-allow="overstuffed-row" key={entry.id} style={{ borderTop: "var(--rule)" }}><td style={{ padding: 11, fontWeight: 800 }}>{entry.id}<small style={{ ...muted, display: "block" }}>{entry.requestId}</small></td><td style={{ padding: 11 }}><time dateTime={entry.occurredAt}>{entry.occurredAt}</time></td><td style={{ padding: 11 }}>{entry.actorRole}<small style={{ ...muted, display: "block" }}>{entry.actorId}</small></td><td style={{ padding: 11 }}><code>{entry.command.type}</code><small style={{ ...muted, display: "block" }}>{entry.label}</small></td><td style={{ padding: 11 }}>{entry.command.targetType}:{entry.command.targetId}<small style={{ ...muted, display: "block" }}>expected {entry.command.expectedVersion ?? "없음"}</small></td><td style={{ padding: 11 }}>{entry.outcome}</td><td style={{ padding: 11 }}>{entry.command.reason}</td><td style={{ padding: 11 }}>{entry.beforeSummary}<small style={{ ...muted, display: "block" }}>→ {entry.afterSummary}</small></td></tr>)}</tbody></table></div></section>
     <p role="status" aria-live="polite" style={{ ...panel, ...muted, borderColor: "rgb(169 52 34 / 28%)" }}>{message}</p>
   </main>;
 }
 
 const METRICS = [
-  ["일간 신규 사용자", "128명", "+8.5%"], ["사주 입력 완료율", "72.4%", "-1.2%p"], ["무료 결과 열람 수", "1,842회", "+6.1%"], ["상담 사용 수", "214회", "+3.8%"], ["상품별 결제액", "842만원", "월간 410만원 · 상담 270만원 · 관계 162만원"], ["결제 전환율", "4.8%", "+0.3%p"], ["리포트 생성 실패율", "1.7%", "+0.4%p"], ["이용권 차감 오류", "6건", "0.08%"], ["사용자 평가", "4.36 / 5", "응답 329건"], ["신고 발생률", "0.31%", "리포트 0.22% · 상담 0.09%"],
+  ["일간 신규 사용자", "128명", "+8.5%"], ["사주 입력 완료율", "72.4%", "-1.2%p"], ["무료 결과 열람 수", "1,842회", "+6.1%"], ["상담 사용 수", "214회", "+3.8%"], ["상품별 결제액", "842만원", "월간 410만원 · 상담 270만원 · 관계 162만원"], ["결제 전환율", "4.8%", "+0.3%p"], ["리포트 생성 실패율", "1.7%", "+0.4%p"], ["이용권 차감 오류", "6건", "0.08%"], ["피드백 분포", "helpful 68%", "unclear 21% · wrong 11% · 응답 329건"], ["신고 발생률", "0.31%", "리포트 0.22% · 상담 0.09%"],
 ] as const;
 
 const FUNNEL = [
@@ -160,7 +200,7 @@ export function AdminAnalyticsPrototypeScreen() {
 
     <section data-slop-allow="overstuffed-row" aria-labelledby="funnel-title" style={{ display: "grid", gap: 10 }}><div><p className="section-kicker">분석 이벤트 전체</p><h2 id="funnel-title">핵심 퍼널 단계</h2><p style={muted}>단계를 누르면 선택 상태만 바뀝니다. 실패 이벤트는 전환 단계와 분리해 함께 표시합니다.</p></div><div data-slop-allow="overstuffed-row" style={{ display: "grid", gap: 6 }}>{FUNNEL.map(([event, count, rate]) => <button key={event} type="button" aria-pressed={selectedStage === event} onClick={() => { setSelectedStage(event); setMessage(`${event} 단계 예시를 선택했습니다.`); }} style={{ ...panel, display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto auto", alignItems: "center", gap: 10, textAlign: "left", padding: 12, boxShadow: selectedStage === event ? "inset 3px 0 var(--vermilion)" : "none" }}><code style={{ overflowWrap: "anywhere", color: "var(--ink)" }}>{event}</code><strong>{count}</strong><span style={{ ...muted, minWidth: 48, textAlign: "right" }}>{rate}</span></button>)}</div></section>
 
-    <section data-slop-allow="overstuffed-row" aria-labelledby="drill-title" style={{ display: "grid", gap: 10 }}><div><p className="section-kicker">선택 단계 · {selectedStage}</p><h2 id="drill-title">오류 드릴다운 예시</h2></div><label style={{ ...panel, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}><span><strong>실패·오류 행만 보기</strong><small style={{ ...muted, display: "block" }}>개별 사용자나 민감 원문은 표시하지 않음</small></span><input type="checkbox" checked={failureOnly} onChange={(event) => setFailureOnly(event.target.checked)} /></label><div style={{ overflowX: "auto", border: "var(--rule)", borderRadius: 14 }}><table data-slop-allow="overstuffed-row" style={{ width: "100%", minWidth: 760, borderCollapse: "collapse", fontSize: 12 }}><thead><tr>{["시각", "코드", "구분", "원인 예시", "범위", "처리 상태"].map((label) => <th key={label} scope="col" style={{ padding: 11, textAlign: "left", background: "var(--surface-warm)" }}>{label}</th>)}</tr></thead><tbody>{visibleDrills.map((row) => <tr key={row[1]} style={{ borderTop: "var(--rule)" }}>{row.map((cell, index) => <td key={`${row[1]}-${index}`} style={{ padding: 11, fontWeight: index === 1 ? 800 : 400 }}>{cell}</td>)}</tr>)}</tbody></table></div><p style={muted}>드릴다운 속성 예시: 익명 ID(표시 안 함), 프로필 ID(표시 안 함), report_type, product_id, acquisition_source, device_type, app_or_web, experiment_group, timestamp. 민감 원문은 수집·표시하지 않습니다.</p></section>
+    <section data-slop-allow="overstuffed-row" aria-labelledby="drill-title" style={{ display: "grid", gap: 10 }}><div><p className="section-kicker">선택 단계 · {selectedStage}</p><h2 id="drill-title">오류 드릴다운 예시</h2></div><label style={{ ...panel, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}><span><strong>실패·오류 행만 보기</strong><small style={{ ...muted, display: "block" }}>개별 사용자나 민감 원문은 표시하지 않음</small></span><input type="checkbox" checked={failureOnly} onChange={(event) => setFailureOnly(event.target.checked)} /></label><div role="region" aria-label="오류 드릴다운 표" tabIndex={0} style={{ overflowX: "auto", border: "var(--rule)", borderRadius: 14 }}><table data-slop-allow="overstuffed-row" style={{ width: "100%", minWidth: 760, borderCollapse: "collapse", fontSize: 12 }}><thead><tr data-slop-allow="overstuffed-row">{["시각", "코드", "구분", "원인 예시", "범위", "처리 상태"].map((label) => <th key={label} scope="col" style={{ padding: 11, textAlign: "left", background: "var(--surface-warm)" }}>{label}</th>)}</tr></thead><tbody>{visibleDrills.map((row) => <tr data-slop-allow="overstuffed-row" key={row[1]} style={{ borderTop: "var(--rule)" }}>{row.map((cell, index) => <td key={`${row[1]}-${index}`} style={{ padding: 11, fontWeight: index === 1 ? 800 : 400 }}>{cell}</td>)}</tr>)}</tbody></table></div><p style={muted}>드릴다운 속성 예시: 익명 ID(표시 안 함), 프로필 ID(표시 안 함), report_type, product_id, acquisition_source, device_type, app_or_web, experiment_group, timestamp. 민감 원문은 수집·표시하지 않습니다.</p></section>
     <p role="status" aria-live="polite" style={{ ...panel, ...muted, borderColor: "rgb(169 52 34 / 28%)" }}>{message}</p>
   </main>;
 }

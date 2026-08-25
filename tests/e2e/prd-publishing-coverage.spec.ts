@@ -18,7 +18,7 @@ const coverage = {
   "LIBRARY-001": "/library", "LIBRARY-002": "/library", "LIBRARY-003": "/library", "LIBRARY-004": "/library",
   "SHARE-001": "/share", "SHARE-002": "/share", "SHARE-003": "/share/links",
   "NOTIFICATION-001": "/notifications", "NOTIFICATION-002": "/notifications/policy", "NOTIFICATION-003": "/notifications/policy",
-  "FEEDBACK-001": "/report/feedback?topic=love", "FEEDBACK-002": "/report/feedback?topic=love", "FEEDBACK-003": "/admin/operations",
+  "FEEDBACK-001": "/report/feedback?targetType=report&reportId=rpt_fixture_love&topic=love", "FEEDBACK-002": "/report/feedback?targetType=report&reportId=rpt_fixture_love&topic=love", "FEEDBACK-003": "/admin/operations",
   "ADMIN-001": "/admin/operations", "ADMIN-002": "/admin/operations", "ADMIN-003": "/admin/operations", "ADMIN-004": "/admin/operations",
   "ADMIN-005": "/admin/operations", "ADMIN-006": "/admin/analytics",
 } as const;

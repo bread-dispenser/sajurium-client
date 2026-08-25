@@ -16,7 +16,9 @@
     "test:a11y": "playwright test tests/e2e/accessibility.spec.ts",
     "test:lighthouse": "node scripts/lighthouse.mjs",
     "test:lighthouse:ci": "start-server-and-test 'bun run start --port 3100' http://localhost:3100 'bun run test:lighthouse'",
-    "test:quality": "bun run lint && bun run typecheck && bun run test:unit && bun run build && bun run test:e2e"
+    "api:types": "openapi-typescript openapi/sajurium.yaml -o src/lib/api/generated.ts",
+    "api:check": "openapi-typescript openapi/sajurium.yaml -o src/lib/api/generated.ts --check",
+    "test:quality": "bun run api:check && bun run lint && bun run typecheck && bun run test:unit && bun run build && bun run test:e2e"
   },
   "dependencies": {
     "next": "16.3.2",
@@ -37,6 +39,7 @@
     "eslint-config-next": "16.3.2",
     "jsdom": "^30.0.1",
     "lighthouse": "^13.4.1",
+    "openapi-typescript": "^7.13.0",
     "start-server-and-test": "^3.0.12",
     "tailwindcss": "^4",
     "typescript": "^5",

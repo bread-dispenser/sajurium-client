@@ -45,7 +45,7 @@ const ADMIN_FIXTURES: Record<AdminTab, AdminRow[]> = {
   ],
   quality: [
     { id: "QA-0092", title: "확정적 표현 점검", subtitle: "콘텐츠 안전 · 규칙 8개", status: "통과 예시", updated: "오늘 12:08", details: ["공포 유도 표현 · 없음", "전문 판단 대체 · 없음", "검사 실행 · 화면용 fixture"] },
-    { id: "QA-0089", title: "개인정보 노출 점검", subtitle: "공유 카드 · 필드 6개", status: "검토 예시", updated: "오늘 10:41", details: ["이름 기본값 · 숨김", "생년월일 기본값 · 숨김", "검사 실행 · 화면용 fixture"] },
+    { id: "QA-0089", title: "개인정보 노출 점검", subtitle: "공유 카드 · 필드 5개", status: "검토 예시", updated: "오늘 10:41", details: ["이름 기본값 · 숨김", "출생 정보 · 포함하지 않음", "검사 실행 · 화면용 fixture"] },
     { id: "QA-0084", title: "상품 고지 문구 점검", subtitle: "상거래 · 화면 4개", status: "보류 예시", updated: "8월 22일", details: ["실제 결제 고지 · 확인 필요 예시", "환불 표현 · 해당 없음", "검사 실행 · 화면용 fixture"] },
   ],
 };
@@ -137,10 +137,11 @@ export function AdminPrototypeScreen() {
   );
 }
 
-type ShareKind = "daily" | "monthly" | "relationship";
-type ShareFields = { name: boolean; birthDate: boolean; period: boolean; elements: boolean; insight: boolean; action: boolean };
+type ShareKind = "core" | "daily" | "monthly" | "relationship";
+type ShareFields = { name: boolean; period: boolean; elements: boolean; insight: boolean; action: boolean };
 
 const SHARE_CONTENT: Record<ShareKind, { label: string; eyebrow: string; title: string; insight: string; action: string }> = {
+  core: { label: "핵심 성향", eyebrow: "나를 이루는 결", title: "유연하게 살피고 단단하게 결정해요", insight: "주변의 흐름을 세심하게 읽되, 중요한 순간에는 스스로 세운 기준을 오래 지키는 성향입니다.", action: "오늘 지키고 싶은 기준을 한 문장으로 적어 보세요." },
   daily: { label: "오늘의 흐름", eyebrow: "오늘의 리듬", title: "서두르지 않을수록 또렷해지는 날", insight: "먼저 정리하고 나중에 움직이면 중요한 대화의 결이 한결 부드러워집니다.", action: "오후에는 결론보다 질문을 하나 더 남겨 보세요." },
   monthly: { label: "이번 달 흐름", eyebrow: "8월의 흐름", title: "작은 기준을 세우면 선택이 가벼워져요", insight: "넓게 펼치기보다 오래 가져갈 한 가지를 고르는 달입니다.", action: "이번 달 지킬 기준을 한 문장으로 적어 보세요." },
   relationship: { label: "관계 리포트", eyebrow: "관계의 온도", title: "가까움과 간격을 함께 돌보는 관계", insight: "다름을 고치기보다 서로의 회복 속도를 존중할 때 신뢰가 자랍니다.", action: "답을 재촉하지 않는 시간을 약속해 보세요." },
@@ -148,7 +149,7 @@ const SHARE_CONTENT: Record<ShareKind, { label: string; eyebrow: string; title: 
 
 export function SharePrototypeScreen() {
   const [kind, setKind] = useState<ShareKind>("daily");
-  const [fields, setFields] = useState<ShareFields>({ name: false, birthDate: false, period: true, elements: true, insight: true, action: true });
+  const [fields, setFields] = useState<ShareFields>({ name: false, period: true, elements: true, insight: true, action: true });
   const [expiry, setExpiry] = useState("24시간");
   const [message, setMessage] = useState("미리보기 설정만 이 화면의 메모리에 유지됩니다.");
   const content = SHARE_CONTENT[kind];
@@ -159,7 +160,7 @@ export function SharePrototypeScreen() {
   }
 
   function cardText() {
-    return ["사주리움 · 공유 카드 미리보기", fields.period ? content.eyebrow : null, content.title, fields.name ? "이름: 해온" : null, fields.birthDate ? "생년월일: 1992. 04. 18." : null, fields.elements ? "오행 균형: 목 30 · 화 20 · 토 20 · 금 10 · 수 20" : null, fields.insight ? content.insight : null, fields.action ? content.action : null, `만료 설정 표시: ${expiry}`, "공개 링크나 외부 업로드를 만들지 않은 로컬 프로토타입"].filter(Boolean).join("\n");
+    return ["사주리움 · 공유 카드 미리보기", fields.period ? content.eyebrow : null, content.title, fields.name ? "이름: 해온" : null, fields.elements ? "오행 균형: 목 30 · 화 20 · 토 20 · 금 10 · 수 20" : null, fields.insight ? content.insight : null, fields.action ? content.action : null, `만료 설정 표시: ${expiry}`, "공개 링크나 외부 업로드를 만들지 않은 로컬 프로토타입"].filter(Boolean).join("\n");
   }
 
   function svgCard() {
@@ -190,7 +191,6 @@ export function SharePrototypeScreen() {
 
   const toggleRows: readonly [keyof ShareFields, string, string][] = [
     ["name", "이름", "민감 정보 · 기본 숨김"],
-    ["birthDate", "생년월일", "민감 정보 · 기본 숨김"],
     ["period", "기간 제목", "오늘·이번 달 등"],
     ["elements", "오행 균형", "요약 수치"],
     ["insight", "핵심 해석", "공유할 본문"],
@@ -202,7 +202,7 @@ export function SharePrototypeScreen() {
       <header>
         <p className="section-kicker">공유 카드 프로토타입 · 로컬 미리보기</p>
         <h1 id="share-prototype-title">보여줄 정보만<br />직접 골라보세요</h1>
-        <p className="supporting">이름과 생년월일은 기본으로 숨겨져 있습니다. 이 화면은 공개 링크를 만들거나 이미지를 서버에 올리지 않으며, 선택값도 저장하지 않습니다.</p>
+        <p className="supporting">민감한 출생 정보는 공유 항목에 포함되지 않습니다. 이 화면은 공개 링크를 만들거나 이미지를 서버에 올리지 않으며, 선택값도 저장하지 않습니다.</p>
       </header>
 
       <section aria-labelledby="share-kind-title" style={{ display: "grid", gap: 10 }}>
@@ -226,7 +226,7 @@ export function SharePrototypeScreen() {
           <p style={{ color: "#e9a595", fontSize: 12, fontWeight: 800, letterSpacing: ".12em" }}>SAJURIUM · SHARE PREVIEW</p>
           {fields.period && <p style={{ marginTop: 22, color: "#ddd7cb", fontSize: 12 }}>{content.eyebrow}</p>}
           <h3 style={{ marginTop: 6, fontSize: 28, lineHeight: 1.35 }}>{content.title}</h3>
-          {(fields.name || fields.birthDate) && <p style={{ marginTop: 16, color: "#ddd7cb", fontSize: 12 }}>{fields.name && "해온"}{fields.name && fields.birthDate && " · "}{fields.birthDate && "1992. 04. 18."}</p>}
+          {fields.name && <p style={{ marginTop: 16, color: "#ddd7cb", fontSize: 12 }}>해온</p>}
           {fields.elements && <div style={{ marginTop: 20, borderTop: "1px solid rgb(255 255 255 / 18%)", paddingTop: 14 }}><small style={{ color: "#ddd7cb" }}>오행 균형</small><p style={{ marginTop: 5, letterSpacing: ".04em" }}>목 30 · 화 20 · 토 20 · 금 10 · 수 20</p></div>}
           {fields.insight && <p style={{ marginTop: 20, fontFamily: "var(--editorial-font)", fontSize: 17, lineHeight: 1.8 }}>{content.insight}</p>}
           {fields.action && <p style={{ marginTop: 18, borderRadius: 12, background: "rgb(255 255 255 / 9%)", padding: 12, color: "#f3efe6", fontSize: 12 }}>오늘의 메모 · {content.action}</p>}

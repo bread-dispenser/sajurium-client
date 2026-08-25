@@ -6,7 +6,7 @@ const routes = [
   "/login", "/notifications", "/calendar", "/reports/year", "/reports/decade",
   "/admin", "/share", "/life-log", "/account", "/profile", "/billing",
   "/share/links", "/notifications/policy", "/admin/operations", "/admin/analytics",
-  "/platform-labs", "/shared/compatibility",
+  "/platform-labs", "/shared/V7m2Q9x4Ka8Nz3Rt",
 ];
 
 for (const route of routes) {

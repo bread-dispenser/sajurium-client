@@ -1,14 +1,31 @@
-export type CalendarBasis = "solar" | "lunar" | "leap";
-export type TopicId = "love" | "career" | "money" | "family";
-export type FeedbackId = "helpful" | "unclear" | "wrong";
+import type {
+  CompatibilityPersonSnapshot as ContractCompatibilityPersonSnapshot,
+  CompatibilitySnapshot,
+  ConsultationContext,
+  ConsultationMessageView,
+  ConsultationSessionView,
+  CreditLedgerEntry,
+  DailyFlowView,
+  FeedbackProvenance,
+  FeedbackTarget,
+  FeedbackView,
+  GenerationView,
+  LibraryItemType,
+  LibraryItemView,
+  MonthlyFlowView,
+  NotificationPreferenceView,
+  OrderView,
+  OwnerRelationship,
+  ProductView,
+  ProfileInput,
+  TopicId as ContractTopicId,
+} from "./contracts";
 
-export type BirthInfo = {
-  nickname: string;
-  calendar: CalendarBasis;
-  birthDate: string;
-  birthTime: string;
-  unknownTime: boolean;
-};
+export type TopicId = Extract<ContractTopicId, "love" | "career" | "money" | "family">;
+export type FeedbackId = "helpful" | "unclear" | "wrong";
+export type FeedbackReason = FeedbackView["reason"];
+
+export type BirthInfo = ProfileInput;
 
 export type Topic = {
   id: TopicId;
@@ -53,50 +70,20 @@ export type ReportSection = {
   access: "free" | "paid";
 };
 
-export type FlowReading = {
-  period: string;
-  headline: string;
-  summary: string;
-  relationship: string;
-  career: string;
-  money: string;
-  caution: string;
-  suggestion: string;
-};
+export type DailyFlow = DailyFlowView;
+export type MonthlyFlow = MonthlyFlowView;
 
-export type LibraryItemType = "report" | "consultation" | "compatibility";
-
-export type LibraryItem = {
-  id: string;
-  type: LibraryItemType;
-  title: string;
-  subtitle: string;
-  createdAt: string;
-  href: string;
-  hidden: boolean;
-};
+export type { LibraryItemType };
+export type LibraryItem = LibraryItemView;
 
 export type LibraryData = {
   version: 1;
   items: LibraryItem[];
 };
 
-export type ConsultationMessage = {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  createdAt: string;
-  fixture: boolean;
-};
-
-export type ConsultationSession = {
-  id: string;
-  topic: TopicId;
-  title: string;
-  createdAt: string;
-  updatedAt: string;
-  messages: ConsultationMessage[];
-};
+export type ConsultationMessage = ConsultationMessageView;
+export type ConsultationSession = ConsultationSessionView;
+export type { ConsultationContext };
 
 export type ConsultationDraft = {
   topic: TopicId;
@@ -111,13 +98,11 @@ export type ConsultationData = {
   freeUsesRemaining: number;
 };
 
-export type PersonRelationship = "self" | "partner" | "family" | "friend" | "coworker";
+export type PersonRelationship = OwnerRelationship;
 
 export type PersonProfile = {
   id: string;
-  name: string;
-  relationship: PersonRelationship;
-  birth: BirthInfo;
+  profile: ProfileInput;
   createdAt: string;
 };
 
@@ -127,7 +112,7 @@ export type PeopleData = {
   people: PersonProfile[];
 };
 
-export type CompatibilityRelationshipType = "dating" | "marriage" | "family" | "friend" | "business";
+export type CompatibilityRelationshipType = CompatibilitySnapshot["relationshipType"];
 
 export type CompatibilityDimension = {
   id: string;
@@ -135,22 +120,9 @@ export type CompatibilityDimension = {
   summary: string;
 };
 
-export type CompatibilityPersonSnapshot = {
-  name: string;
-  relationship: PersonRelationship;
-  birthYear: string;
-  unknownTime: boolean;
-};
+export type CompatibilityPersonSnapshot = ContractCompatibilityPersonSnapshot;
 
-export type CompatibilityResult = {
-  id: string;
-  personAId: string;
-  personBId: string;
-  personA: CompatibilityPersonSnapshot;
-  personB: CompatibilityPersonSnapshot;
-  relationshipType: CompatibilityRelationshipType;
-  createdAt: string;
-  summary: string;
+export type CompatibilityResult = CompatibilitySnapshot & {
   dimensions: CompatibilityDimension[];
   fixtureVersion: 1;
   fixture: true;
@@ -163,55 +135,38 @@ export type CompatibilityData = {
 
 export type ProductId = "consult-5" | "love-report" | "compatibility-report" | "career-report" | "money-report" | "year-report" | "decade-report";
 
-export type Product = {
+export type Product = ProductView & {
   id: ProductId;
-  title: string;
-  price: number;
-  description: string;
-  inclusions: string[];
   preview: string;
 };
 
+/** Query-only selector used by the static checkout demonstration route. */
 export type DemoOrderStatus = "pending" | "success" | "failure";
-
-export type DemoOrder = {
-  id: string;
-  productId: ProductId;
-  status: DemoOrderStatus;
-  createdAt: string;
-};
-
-export type CreditHistoryItem = {
-  id: string;
-  label: string;
-  delta: number;
-  createdAt: string;
-};
+export type DemoOrder = OrderView;
+export type OrderDuplicateKey = Pick<OrderView, "productId" | "profileId" | "chartSnapshotId" | "periodKey" | "interpretationVersion">;
+export type CreditHistoryItem = CreditLedgerEntry;
 
 export type CommerceData = {
   version: 1;
-  orders: DemoOrder[];
+  orders: OrderView[];
+  generations: GenerationView[];
   consultationCredits: number;
-  creditHistory: CreditHistoryItem[];
-};
-
-export type NotificationPreferences = {
-  dailyFlow: boolean;
-  monthlyFlow: boolean;
-  email: boolean;
+  creditHistory: CreditLedgerEntry[];
 };
 
 export type SettingsData = {
   version: 1;
-  notifications: NotificationPreferences;
+  notifications: NotificationPreferenceView[];
 };
 
 export type FeedbackEntry = {
   id: string;
+  target: FeedbackTarget;
   topic: TopicId;
   rating: FeedbackId;
-  reason: string;
+  reason: FeedbackReason;
   comment: string;
+  provenance: FeedbackProvenance;
   reported: boolean;
   createdAt: string;
 };
@@ -231,9 +186,14 @@ export type SavedReport = {
 
 export type FeedbackRecord = {
   version: 1;
-  savedAt: string;
+  target: FeedbackTarget;
   topic: TopicId;
-  feedback: FeedbackId;
+  rating: FeedbackId;
+  reason: FeedbackReason;
+  comment: string;
+  provenance: FeedbackProvenance;
+  reported: boolean;
+  createdAt: string;
 };
 
 export type BirthDraft = {

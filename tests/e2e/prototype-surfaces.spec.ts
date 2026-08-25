@@ -21,10 +21,31 @@ test("filters and marks prototype notifications", async ({ page }) => {
 
 test("changes calendar topic and selected date deterministically", async ({ page }) => {
   await page.goto("/calendar");
-  await page.getByRole("radio", { name: "재물" }).check();
+  const filters = ["연애", "대화", "계약", "이직", "면접", "돈", "휴식", "새로운 시작"];
+  for (const filter of filters) {
+    await expect(page.getByRole("radio", { name: filter, exact: true })).toBeVisible();
+  }
+  await expect(page.getByText("활용하기 좋은 날", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("무난한 날", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("점검이 필요한 날", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText(/최고|최악/)).toHaveCount(0);
+
+  await page.getByRole("radio", { name: "이직", exact: true }).check();
+  const detail = page.locator("article.insight-card.current");
+  const initialDetails = await detail.locator("dd").allTextContents();
   await page.getByRole("button", { name: /2026-08-15/ }).click();
-  await expect(page.getByText("2026-08-15 · 재물")).toBeVisible();
-  await expect(page.getByText(/개인 출생 정보나 사주 원국을 사용하지 않았습니다/)).toBeVisible();
+  await expect(page.getByRole("button", { name: /2026-08-15/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("2026-08-15 · 이직")).toBeVisible();
+  await expect(page.getByText("핵심 흐름", { exact: true })).toBeVisible();
+  await expect(page.getByText("활용 행동", { exact: true })).toBeVisible();
+  await expect(page.getByText("주의 행동", { exact: true })).toBeVisible();
+  await expect(page.getByText("관련 근거", { exact: true })).toBeVisible();
+  await expect(page.getByText(/2026-08-15과 이직 필터를 조합한 로컬 예시 규칙/)).toBeVisible();
+  await expect(page.getByText(/실제 계산이 아닙니다/)).toBeVisible();
+  await expect(page.getByRole("link", { name: "이 날짜와 주제로 상담 시작하기" })).toHaveAttribute("href", "/consult/new?topic=career&period=2026-08-15");
+  const selectedDetails = await detail.locator("dd").allTextContents();
+  expect(selectedDetails).toHaveLength(4);
+  selectedDetails.forEach((value, index) => expect(value).not.toBe(initialDetails[index]));
 });
 
 test("switches between year and decade report prototypes", async ({ page }) => {
@@ -44,12 +65,12 @@ test("filters and updates only local admin prototype rows", async ({ page }) => 
   await expect(page.getByRole("status")).toContainText("서버에는 저장되지 않았습니다");
 });
 
-test("keeps sensitive share fields off until explicitly selected", async ({ page }) => {
+test("never offers forbidden birth data and only reveals selected name", async ({ page }) => {
   await page.goto("/share");
   const nameField = page.getByRole("checkbox", { name: /이름/ });
-  const birthField = page.getByRole("checkbox", { name: /생년월일/ });
   await expect(nameField).not.toBeChecked();
-  await expect(birthField).not.toBeChecked();
+  await expect(page.getByRole("checkbox", { name: /생년월일/ })).toHaveCount(0);
+  await expect(page.locator("body")).not.toContainText("1992. 04. 18.");
   await nameField.check();
   await expect(page.getByText("해온", { exact: true })).toBeVisible();
   await expect(page.getByText(/공개 URL·외부 업로드·서버 저장은 생성되지 않습니다/)).toBeVisible();

@@ -21,7 +21,15 @@ import type {
   SettingsData,
   SavedReport,
 } from "./domain";
-import { isFeedbackId, isProductId, isTopicId } from "./fixtures";
+import {
+  getAllowedLibraryActions,
+  hasValidLeapMonthSemantics,
+  isConsultationMessageStatus,
+  isConsultationSessionStatus,
+  isGenerationStatus,
+  isOrderStatus,
+} from "./contracts";
+import { isFeedbackId, isTopicId } from "./fixtures";
 
 const REPORT_KEY = "sajurium-saju-report";
 const FEEDBACK_KEY = "sajurium-saju-feedback";
@@ -52,28 +60,130 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function hasExactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+  const actualKeys = Object.keys(value);
+  return actualKeys.length === keys.length && actualKeys.every((key) => keys.includes(key));
+}
+
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function isOpaqueId(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9_-]{2,127}$/.test(value);
 }
 
 function hasUniqueIds(values: Array<{ id: string }>): boolean {
   return new Set(values.map((value) => value.id)).size === values.length;
 }
 
-function isCalendarBasis(value: unknown): value is BirthInfo["calendar"] {
-  return value === "solar" || value === "lunar" || value === "leap";
+function isIsoDate(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
+function isIsoDateTime(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|[+-](?:0\d|1[0-4]):[0-5]\d)$/.test(value) &&
+    Number.isFinite(Date.parse(value))
+  );
+}
+
+function isContractTopicId(value: unknown): boolean {
+  return (
+    value === "love" ||
+    value === "marriage" ||
+    value === "reunion" ||
+    value === "career" ||
+    value === "business" ||
+    value === "money" ||
+    value === "family" ||
+    value === "relationships" ||
+    value === "other"
+  );
+}
+
+function isContentProvenance(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    isNonEmptyString(value.chartSnapshotId) &&
+    isNonEmptyString(value.interpretationVersion) &&
+    (value.modelVersion === null || isNonEmptyString(value.modelVersion)) &&
+    (value.promptVersion === null || isNonEmptyString(value.promptVersion)) &&
+    isNonEmptyString(value.templateVersion) &&
+    isIsoDateTime(value.generatedAt)
+  );
+}
+
+function isFeedbackTarget(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  if (value.type === "report") return isNonEmptyString(value.reportId);
+  if (value.type === "consultation_message") return isNonEmptyString(value.sessionId) && isNonEmptyString(value.messageId);
+  if (value.type === "compatibility") return isNonEmptyString(value.compatibilityId);
+  return false;
+}
+
+function isFeedbackProvenance(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    hasExactKeys(value, ["profileSnapshotId", "chartSnapshotIds", "modelVersion", "promptVersion", "templateVersion"]) &&
+    isNonEmptyString(value.profileSnapshotId) &&
+    Array.isArray(value.chartSnapshotIds) &&
+    value.chartSnapshotIds.length > 0 &&
+    value.chartSnapshotIds.every(isNonEmptyString) &&
+    new Set(value.chartSnapshotIds).size === value.chartSnapshotIds.length &&
+    (value.modelVersion === null || isNonEmptyString(value.modelVersion)) &&
+    (value.promptVersion === null || isNonEmptyString(value.promptVersion)) &&
+    isNonEmptyString(value.templateVersion)
+  );
+}
+
+function isFeedbackReason(value: unknown): boolean {
+  return (
+    value === "too_generic" ||
+    value === "repetitive" ||
+    value === "incorrect_chart" ||
+    value === "unanswered" ||
+    value === "inappropriate" ||
+    value === "purchase_mismatch" ||
+    value === "other"
+  );
 }
 
 function isBirthInfo(value: unknown): value is BirthInfo {
   if (!isRecord(value)) return false;
+  const personalization = value.personalization;
   return (
-    typeof value.nickname === "string" &&
-    value.nickname.trim().length > 0 &&
-    isCalendarBasis(value.calendar) &&
-    typeof value.birthDate === "string" &&
-    /^\d{4}-\d{2}-\d{2}$/.test(value.birthDate) &&
-    typeof value.birthTime === "string" &&
-    typeof value.unknownTime === "boolean"
+    isNonEmptyString(value.displayName) &&
+    (value.calendar === "solar" || value.calendar === "lunar") &&
+    typeof value.leapMonth === "boolean" &&
+    hasValidLeapMonthSemantics({ calendar: value.calendar, leapMonth: value.leapMonth }) &&
+    isIsoDate(value.birthDate) &&
+    (value.birthTime === null || (typeof value.birthTime === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(value.birthTime))) &&
+    typeof value.birthTimeUnknown === "boolean" &&
+    (value.birthTimeUnknown ? value.birthTime === null : value.birthTime !== null) &&
+    isNonEmptyString(value.birthplace) &&
+    isNonEmptyString(value.timezone) &&
+    (value.calculationGender === "male" || value.calculationGender === "female") &&
+    (value.profileType === "self" || value.profileType === "other") &&
+    (value.ownerRelationship === "self" || value.ownerRelationship === "partner" || value.ownerRelationship === "family" || value.ownerRelationship === "friend" || value.ownerRelationship === "coworker") &&
+    ((value.profileType === "self" && value.ownerRelationship === "self") || (value.profileType === "other" && value.ownerRelationship !== "self")) &&
+    isRecord(personalization) &&
+    Array.isArray(personalization.interests) &&
+    personalization.interests.every((interest) => interest === "love" || interest === "marriage" || interest === "reunion" || interest === "career" || interest === "business" || interest === "money" || interest === "family" || interest === "relationships" || interest === "other") &&
+    new Set(personalization.interests).size === personalization.interests.length &&
+    (personalization.relationshipStatus === null || typeof personalization.relationshipStatus === "string") &&
+    (personalization.occupationStatus === null || typeof personalization.occupationStatus === "string") &&
+    (personalization.primaryConcern === null || typeof personalization.primaryConcern === "string") &&
+    typeof value.thirdPartyConsent === "boolean" &&
+    (value.profileType === "self" || value.thirdPartyConsent)
   );
 }
 
@@ -92,9 +202,14 @@ function isFeedbackRecord(value: unknown): value is FeedbackRecord {
   if (!isRecord(value)) return false;
   return (
     value.version === 1 &&
-    typeof value.savedAt === "string" &&
+    isFeedbackTarget(value.target) &&
     isTopicId(value.topic) &&
-    isFeedbackId(value.feedback)
+    isFeedbackId(value.rating) &&
+    isFeedbackReason(value.reason) &&
+    typeof value.comment === "string" &&
+    isFeedbackProvenance(value.provenance) &&
+    typeof value.reported === "boolean" &&
+    isIsoDateTime(value.createdAt)
   );
 }
 
@@ -104,16 +219,28 @@ function isBirthDraft(value: unknown): value is BirthDraft {
 
 function isLibraryItem(value: unknown): value is LibraryItem {
   if (!isRecord(value)) return false;
-  return (
+  if (
+    !(
     isNonEmptyString(value.id) &&
     (value.type === "report" || value.type === "consultation" || value.type === "compatibility") &&
     typeof value.title === "string" &&
     typeof value.subtitle === "string" &&
-    typeof value.createdAt === "string" &&
+    isIsoDateTime(value.createdAt) &&
     typeof value.href === "string" &&
     value.href.startsWith("/") &&
-    typeof value.hidden === "boolean"
-  );
+    (value.access === "available" || value.access === "locked" || value.access === "expired") &&
+    typeof value.purchased === "boolean" &&
+    typeof value.read === "boolean" &&
+    typeof value.hidden === "boolean" &&
+    isRecord(value.profile) &&
+    isNonEmptyString(value.profile.id) &&
+    typeof value.profile.displayName === "string" &&
+    (value.topic === null || isContractTopicId(value.topic)) &&
+    Array.isArray(value.allowedActions)
+    )
+  ) return false;
+  const expectedActions = getAllowedLibraryActions(value as Pick<LibraryItem, "access" | "purchased" | "read" | "hidden">);
+  return value.allowedActions.length === expectedActions.length && value.allowedActions.every((action, index) => action === expectedActions[index]);
 }
 
 function isLibraryData(value: unknown): value is LibraryData {
@@ -125,20 +252,36 @@ function isConsultationMessage(value: unknown): value is ConsultationMessage {
   return (
     isNonEmptyString(value.id) &&
     (value.role === "user" || value.role === "assistant") &&
-    typeof value.content === "string" &&
-    typeof value.createdAt === "string" &&
-    typeof value.fixture === "boolean"
+    isConsultationMessageStatus(value.status) &&
+    (value.content === null || typeof value.content === "string") &&
+    isIsoDateTime(value.createdAt) &&
+    (value.completedAt === null || isIsoDateTime(value.completedAt)) &&
+    (value.provenance === null || isContentProvenance(value.provenance)) &&
+    (value.status === "completed"
+      ? typeof value.content === "string" && value.completedAt !== null
+      : value.completedAt === null)
   );
 }
 
 function isConsultationSession(value: unknown): value is ConsultationSession {
   if (!isRecord(value)) return false;
+  const context = value.context;
   return (
     isNonEmptyString(value.id) &&
-    isTopicId(value.topic) &&
     typeof value.title === "string" &&
-    typeof value.createdAt === "string" &&
-    typeof value.updatedAt === "string" &&
+    isConsultationSessionStatus(value.status) &&
+    isRecord(context) &&
+    isNonEmptyString(context.profileId) &&
+    isNonEmptyString(context.chartSnapshotId) &&
+    isNonEmptyString(context.periodKey) &&
+    isContractTopicId(context.topic) &&
+    (context.situation === null || typeof context.situation === "string") &&
+    Array.isArray(context.referencedProfileIds) &&
+    context.referencedProfileIds.every(isNonEmptyString) &&
+    new Set(context.referencedProfileIds).size === context.referencedProfileIds.length &&
+    (value.summary === null || typeof value.summary === "string") &&
+    isIsoDateTime(value.createdAt) &&
+    isIsoDateTime(value.updatedAt) &&
     Array.isArray(value.messages) &&
     value.messages.every(isConsultationMessage) &&
     hasUniqueIds(value.messages)
@@ -167,9 +310,7 @@ function isPersonProfile(value: unknown): value is PersonProfile {
   if (!isRecord(value)) return false;
   return (
     isNonEmptyString(value.id) &&
-    isNonEmptyString(value.name) &&
-    (value.relationship === "self" || value.relationship === "partner" || value.relationship === "family" || value.relationship === "friend" || value.relationship === "coworker") &&
-    isBirthInfo(value.birth) &&
+    isBirthInfo(value.profile) &&
     typeof value.createdAt === "string"
   );
 }
@@ -187,33 +328,52 @@ function isPeopleData(value: unknown): value is PeopleData {
 }
 
 function isCompatibilityDimension(value: unknown): value is CompatibilityDimension {
-  return isRecord(value) && isNonEmptyString(value.id) && typeof value.title === "string" && typeof value.summary === "string";
-}
-
-function isCompatibilityPersonSnapshot(value: unknown) {
   return (
     isRecord(value) &&
-    typeof value.name === "string" &&
-    (value.relationship === "self" || value.relationship === "partner" || value.relationship === "family" || value.relationship === "friend" || value.relationship === "coworker") &&
-    typeof value.birthYear === "string" &&
-    /^\d{4}$/.test(value.birthYear) &&
-    typeof value.unknownTime === "boolean"
+    hasExactKeys(value, ["id", "title", "summary"]) &&
+    isOpaqueId(value.id) &&
+    isNonEmptyString(value.title) &&
+    isNonEmptyString(value.summary)
+  );
+}
+
+function isCompatibilityPersonSnapshot(value: unknown): value is CompatibilityResult["personA"] {
+  return (
+    isRecord(value) &&
+    hasExactKeys(value, ["profileId", "displayName", "maskedBirthYear", "birthTimeUnknown", "chartSnapshotId"]) &&
+    isOpaqueId(value.profileId) &&
+    isNonEmptyString(value.displayName) &&
+    typeof value.maskedBirthYear === "string" &&
+    /^\d{2}\*{2}$/.test(value.maskedBirthYear) &&
+    typeof value.birthTimeUnknown === "boolean" &&
+    isOpaqueId(value.chartSnapshotId)
   );
 }
 
 function isCompatibilityResult(value: unknown): value is CompatibilityResult {
   if (!isRecord(value)) return false;
   return (
-    isNonEmptyString(value.id) &&
-    isNonEmptyString(value.personAId) &&
-    isNonEmptyString(value.personBId) &&
-    value.personAId !== value.personBId &&
+    hasExactKeys(value, ["id", "relationshipType", "personA", "personB", "summary", "strengths", "cautions", "provenance", "createdAt", "dimensions", "fixtureVersion", "fixture"]) &&
+    isOpaqueId(value.id) &&
     isCompatibilityPersonSnapshot(value.personA) &&
     isCompatibilityPersonSnapshot(value.personB) &&
+    value.personA.profileId !== value.personB.profileId &&
+    value.personA.chartSnapshotId !== value.personB.chartSnapshotId &&
     (value.relationshipType === "dating" || value.relationshipType === "marriage" || value.relationshipType === "family" || value.relationshipType === "friend" || value.relationshipType === "business") &&
-    typeof value.createdAt === "string" &&
-    typeof value.summary === "string" &&
+    isIsoDateTime(value.createdAt) &&
+    isNonEmptyString(value.summary) &&
+    Array.isArray(value.strengths) &&
+    value.strengths.length >= 2 &&
+    value.strengths.every(isNonEmptyString) &&
+    Array.isArray(value.cautions) &&
+    value.cautions.length >= 1 &&
+    value.cautions.every(isNonEmptyString) &&
+    isContentProvenance(value.provenance) &&
+    isRecord(value.provenance) &&
+    hasExactKeys(value.provenance, ["chartSnapshotId", "interpretationVersion", "modelVersion", "promptVersion", "templateVersion", "generatedAt"]) &&
+    isOpaqueId(value.provenance.chartSnapshotId) &&
     Array.isArray(value.dimensions) &&
+    value.dimensions.length === 8 &&
     value.dimensions.every(isCompatibilityDimension) &&
     hasUniqueIds(value.dimensions) &&
     value.fixtureVersion === 1 &&
@@ -227,43 +387,151 @@ function isCompatibilityData(value: unknown): value is CompatibilityData {
 
 function isDemoOrder(value: unknown): value is DemoOrder {
   if (!isRecord(value)) return false;
-  return isNonEmptyString(value.id) && isProductId(value.productId) && (value.status === "pending" || value.status === "success" || value.status === "failure") && typeof value.createdAt === "string";
-}
-
-function isCreditHistoryItem(value: unknown): value is CreditHistoryItem {
-  return isRecord(value) && isNonEmptyString(value.id) && typeof value.label === "string" && typeof value.delta === "number" && Number.isFinite(value.delta) && typeof value.createdAt === "string";
-}
-
-function isCommerceData(value: unknown): value is CommerceData {
   return (
-    isRecord(value) &&
-    value.version === 1 &&
-    Array.isArray(value.orders) &&
-    value.orders.every(isDemoOrder) &&
-    hasUniqueIds(value.orders) &&
-    Number.isInteger(value.consultationCredits) &&
-    Number(value.consultationCredits) >= 0 &&
-    Array.isArray(value.creditHistory) &&
-    value.creditHistory.every(isCreditHistoryItem) &&
-    hasUniqueIds(value.creditHistory)
+    isNonEmptyString(value.orderId) &&
+    isNonEmptyString(value.productId) &&
+    isNonEmptyString(value.productVersion) &&
+    isNonEmptyString(value.profileId) &&
+    isNonEmptyString(value.chartSnapshotId) &&
+    isNonEmptyString(value.periodKey) &&
+    isNonEmptyString(value.interpretationVersion) &&
+    isOrderStatus(value.status) &&
+    typeof value.amount === "number" &&
+    Number.isFinite(value.amount) &&
+    value.amount >= 0 &&
+    isNonEmptyString(value.currency) &&
+    (value.provider === "WEB" || value.provider === "APP") &&
+    isIsoDateTime(value.createdAt) &&
+    isIsoDateTime(value.updatedAt)
   );
 }
 
+function isCreditHistoryItem(value: unknown): value is CreditHistoryItem {
+  return (
+    isRecord(value) &&
+    isNonEmptyString(value.id) &&
+    typeof value.delta === "number" &&
+    Number.isFinite(value.delta) &&
+    typeof value.balanceAfter === "number" &&
+    Number.isFinite(value.balanceAfter) &&
+    (value.source === "order" || value.source === "consultation" || value.source === "admin" || value.source === "event" || value.source === "system") &&
+    (value.sourceId === null || isNonEmptyString(value.sourceId)) &&
+    (value.reason === "purchase" ||
+      value.reason === "free_grant" ||
+      value.reason === "consultation_use" ||
+      value.reason === "error_recovery" ||
+      value.reason === "refund" ||
+      value.reason === "admin_adjustment" ||
+      value.reason === "event_grant") &&
+    typeof value.description === "string" &&
+    isIsoDateTime(value.createdAt)
+  );
+}
+
+function isApiError(value: unknown): boolean {
+  if (!isRecord(value) || !isNonEmptyString(value.code) || typeof value.message !== "string" || !isRecord(value.fieldErrors)) return false;
+  return (
+    Object.values(value.fieldErrors).every((errors) => Array.isArray(errors) && errors.every((error) => typeof error === "string")) &&
+    (value.requestId === null || isNonEmptyString(value.requestId)) &&
+    typeof value.retryable === "boolean"
+  );
+}
+
+function isGeneration(value: unknown): value is CommerceData["generations"][number] {
+  return (
+    isRecord(value) &&
+    isNonEmptyString(value.id) &&
+    isNonEmptyString(value.orderId) &&
+    isNonEmptyString(value.productId) &&
+    (value.reportId === null || isNonEmptyString(value.reportId)) &&
+    isGenerationStatus(value.status) &&
+    (value.status === "completed" ? isNonEmptyString(value.reportId) : value.reportId === null) &&
+    Number.isInteger(value.attemptCount) &&
+    Number(value.attemptCount) >= 0 &&
+    (value.error === null || isApiError(value.error)) &&
+    (value.status === "failed" || value.error === null) &&
+    isIsoDateTime(value.createdAt) &&
+    isIsoDateTime(value.updatedAt)
+  );
+}
+
+function isCommerceData(value: unknown): value is CommerceData {
+  if (
+    !isRecord(value) ||
+    value.version !== 1 ||
+    !Array.isArray(value.orders) ||
+    !value.orders.every(isDemoOrder) ||
+    new Set(value.orders.map((order) => order.orderId)).size !== value.orders.length ||
+    !Array.isArray(value.generations) ||
+    !value.generations.every(isGeneration) ||
+    !hasUniqueIds(value.generations) ||
+    !Number.isInteger(value.consultationCredits) ||
+    Number(value.consultationCredits) < 0 ||
+    !Array.isArray(value.creditHistory) ||
+    !value.creditHistory.every(isCreditHistoryItem) ||
+    !hasUniqueIds(value.creditHistory)
+  ) return false;
+  const orders = value.orders;
+  if (!Array.isArray(orders) || !orders.every(isDemoOrder)) return false;
+  const completedKeys = orders.filter((order) => order.status === "COMPLETED").map((order) => [order.productId, order.profileId, order.chartSnapshotId, order.periodKey, order.interpretationVersion].join("|"));
+  if (new Set(completedKeys).size !== completedKeys.length) return false;
+  const generations = value.generations;
+  if (!Array.isArray(generations) || !generations.every(isGeneration)) return false;
+  if (generations.some((generation) => !orders.some((order) => order.orderId === generation.orderId && order.productId === generation.productId))) return false;
+  const creditHistory = value.creditHistory;
+  if (!Array.isArray(creditHistory) || !creditHistory.every(isCreditHistoryItem)) return false;
+  const consultationCredits = Number(value.consultationCredits);
+  if (creditHistory.length === 0) return true;
+  if (creditHistory[0].balanceAfter !== consultationCredits) return false;
+  return creditHistory.slice(0, -1).every((entry, index) => (
+    entry.balanceAfter - entry.delta === creditHistory[index + 1].balanceAfter
+  ));
+}
+
 function isSettingsData(value: unknown): value is SettingsData {
-  if (!isRecord(value) || value.version !== 1 || !isRecord(value.notifications)) return false;
-  return typeof value.notifications.dailyFlow === "boolean" && typeof value.notifications.monthlyFlow === "boolean" && typeof value.notifications.email === "boolean";
+  if (!isRecord(value) || !hasExactKeys(value, ["version", "notifications"]) || value.version !== 1 || !Array.isArray(value.notifications)) return false;
+  const topicKeys = ["payment_completed", "monthly_flow", "important_period", "report_completed", "consultation_completed", "low_credits", "resume_consultation", "interest_change"] as const;
+  const isClockTime = (time: unknown) => typeof time === "string" && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time);
+  const isTimezone = (timezone: unknown) => {
+    if (typeof timezone !== "string" || timezone.length === 0 || timezone.length > 100) return false;
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format();
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const isPreference = (preference: unknown): preference is SettingsData["notifications"][number] => {
+    if (!isRecord(preference) || !hasExactKeys(preference, ["channel", "enabled", "topics", "quietHours", "suppressDuplicates"])) return false;
+    if ((preference.channel !== "push" && preference.channel !== "email") || typeof preference.enabled !== "boolean" || typeof preference.suppressDuplicates !== "boolean") return false;
+    const topics = preference.topics;
+    if (!isRecord(topics) || !hasExactKeys(topics, topicKeys) || !topicKeys.every((topic) => typeof topics[topic] === "boolean")) return false;
+    const quietHours = preference.quietHours;
+    return (
+      isRecord(quietHours) &&
+      hasExactKeys(quietHours, ["enabled", "start", "end", "timezone"]) &&
+      typeof quietHours.enabled === "boolean" &&
+      isClockTime(quietHours.start) &&
+      isClockTime(quietHours.end) &&
+      isTimezone(quietHours.timezone)
+    );
+  };
+  if (value.notifications.length !== 2 || !value.notifications.every(isPreference)) return false;
+  return new Set(value.notifications.map((preference) => preference.channel)).size === 2;
 }
 
 function isFeedbackEntry(value: unknown): value is FeedbackEntry {
   return (
     isRecord(value) &&
     isNonEmptyString(value.id) &&
+    isFeedbackTarget(value.target) &&
     isTopicId(value.topic) &&
     isFeedbackId(value.rating) &&
-    typeof value.reason === "string" &&
+    isFeedbackReason(value.reason) &&
     typeof value.comment === "string" &&
+    isFeedbackProvenance(value.provenance) &&
     typeof value.reported === "boolean" &&
-    typeof value.createdAt === "string"
+    isIsoDateTime(value.createdAt)
   );
 }
 
@@ -725,7 +993,7 @@ const OWNED_STORE_REGISTRY: OwnedStoreRegistration[] = [
   registerOwnedStore("compatibility", "궁합", compatibilityStore, (value) => value.results.length),
   registerOwnedStore("library", "보관함", libraryStore, (value) => value.items.length),
   registerOwnedStore("feedback", "피드백", feedbackListStore, (value) => value.entries.length),
-  registerOwnedStore("commerce", "체험 주문·이용권", commerceStore, (value) => value.orders.length + value.creditHistory.length + (value.consultationCredits > 0 ? 1 : 0)),
+  registerOwnedStore("commerce", "체험 주문·이용권", commerceStore, (value) => value.orders.length + value.generations.length + value.creditHistory.length + (value.consultationCredits > 0 ? 1 : 0)),
   registerOwnedStore("settings", "환경설정", settingsStore, () => 1),
   {
     id: "transaction",

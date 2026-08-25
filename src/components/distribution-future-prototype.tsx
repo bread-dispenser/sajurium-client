@@ -1,7 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import type { CSSProperties, ReactNode } from "react";
+import type { NotificationPreferenceView, ShareLinkView } from "@/lib/contracts";
+import { useHydrated } from "@/hooks/use-hydrated";
+import { INITIAL_SETTINGS_DATA } from "@/lib/fixtures";
+import { settingsStore } from "@/lib/storage";
+import { CorruptState, LoadingState } from "./page-state";
 
 const panel: CSSProperties = {
   border: "var(--rule)",
@@ -39,21 +44,28 @@ type Expiry = keyof typeof expiryLabels;
 
 export function ShareLinkPrototypeScreen() {
   const [expiry, setExpiry] = useState<Expiry>("day");
-  const [link, setLink] = useState<{ token: string; expires: string } | null>(null);
-  const [disabled, setDisabled] = useState(false);
-  const [expired, setExpired] = useState(false);
+  const [link, setLink] = useState<ShareLinkView | null>(null);
   const [acknowledged, setAcknowledged] = useState(false);
   const [message, setMessage] = useState("아직 공유 링크를 만들지 않았어요.");
 
   function createLink() {
     const offset = expiry === "hour" ? 60 * 60 * 1000 : expiry === "day" ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
-    setLink({ token: "local-demo-7K2M", expires: new Date(Date.now() + offset).toLocaleString("ko-KR") });
-    setDisabled(false);
-    setExpired(false);
+    const token = "V7m2Q9x4Ka8Nz3Rt";
+    const now = new Date();
+    setLink({
+      id: "shr_7c1f9a2e4b6d8f03",
+      targetType: "compatibility",
+      targetId: "cmp_4e8b1d7a9c2f6035",
+      url: `/shared/${token}`,
+      status: "active",
+      expiresAt: new Date(now.getTime() + offset).toISOString(),
+      disabledAt: null,
+      createdAt: now.toISOString(),
+    });
     setMessage("이 탭에서만 보이는 예시 링크를 만들었어요. 서버 저장이나 외부 공개는 없습니다.");
   }
 
-  const state = !link ? "생성 전" : disabled ? "비활성화됨" : expired ? "만료됨" : "열람 가능 예시";
+  const state = !link ? "생성 전" : link.status === "disabled" ? "비활성화됨" : link.status === "expired" ? "만료됨" : "열람 가능 예시";
 
   return (
     <main className="screen-content" aria-labelledby="share-link-title" style={{ gap: 22 }}>
@@ -63,7 +75,7 @@ export function ShareLinkPrototypeScreen() {
         <p className="supporting">버튼을 눌러야만 로컬 예시 링크가 나타납니다. 링크 생성·만료·차단 상태는 현재 탭의 React 상태로만 작동합니다.</p>
       </header>
 
-      <Disclosure>실제 공개 페이지, 서버 토큰, 외부 전송은 만들지 않습니다. 공개 예시는 검색엔진 차단(noindex) 전제이며 로그인·편집·원문 데이터 접근을 제공하지 않습니다.</Disclosure>
+      <Disclosure>표시되는 경로는 번들된 로컬 fixture를 확인하는 화면일 뿐, 서비스 공개 링크·서버 토큰·외부 전송을 만들지 않습니다. 공개 예시는 검색엔진 차단(noindex) 전제이며 로그인·편집·원문 데이터 접근을 제공하지 않습니다.</Disclosure>
 
       <section aria-labelledby="share-scope-title" style={{ display: "grid", gap: 10 }}>
         <div><p className="section-kicker">공개 범위</p><h2 id="share-scope-title">관계 결과 요약만 공유</h2></div>
@@ -89,10 +101,10 @@ export function ShareLinkPrototypeScreen() {
         <div><p className="section-kicker">링크 관리</p><h2 id="created-link-title">현재 상태 · {state}</h2></div>
         {link ? (
           <article style={{ ...panel, display: "grid", gap: 12 }}>
-            <label><span style={muted}>로컬 표시용 URL</span><input readOnly value={`https://example.invalid/shared/compatibility?token=${link.token}`} style={field} /></label>
-            <dl style={{ display: "grid", gap: 6, margin: 0 }}><div><dt style={muted}>만료 예정 예시</dt><dd style={{ margin: 0, fontWeight: 700 }}>{link.expires}</dd></div><div><dt style={muted}>robots 정책</dt><dd style={{ margin: 0, fontWeight: 700 }}>noindex, nofollow, noarchive</dd></div></dl>
-            {!disabled && !expired && <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}><button type="button" className="secondary-button" onClick={() => { setExpired(true); setMessage("시간 경과를 대신해 만료 상태를 적용했어요. 예시 링크는 더 이상 열 수 없어요."); }}>만료 상태 체험</button><button type="button" className="secondary-button" onClick={() => { setDisabled(true); setMessage("예시 링크를 즉시 비활성화했어요."); }}>지금 비활성화</button></div>}
-            {(disabled || expired) && <button type="button" className="secondary-button" onClick={() => { setLink(null); setDisabled(false); setExpired(false); setMessage("닫힌 예시를 지웠어요. 새 링크는 다시 명시적으로 만들어야 해요."); }}>닫힌 예시 정리</button>}
+            <label><span style={muted}>로컬 표시용 URL</span><input readOnly value={link.url} style={field} /></label>
+            <dl style={{ display: "grid", gap: 6, margin: 0 }}><div><dt style={muted}>대상 리소스 ID</dt><dd style={{ margin: 0, fontWeight: 700 }}>{link.targetId}</dd></div><div><dt style={muted}>만료 예정 예시</dt><dd style={{ margin: 0, fontWeight: 700 }}>{new Date(link.expiresAt).toLocaleString("ko-KR")}</dd></div><div><dt style={muted}>robots 정책</dt><dd style={{ margin: 0, fontWeight: 700 }}>noindex, nofollow, noarchive</dd></div></dl>
+            {link.status === "active" && <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}><button type="button" className="secondary-button" onClick={() => { setLink((current) => current ? { ...current, status: "expired" } : current); setMessage("시간 경과를 대신해 만료 상태를 적용했어요. 예시 링크는 더 이상 열 수 없어요."); }}>만료 상태 체험</button><button type="button" className="secondary-button" onClick={() => { setLink((current) => current ? { ...current, status: "disabled", disabledAt: new Date().toISOString() } : current); setMessage("예시 링크를 즉시 비활성화했어요."); }}>지금 비활성화</button></div>}
+            {link.status !== "active" && <button type="button" className="secondary-button" onClick={() => { setLink(null); setMessage("닫힌 예시를 지웠어요. 새 링크는 다시 명시적으로 만들어야 해요."); }}>닫힌 예시 정리</button>}
           </article>
         ) : <div style={panel}><strong>표시할 링크가 없어요.</strong><p style={{ ...muted, marginBottom: 0 }}>만료 기간을 고르고 공개 범위를 확인한 뒤 직접 생성하세요.</p></div>}
       </section>
@@ -101,34 +113,49 @@ export function ShareLinkPrototypeScreen() {
   );
 }
 
-type NotificationId = "payment" | "month" | "timing" | "report" | "consult" | "credits" | "resume" | "interest";
-type NotificationTopic = { id: NotificationId; label: string; note: string; deepLink: string; priority: "필수" | "선택" };
+type NotificationTopicCode = keyof NotificationPreferenceView["topics"];
+type NotificationTopic = {
+  code: NotificationTopicCode;
+  label: string;
+  note: string;
+  deepLink: string;
+  targetId: string;
+  classification: "service" | "marketing";
+};
 
 const notificationTopics: readonly NotificationTopic[] = [
-  { id: "payment", label: "결제 완료", note: "결제 상태 확정", deepLink: "/products", priority: "필수" },
-  { id: "month", label: "이번 달 흐름 시작", note: "월간 시작", deepLink: "/flow/month", priority: "선택" },
-  { id: "timing", label: "중요한 시기 진입", note: "전환 구간", deepLink: "/calendar", priority: "선택" },
-  { id: "report", label: "구매 리포트 생성 완료", note: "결과 준비", deepLink: "/report", priority: "필수" },
-  { id: "consult", label: "상담 답변 완료", note: "상담 준비", deepLink: "/consult", priority: "선택" },
-  { id: "credits", label: "이용권 부족", note: "잔여량 부족", deepLink: "/products/credits", priority: "선택" },
-  { id: "resume", label: "이전 상담 이어보기", note: "중단 상담 1회", deepLink: "/consult", priority: "선택" },
-  { id: "interest", label: "관심 주제 관련 변화", note: "선택 주제 변화", deepLink: "/flow/today", priority: "선택" },
+  { code: "payment_completed", label: "결제 완료", note: "결제 상태 확정", deepLink: "/orders/ord_6a2d9f4c8e1b7035", targetId: "ord_6a2d9f4c8e1b7035", classification: "service" },
+  { code: "monthly_flow", label: "이번 달 흐름 시작", note: "월간 시작", deepLink: "/flows/monthly/mfl_3c8e1a7d5b2f9046", targetId: "mfl_3c8e1a7d5b2f9046", classification: "marketing" },
+  { code: "important_period", label: "중요한 시기 진입", note: "전환 구간", deepLink: "/flows/yearly/yfl_8b4e2c7a1d9f6035", targetId: "yfl_8b4e2c7a1d9f6035", classification: "marketing" },
+  { code: "report_completed", label: "구매 리포트 생성 완료", note: "결과 준비", deepLink: "/reports/rpt_5d1a8c3f7e2b9046", targetId: "rpt_5d1a8c3f7e2b9046", classification: "service" },
+  { code: "consultation_completed", label: "상담 답변 완료", note: "상담 준비", deepLink: "/consultations/csn_2f7b4d9a1e8c6035", targetId: "csn_2f7b4d9a1e8c6035", classification: "service" },
+  { code: "low_credits", label: "이용권 부족", note: "잔여량 부족", deepLink: "/credits/crd_9e3a6c1f8b2d7045", targetId: "crd_9e3a6c1f8b2d7045", classification: "service" },
+  { code: "resume_consultation", label: "이전 상담 이어보기", note: "중단 상담 1회", deepLink: "/consultations/csn_7a2e9c4d1f8b6035", targetId: "csn_7a2e9c4d1f8b6035", classification: "marketing" },
+  { code: "interest_change", label: "관심 주제 관련 변화", note: "선택 주제 변화", deepLink: "/flows/daily/dfl_4c9e2a7b1d8f6035", targetId: "dfl_4c9e2a7b1d8f6035", classification: "marketing" },
 ];
 
 export function NotificationPolicyPrototypeScreen() {
-  const [enabled, setEnabled] = useState<Record<NotificationId, boolean>>({ payment: true, month: true, timing: true, report: true, consult: true, credits: false, resume: false, interest: true });
-  const [quietEnabled, setQuietEnabled] = useState(true);
-  const [quietStart, setQuietStart] = useState("22:00");
-  const [quietEnd, setQuietEnd] = useState("08:00");
-  const [duplicateBlocked, setDuplicateBlocked] = useState(true);
-  const [selected, setSelected] = useState<NotificationId>("report");
+  const hydrated = useHydrated();
+  const settingsRaw = useSyncExternalStore(settingsStore.subscribe, settingsStore.rawSnapshot, () => null);
+  const [selectedChannel, setSelectedChannel] = useState<NotificationPreferenceView["channel"]>("push");
+  const [selected, setSelected] = useState<NotificationTopicCode>("report_completed");
   const [previewOpened, setPreviewOpened] = useState(false);
-  const [message, setMessage] = useState("설정은 이 탭에서만 미리보기 됩니다.");
-  const topic = notificationTopics.find((item) => item.id === selected) ?? notificationTopics[0];
+  const [message, setMessage] = useState("설정은 현재 브라우저에만 저장됩니다.");
+  if (!hydrated) return <LoadingState title="알림 설정을 확인하고 있어요" />;
+  void settingsRaw;
+  const inspection = settingsStore.inspect();
+  if (inspection.status === "corrupt" || inspection.status === "unavailable") return <CorruptState title="알림 설정을 읽을 수 없어요" description="손상된 설정을 확인 없이 기본값으로 바꾸지 않습니다." unavailable={inspection.status === "unavailable"} onReset={settingsStore.remove} />;
+  const settings = inspection.status === "ok" ? inspection.value : INITIAL_SETTINGS_DATA;
+  const preference = settings.notifications.find((item) => item.channel === selectedChannel) ?? settings.notifications[0];
+  const topic = notificationTopics.find((item) => item.code === selected) ?? notificationTopics[0];
 
-  function toggleTopic(id: NotificationId) {
-    setEnabled((current) => ({ ...current, [id]: !current[id] }));
-    setMessage("주제별 수신 예시를 변경했어요. 실제 알림 권한이나 예약은 바뀌지 않습니다.");
+  function setPreference(update: (current: NotificationPreferenceView) => NotificationPreferenceView) {
+    const next = { version: 1 as const, notifications: settings.notifications.map((current) => current.channel === preference.channel ? update(current) : current) };
+    setMessage(settingsStore.write(next) ? "알림 선호도를 현재 브라우저에 저장했어요. 실제 알림 권한이나 예약은 바뀌지 않습니다." : "이 브라우저에서는 알림 설정을 저장할 수 없어요.");
+  }
+
+  function toggleTopic(code: NotificationTopicCode) {
+    setPreference((current) => ({ ...current, topics: { ...current.topics, [code]: !current.topics[code] } }));
   }
 
   return (
@@ -137,29 +164,33 @@ export function NotificationPolicyPrototypeScreen() {
       <Disclosure>출시 전 필수 우선순위는 결제 완료와 구매 리포트 생성 완료입니다. 오늘의 운세 반복 푸시는 리텐션 검증 전에는 제공하지 않습니다.</Disclosure>
 
       <section data-slop-allow="multiline-row-meta" aria-labelledby="topics-title" style={{ display: "grid", gap: 9 }}>
-        <div><p className="section-kicker">주제별 선택</p><h2 id="topics-title">알림 종류와 필수 상태 알림</h2></div>
-        {notificationTopics.map((item) => <SwitchRow key={item.id} checked={enabled[item.id]} onChange={() => toggleTopic(item.id)} label={`${item.label}${item.priority === "필수" ? " · 출시 전 우선" : ""}`} note={item.note} />)}
+        <div><p className="section-kicker">채널과 주제별 선택</p><h2 id="topics-title">서비스·마케팅 알림 구분</h2></div>
+        <label><span style={muted}>알림 채널</span><select value={preference.channel} onChange={(event) => setSelectedChannel(event.target.value as NotificationPreferenceView["channel"])} style={field}><option value="push">푸시</option><option value="email">이메일</option></select></label>
+        <SwitchRow checked={preference.enabled} onChange={() => setPreference((current) => ({ ...current, enabled: !current.enabled }))} label={`${preference.channel === "push" ? "푸시" : "이메일"} 채널 사용`} note="현재 채널 전체 수신 상태" />
+        {notificationTopics.map((item) => <div key={item.code} style={{ display: "grid", gap: 4 }}><SwitchRow checked={preference.topics[item.code]} onChange={() => toggleTopic(item.code)} label={`${item.label} · ${item.classification === "service" ? "서비스" : "마케팅"}`} note={item.note} /><small style={{ ...muted, paddingInline: 8 }}>topic · {item.code}</small></div>)}
       </section>
 
       <section aria-labelledby="quiet-title" style={{ display: "grid", gap: 10 }}>
         <div><p className="section-kicker">발송 제한</p><h2 id="quiet-title">야간 방해 금지</h2></div>
-        <SwitchRow checked={quietEnabled} onChange={() => setQuietEnabled((value) => !value)} label="조용한 시간 사용" note="긴급 결제 상태도 실제 발송하지 않는 정책 미리보기예요." />
+        <SwitchRow checked={preference.quietHours.enabled} onChange={() => setPreference((current) => ({ ...current, quietHours: { ...current.quietHours, enabled: !current.quietHours.enabled } }))} label="조용한 시간 사용" note="긴급 결제 상태도 실제 발송하지 않는 정책 미리보기예요." />
         <div style={{ ...panel, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <label><span style={muted}>시작</span><input type="time" value={quietStart} onChange={(event) => setQuietStart(event.target.value)} disabled={!quietEnabled} style={field} /></label>
-          <label><span style={muted}>종료</span><input type="time" value={quietEnd} onChange={(event) => setQuietEnd(event.target.value)} disabled={!quietEnabled} style={field} /></label>
+          <label><span style={muted}>시작</span><input type="time" value={preference.quietHours.start} onChange={(event) => setPreference((current) => ({ ...current, quietHours: { ...current.quietHours, start: event.target.value } }))} disabled={!preference.quietHours.enabled} style={field} /></label>
+          <label><span style={muted}>종료</span><input type="time" value={preference.quietHours.end} onChange={(event) => setPreference((current) => ({ ...current, quietHours: { ...current.quietHours, end: event.target.value } }))} disabled={!preference.quietHours.enabled} style={field} /></label>
         </div>
-        <SwitchRow checked={duplicateBlocked} onChange={() => setDuplicateBlocked((value) => !value)} label="동일 내용 중복 억제" note={duplicateBlocked ? "같은 내용은 두 번째부터 보류" : "비교 체험용으로 중복 허용 중"} />
-        <p style={{ ...panel, ...muted }}><strong style={{ color: "var(--ink)", display: "block", marginBottom: 4 }}>현재 정책 예시</strong>{quietEnabled ? `${quietStart}–${quietEnd}에는 알림을 보류하고 이후 한 번만 표시합니다.` : "조용한 시간이 꺼져 있습니다."} {duplicateBlocked ? "같은 본문·같은 대상의 반복 알림은 합칩니다." : "중복 억제가 꺼진 체험 상태입니다."}</p>
+        <label><span style={muted}>조용한 시간 기준 시간대</span><select value={preference.quietHours.timezone} onChange={(event) => setPreference((current) => ({ ...current, quietHours: { ...current.quietHours, timezone: event.target.value } }))} style={field}><option value="Asia/Seoul">Asia/Seoul (KST)</option><option value="UTC">UTC</option></select></label>
+        <SwitchRow checked={preference.suppressDuplicates} onChange={() => setPreference((current) => ({ ...current, suppressDuplicates: !current.suppressDuplicates }))} label="동일 내용 중복 억제" note={preference.suppressDuplicates ? "같은 내용은 두 번째부터 보류" : "비교 체험용으로 중복 허용 중"} />
+        <p style={{ ...panel, ...muted }}><strong style={{ color: "var(--ink)", display: "block", marginBottom: 4 }}>현재 정책 예시 · {preference.channel}</strong>{preference.quietHours.enabled ? `${preference.quietHours.start}–${preference.quietHours.end} (${preference.quietHours.timezone})에는 알림을 보류하고 이후 한 번만 표시합니다.` : "조용한 시간이 꺼져 있습니다."} {preference.suppressDuplicates ? "같은 본문·같은 대상 ID의 반복 알림은 합칩니다." : "중복 억제가 꺼진 체험 상태입니다."}</p>
       </section>
 
       <section aria-labelledby="deep-link-title" style={{ display: "grid", gap: 10 }}>
         <div><p className="section-kicker">딥링크 미리보기</p><h2 id="deep-link-title">알림을 눌렀을 때</h2></div>
-        <label><span style={muted}>미리 볼 알림</span><select value={selected} onChange={(event) => { setSelected(event.target.value as NotificationId); setPreviewOpened(false); }} style={field}>{notificationTopics.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
+        <label><span style={muted}>미리 볼 알림</span><select value={selected} onChange={(event) => { setSelected(event.target.value as NotificationTopicCode); setPreviewOpened(false); }} style={field}>{notificationTopics.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}</select></label>
         <article style={{ ...panel }}>
-          <small style={{ color: "var(--vermilion)", fontWeight: 800 }}>{topic.priority} · SAJURIUM 예시</small>
+          <small style={{ color: "var(--vermilion)", fontWeight: 800 }}>{topic.classification === "service" ? "서비스" : "마케팅"} · {preference.channel} · {topic.code}</small>
           <h3 style={{ margin: "7px 0" }}>{topic.label}</h3><p style={muted}>{topic.note}. 눌러 관련 화면으로 바로 이동하는 흐름을 확인하세요.</p>
-          <button type="button" className="primary-button" disabled={!enabled[topic.id]} onClick={() => { setPreviewOpened(true); setMessage(`${topic.deepLink} 화면의 로컬 딥링크 도착 미리보기를 열었어요.`); }}>딥링크 도착 미리보기</button>
-          {!enabled[topic.id] && <p style={{ ...muted, marginBottom: 0 }}>이 주제의 알림을 켜야 미리볼 수 있어요.</p>}
+          <p style={muted}>대상 리소스 ID · {topic.targetId}</p>
+          <button type="button" className="primary-button" disabled={!preference.enabled || !preference.topics[topic.code]} onClick={() => { setPreviewOpened(true); setMessage(`${topic.deepLink} 화면의 로컬 딥링크 도착 미리보기를 열었어요.`); }}>딥링크 도착 미리보기</button>
+          {(!preference.enabled || !preference.topics[topic.code]) && <p style={{ ...muted, marginBottom: 0 }}>현재 채널과 이 주제의 알림을 모두 켜야 미리볼 수 있어요.</p>}
         </article>
         {previewOpened && <article tabIndex={-1} style={{ ...panel, background: "var(--surface-warm)" }}><p className="section-kicker">도착 화면 예시 · {topic.deepLink}</p><h3>{topic.label} 관련 화면</h3><p style={muted}>실제 라우팅 없이 도착 위치와 맥락만 보여줍니다. 읽음 처리나 서버 기록은 없습니다.</p><button className="secondary-button" type="button" onClick={() => setPreviewOpened(false)}>미리보기 닫기</button></article>}
       </section>
@@ -229,18 +260,36 @@ export function PlatformLabsPrototypeScreen() {
   );
 }
 
-export function SharedCompatibilityPrototypeScreen() {
+export function SharedCompatibilityPrototypeScreen({ token, state }: { token: string; state: ShareLinkView | null }) {
   const [detail, setDetail] = useState<"strength" | "rhythm" | "practice">("strength");
   const content = useMemo(() => ({
     strength: { title: "서로 다른 속도가 균형이 돼요", body: "한 사람은 방향을 또렷하게 잡고, 다른 사람은 주변의 온도를 살핍니다. 역할을 정하기보다 그때그때 필요한 강점을 빌려 주세요." },
     rhythm: { title: "생각할 여백을 먼저 약속해요", body: "답을 내는 속도가 다를 수 있어요. 중요한 대화에서는 결론을 재촉하지 않고 다시 만날 시간을 정하는 방식이 잘 맞습니다." },
     practice: { title: "이번 주 한 가지 실천", body: "서로에게 고마웠던 장면을 하나씩 말하고, 다음 대화에서 지키고 싶은 작은 규칙을 함께 정해 보세요." },
   }[detail]), [detail]);
+  const displayState = state?.url === `/shared/${token}` ? state.status : "not-found";
+
+  if (displayState !== "active") {
+    const stateContent = {
+      expired: { kicker: "공유 기간 종료", title: "만료된 공유 링크예요", body: "공유자가 정한 열람 기간이 끝났습니다. 요약 내용은 더 이상 표시하지 않습니다." },
+      disabled: { kicker: "공유 중단", title: "닫힌 공유 링크예요", body: "공유자가 이 링크를 비활성화했습니다. 요약 내용은 더 이상 표시하지 않습니다." },
+      "not-found": { kicker: "공유 링크 없음", title: "찾을 수 없는 공유 링크예요", body: "주소가 정확한지 확인해 주세요. 존재 여부나 원문 정보는 공개하지 않습니다." },
+    }[displayState];
+
+    return (
+      <main data-share-state={displayState} style={{ minHeight: "100vh", background: "var(--surface)", color: "var(--ink)", padding: "clamp(24px, 6vw, 72px) 20px" }}>
+        <div style={{ width: "min(680px, 100%)", margin: "0 auto", display: "grid", gap: 22 }}>
+          <header><p className="section-kicker">SAJURIUM · {stateContent.kicker}</p><h1>{stateContent.title}</h1><p className="supporting">{stateContent.body}</p></header>
+          <Disclosure>개인정보, 비공개 상담, 계산 근거, 결제·계정 정보는 이 페이지에서 제공하지 않습니다.</Disclosure>
+        </div>
+      </main>
+    );
+  }
 
   return (
-    <main style={{ minHeight: "100vh", background: "var(--surface)", color: "var(--ink)", padding: "clamp(24px, 6vw, 72px) 20px" }}>
+    <main data-share-state="active" style={{ minHeight: "100vh", background: "var(--surface)", color: "var(--ink)", padding: "clamp(24px, 6vw, 72px) 20px" }}>
       <div style={{ width: "min(680px, 100%)", margin: "0 auto", display: "grid", gap: 22 }}>
-        <header><p className="section-kicker">SAJURIUM · 공유된 관계 요약</p><h1>다름을 이해할수록<br />편안해지는 관계</h1><p className="supporting">누군가 직접 만든 읽기 전용 공유 예시입니다. 검색 결과에는 노출되지 않도록 설정되어 있습니다.</p></header>
+        <header><p className="section-kicker">SAJURIUM · 공유된 관계 요약</p><h1>다름을 이해할수록<br />편안해지는 관계</h1><p className="supporting">고정 fixture로 구성한 읽기 전용 공유 예시입니다. 검색 결과에는 노출되지 않도록 설정되어 있습니다.</p></header>
         <article style={{ ...panel, background: "var(--ink)", color: "#fffdf8", padding: "28px 24px" }}><small style={{ color: "#e9a595", fontWeight: 800 }}>관계 키워드</small><h2 style={{ marginTop: 9 }}>존중 · 여백 · 솔직한 확인</h2><p style={{ color: "#ddd7cb", lineHeight: 1.8 }}>두 사람은 같은 답을 빠르게 찾기보다 서로의 관점을 충분히 들을 때 신뢰가 깊어지는 관계로 표현됩니다.</p></article>
         <section aria-labelledby="public-summary-title" style={{ display: "grid", gap: 12 }}><div><p className="section-kicker">공개 요약</p><h2 id="public-summary-title">함께 살펴볼 내용</h2></div><div className="segmented-control" role="tablist" aria-label="관계 요약 종류">{([['strength', '강점'], ['rhythm', '대화 리듬'], ['practice', '실천']] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={detail === id} className={detail === id ? "selected" : ""} onClick={() => setDetail(id)}>{label}</button>)}</div><article role="tabpanel" style={panel}><h3>{content.title}</h3><p style={muted}>{content.body}</p></article></section>
         <Disclosure>이 페이지는 요약만 보여줍니다. 개인을 특정하는 정보, 비공개 상담, 계산 근거, 결제·계정 정보는 제공하지 않으며 편집이나 원문 열람도 할 수 없습니다.</Disclosure>

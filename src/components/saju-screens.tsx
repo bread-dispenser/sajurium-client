@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import { useRef, useState, useSyncExternalStore } from "react";
 import type { FormEvent } from "react";
 import { CorruptState, LoadingState } from "./page-state";
-import type { BirthInfo, CalendarBasis, FeedbackData, FeedbackId, TopicId } from "@/lib/domain";
+import type { BirthInfo, FeedbackData, FeedbackId, FeedbackReason, TopicId } from "@/lib/domain";
+import type { CalendarKind, FeedbackProvenance, FeedbackTarget, OwnerRelationship, TopicId as ProfileTopicId } from "@/lib/contracts";
+import { hasValidLeapMonthSemantics, maskBirthDate, maskBirthTime, maskBirthplace } from "@/lib/contracts";
 import { useHydrated } from "@/hooks/use-hydrated";
 import {
   BASIC_REPORT,
@@ -41,16 +43,23 @@ function PublicHeader({ step, backHref }: { step?: string; backHref?: string }) 
 }
 
 function sameBirth(left: BirthInfo, right: BirthInfo) {
-  return left.nickname === right.nickname &&
-    left.calendar === right.calendar &&
+  return left.displayName === right.displayName &&
     left.birthDate === right.birthDate &&
+    left.calendar === right.calendar &&
+    left.leapMonth === right.leapMonth &&
     left.birthTime === right.birthTime &&
-    left.unknownTime === right.unknownTime;
-}
-
-function formatBirthDate(value: string) {
-  const [year, month, day] = value.split("-");
-  return `${year}. ${month}. ${day}`;
+    left.birthTimeUnknown === right.birthTimeUnknown &&
+    left.birthplace === right.birthplace &&
+    left.timezone === right.timezone &&
+    left.calculationGender === right.calculationGender &&
+    left.profileType === right.profileType &&
+    left.ownerRelationship === right.ownerRelationship &&
+    left.thirdPartyConsent === right.thirdPartyConsent &&
+    left.personalization.relationshipStatus === right.personalization.relationshipStatus &&
+    left.personalization.occupationStatus === right.personalization.occupationStatus &&
+    left.personalization.primaryConcern === right.personalization.primaryConcern &&
+    left.personalization.interests.length === right.personalization.interests.length &&
+    left.personalization.interests.every((topic, index) => topic === right.personalization.interests[index]);
 }
 
 function localDateValue(date = new Date()) {
@@ -154,15 +163,33 @@ export function BirthScreen({ initialCalculationFailure }: { initialCalculationF
 
   function submitBirth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const nickname = birth.nickname.trim();
+    const displayName = birth.displayName.trim();
     const selectedDate = parseBirthDate(birth.birthDate);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    if (!nickname) return setFormError("이름 또는 닉네임을 입력해 주세요.");
+    if (!displayName) return setFormError("이름 또는 닉네임을 입력해 주세요.");
     if (!selectedDate || selectedDate > today) return setFormError("1900년 이후, 오늘보다 늦지 않은 올바른 생년월일을 입력해 주세요.");
-    if (!birth.unknownTime && !birth.birthTime) return setFormError("출생 시간을 입력하거나 ‘출생 시간을 몰라요’를 선택해 주세요.");
+    if (!hasValidLeapMonthSemantics(birth)) return setFormError("양력 날짜에는 윤달을 선택할 수 없어요.");
+    if (!birth.birthTimeUnknown && !birth.birthTime) return setFormError("출생 시간을 입력하거나 ‘출생 시간을 몰라요’를 선택해 주세요.");
+    if (!birth.birthplace.trim()) return setFormError("출생지를 입력해 주세요.");
+    if (!birth.timezone.trim()) return setFormError("시간대를 입력해 주세요.");
+    if (birth.profileType === "other" && !birth.thirdPartyConsent) return setFormError("다른 사람의 정보를 저장하려면 동의를 확인해 주세요.");
+    if (birth.profileType === "self" && birth.ownerRelationship !== "self") return setFormError("본인 프로필의 관계는 본인이어야 해요.");
+    if (birth.profileType === "other" && birth.ownerRelationship === "self") return setFormError("다른 사람과의 관계를 선택해 주세요.");
 
-    const normalized = { ...birth, nickname };
+    const normalized = {
+      ...birth,
+      displayName,
+      birthplace: birth.birthplace.trim(),
+      timezone: birth.timezone.trim(),
+      birthTime: birth.birthTimeUnknown ? null : birth.birthTime,
+      personalization: {
+        ...birth.personalization,
+        relationshipStatus: birth.personalization.relationshipStatus?.trim() || null,
+        occupationStatus: birth.personalization.occupationStatus?.trim() || null,
+        primaryConcern: birth.personalization.primaryConcern?.trim() || null,
+      },
+    };
     if (!birthDraftStore.write({ version: 1, birth: normalized })) {
       return setFormError("브라우저 저장소를 사용할 수 없어 입력을 이어갈 수 없어요.");
     }
@@ -176,7 +203,7 @@ export function BirthScreen({ initialCalculationFailure }: { initialCalculationF
       <section className="phone-screen onboarding-screen" aria-labelledby="loading-title" aria-live="polite">
         <PublicHeader step="2 / 3" />
         <div className="screen-content loading-content">
-          <div className="form-hero"><p className="section-kicker">예시 리포트 준비</p><h1 id="loading-title">{birth.nickname}님이 읽을 화면을<br />차분히 준비하고 있어요</h1></div>
+          <div className="form-hero"><p className="section-kicker">예시 리포트 준비</p><h1 id="loading-title">{birth.displayName}님이 읽을 화면을<br />차분히 준비하고 있어요</h1></div>
           <div className="loading-status">
             <div className="status-row"><strong>화면 준비</strong><span>2 / 3</span></div>
             <div className="progress-track"><span /></div>
@@ -217,20 +244,31 @@ export function BirthScreen({ initialCalculationFailure }: { initialCalculationF
         <div className="birth-fields">
           <div className="field-group">
             <label className="field-label" htmlFor="nickname">이름 또는 닉네임</label>
-            <input id="nickname" name="nickname" value={birth.nickname} onChange={(event) => updateBirth({ nickname: event.target.value })} autoComplete="nickname" maxLength={20} aria-describedby={formError ? "birth-error" : undefined} />
+            <input id="nickname" name="nickname" value={birth.displayName} onChange={(event) => updateBirth({ displayName: event.target.value })} autoComplete="nickname" maxLength={20} aria-describedby={formError ? "birth-error" : undefined} />
           </div>
           <fieldset><legend className="field-label">달력 기준</legend><div className="segmented-control">
-            {(["solar", "lunar", "leap"] as const).map((basis: CalendarBasis) => <button key={basis} className={birth.calendar === basis ? "selected" : ""} type="button" aria-pressed={birth.calendar === basis} onClick={() => updateBirth({ calendar: basis })}>{{ solar: "양력", lunar: "음력", leap: "윤달" }[basis]}</button>)}
+            {(["solar", "lunar"] as const).map((basis: CalendarKind) => <button key={basis} className={birth.calendar === basis ? "selected" : ""} type="button" aria-pressed={birth.calendar === basis} onClick={() => updateBirth({ calendar: basis, leapMonth: basis === "lunar" ? birth.leapMonth : false })}>{{ solar: "양력", lunar: "음력" }[basis]}</button>)}
           </div></fieldset>
+          {birth.calendar === "lunar" && <label className="check-card"><input type="checkbox" checked={birth.leapMonth} onChange={(event) => updateBirth({ leapMonth: event.target.checked })} /><span>윤달</span></label>}
           <div className="field-group">
             <label className="field-label" htmlFor="birth-date">생년월일</label>
             <input id="birth-date" name="birthDate" type="date" min="1900-01-01" max={localDateValue()} value={birth.birthDate} onChange={(event) => updateBirth({ birthDate: event.target.value })} />
           </div>
           <div className="field-group">
             <label className="field-label" htmlFor="birth-time">출생 시간</label>
-            <input id="birth-time" name="birthTime" type="time" value={birth.birthTime} disabled={birth.unknownTime} onChange={(event) => updateBirth({ birthTime: event.target.value })} />
+            <input id="birth-time" name="birthTime" type="time" value={birth.birthTime ?? ""} disabled={birth.birthTimeUnknown} onChange={(event) => updateBirth({ birthTime: event.target.value || null })} />
           </div>
-          <label className="check-card"><input type="checkbox" checked={birth.unknownTime} onChange={(event) => updateBirth({ unknownTime: event.target.checked })} /><span>출생 시간을 몰라요</span></label>
+          <label className="check-card"><input type="checkbox" checked={birth.birthTimeUnknown} onChange={(event) => updateBirth({ birthTimeUnknown: event.target.checked, birthTime: event.target.checked ? null : birth.birthTime })} /><span>출생 시간을 몰라요</span></label>
+          <div className="field-group"><label className="field-label" htmlFor="birthplace">출생지</label><input id="birthplace" value={birth.birthplace} onChange={(event) => updateBirth({ birthplace: event.target.value })} /></div>
+          <div className="field-group"><label className="field-label" htmlFor="timezone">시간대</label><input id="timezone" value={birth.timezone} onChange={(event) => updateBirth({ timezone: event.target.value })} placeholder="Asia/Seoul" /></div>
+          <fieldset><legend className="field-label">계산 성별</legend><div className="segmented-control">{(["female", "male"] as const).map((gender) => <button key={gender} type="button" className={birth.calculationGender === gender ? "selected" : ""} aria-pressed={birth.calculationGender === gender} onClick={() => updateBirth({ calculationGender: gender })}>{gender === "female" ? "여성" : "남성"}</button>)}</div></fieldset>
+          <label>프로필 유형<select value={birth.profileType} onChange={(event) => updateBirth({ profileType: event.target.value as BirthInfo["profileType"] })}><option value="self">본인</option><option value="other">다른 사람</option></select></label>
+          <label>나와의 관계<select value={birth.ownerRelationship} onChange={(event) => updateBirth({ ownerRelationship: event.target.value as OwnerRelationship })}><option value="self">본인</option><option value="partner">연인·배우자</option><option value="family">가족</option><option value="friend">친구</option><option value="coworker">동료</option></select></label>
+          <fieldset><legend className="field-label">관심 주제 (선택)</legend>{(["love", "career", "money", "family"] as ProfileTopicId[]).map((topic) => <label className="check-card" key={topic}><input type="checkbox" checked={birth.personalization.interests.includes(topic)} onChange={(event) => updateBirth({ personalization: { ...birth.personalization, interests: event.target.checked ? [...birth.personalization.interests, topic] : birth.personalization.interests.filter((item) => item !== topic) } })} />{{ love: "연애", career: "커리어", money: "재물", family: "가족" }[topic as "love" | "career" | "money" | "family"]}</label>)}</fieldset>
+          <label>관계 상태 (선택)<input value={birth.personalization.relationshipStatus ?? ""} onChange={(event) => updateBirth({ personalization: { ...birth.personalization, relationshipStatus: event.target.value || null } })} /></label>
+          <label>직업 상태 (선택)<input value={birth.personalization.occupationStatus ?? ""} onChange={(event) => updateBirth({ personalization: { ...birth.personalization, occupationStatus: event.target.value || null } })} /></label>
+          <label>주요 고민 (선택)<textarea value={birth.personalization.primaryConcern ?? ""} onChange={(event) => updateBirth({ personalization: { ...birth.personalization, primaryConcern: event.target.value || null } })} /></label>
+          {birth.profileType === "other" && <label className="check-card"><input type="checkbox" checked={birth.thirdPartyConsent} onChange={(event) => updateBirth({ thirdPartyConsent: event.target.checked })} /><span>정보 주체의 동의를 확인했어요</span></label>}
         </div>
         <aside className="privacy-panel"><strong>정보는 이 기기에만 머물러요</strong><p>출생 시간 미상 여부는 화면 형식과 이 기기 저장값에만 반영되며 정해진 예시 문장은 달라지지 않아요.</p></aside>
         {formError && <p className="form-error" id="birth-error" role="alert">{formError}</p>}
@@ -250,8 +288,8 @@ export function ReportScreen() {
   return (
     <section className="report-page" aria-labelledby="report-title">
       <div className="screen-content report-content">
-        <div className="editorial-hero"><p className="section-kicker">무료 사주 요약</p><h1 id="report-title">{birth.nickname}님의 사주 요약</h1><p className="supporting">{formatBirthDate(birth.birthDate)} · {birth.unknownTime ? "출생 시간 미상" : birth.birthTime}</p></div>
-        {birth.unknownTime && <p className="accuracy-note">출생 시간 미상 상태만 화면 형식에 반영하며 정해진 예시 문장은 달라지지 않아요.</p>}
+        <div className="editorial-hero"><p className="section-kicker">무료 사주 요약</p><h1 id="report-title">{birth.displayName}님의 사주 요약</h1><p className="supporting">{maskBirthDate(birth.birthDate)} · {maskBirthTime(birth.birthTime, birth.birthTimeUnknown)} · {maskBirthplace(birth.birthplace)}</p></div>
+        {birth.birthTimeUnknown && <p className="accuracy-note">출생 시간 미상 상태만 화면 형식에 반영하며 정해진 예시 문장은 달라지지 않아요.</p>}
         <article className="insight-card current"><small>지금의 흐름</small><strong>{BASIC_REPORT.currentFlow}</strong></article>
         <h2>핵심 성향</h2>
         <div className="insight-list">{BASIC_REPORT.insights.map((insight) => <article className="insight-card" key={insight.id}><div><strong>{insight.title}</strong><p>{insight.description}</p></div></article>)}</div>
@@ -312,6 +350,7 @@ export function TopicsScreen() {
 export function TopicPreviewScreen({ topicId }: { topicId: TopicId }) {
   const topic = getTopic(topicId);
   const preview = getTopicPreview(topicId);
+  const reportId = `rpt_fixture_${topicId}`;
   return (
     <section className="screen-content preview-content" aria-labelledby="preview-title">
       <p className="vermilion-eyebrow">{topic.title} · 체험용 예시</p>
@@ -321,15 +360,33 @@ export function TopicPreviewScreen({ topicId }: { topicId: TopicId }) {
       <article className="reading-section emphasis"><small>점검할 부분</small><strong>{preview.caution}</strong></article>
       <div className="text-section"><h2>지금의 흐름</h2><p>{preview.flow}</p></div>
       <details><summary>왜 이런 결과인가요?</summary><p>현재 내용은 화면 체험을 위한 고정 예시이며 실제 사주 계산 결과가 아니에요. 입력 정보에 따라 문장이 달라지지 않으며, 사주는 선택을 대신하지 않습니다.</p></details>
-      <Link className="primary-button" href={`/report/feedback?topic=${topicId}`}>이 해석 저장하기</Link>
+      <Link className="primary-button" href={`/report/feedback?targetType=report&reportId=${reportId}&topic=${topicId}`}>이 해석 저장하기</Link>
     </section>
   );
 }
 
-export function FeedbackScreen({ topicId }: { topicId: TopicId }) {
+const FIXTURE_FEEDBACK_PROVENANCE: FeedbackProvenance = {
+  profileSnapshotId: "profile_snapshot_fixture_primary",
+  chartSnapshotIds: ["chart_fixture_primary"],
+  modelVersion: null,
+  promptVersion: null,
+  templateVersion: "fixture-1",
+};
+
+const FEEDBACK_REASONS: ReadonlyArray<{ code: FeedbackReason; label: string }> = [
+  { code: "too_generic", label: "내용이 너무 일반적임" },
+  { code: "repetitive", label: "같은 말이 반복됨" },
+  { code: "incorrect_chart", label: "사주 정보가 잘못됨" },
+  { code: "unanswered", label: "질문에 답하지 않음" },
+  { code: "inappropriate", label: "표현이 불쾌하거나 과도함" },
+  { code: "purchase_mismatch", label: "결제 내용과 다름" },
+  { code: "other", label: "기타" },
+];
+
+export function FeedbackScreen({ target, topicId }: { target: Extract<FeedbackTarget, { type: "report" }>; topicId: TopicId }) {
   const router = useRouter();
   const [feedback, setFeedback] = useState<FeedbackId | null>(null);
-  const [reason, setReason] = useState("");
+  const [reason, setReason] = useState<FeedbackReason | "">("");
   const [comment, setComment] = useState("");
   const [reported, setReported] = useState(false);
   const [error, setError] = useState("");
@@ -337,20 +394,33 @@ export function FeedbackScreen({ topicId }: { topicId: TopicId }) {
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!feedback) return setError("가장 가까운 답변 하나를 선택해 주세요.");
+    if (!reason) return setError("상세 사유를 선택해 주세요.");
     const listInspection = feedbackListStore.inspect();
     if (listInspection.status === "corrupt" || listInspection.status === "unavailable") return setError("손상된 피드백 기록을 설정에서 확인해 주세요.");
     const now = new Date().toISOString();
     const current = listInspection.status === "ok" ? listInspection.value.entries : [];
-    const selection = { version: 1 as const, savedAt: now, topic: topicId, feedback };
+    const selection = {
+      version: 1 as const,
+      target,
+      topic: topicId,
+      rating: feedback,
+      reason,
+      comment: comment.trim(),
+      provenance: FIXTURE_FEEDBACK_PROVENANCE,
+      reported,
+      createdAt: now,
+    };
     const list: FeedbackData = {
       version: 1,
       entries: [
         {
           id: `feedback-${now.replace(/\D/g, "")}`,
+          target,
           topic: topicId,
           rating: feedback,
-          reason: reason.trim(),
+          reason,
           comment: comment.trim(),
+          provenance: FIXTURE_FEEDBACK_PROVENANCE,
           reported,
           createdAt: now,
         },
@@ -370,7 +440,7 @@ export function FeedbackScreen({ topicId }: { topicId: TopicId }) {
       <div className="editorial-hero"><p className="section-kicker">해석 평가</p><h1 id="feedback-title">이번 해석은 어떠셨나요?</h1><p className="supporting">응답은 이 기기에만 저장되며 외부로 전송되지 않아요.</p></div>
       <div className="feedback-list" role="radiogroup" aria-label="해석 평가">{FEEDBACK_OPTIONS.map((item) => <label key={item.id} className={`feedback-card ${feedback === item.id ? "selected" : ""}`}><input className="selection-radio" type="radio" name="feedback" value={item.id} checked={feedback === item.id} onChange={() => { setFeedback(item.id); setError(""); }} /><span aria-hidden="true">{item.symbol}</span><span><strong>{item.title}</strong><small>{item.description}</small></span></label>)}</div>
       {feedback && <aside className="selection-summary"><small>선택됨</small><strong>{FEEDBACK_OPTIONS.find((item) => item.id === feedback)?.title}</strong></aside>}
-      <label className="feedback-detail-field">상세 사유<select value={reason} onChange={(event) => setReason(event.target.value)}><option value="">선택하지 않음</option><option value="내용이 너무 일반적임">내용이 너무 일반적임</option><option value="같은 말이 반복됨">같은 말이 반복됨</option><option value="사주 정보가 잘못됨">사주 정보가 잘못됨</option><option value="질문에 답하지 않음">질문에 답하지 않음</option><option value="표현이 불쾌하거나 과도함">표현이 불쾌하거나 과도함</option><option value="결제 내용과 다름">결제 내용과 다름</option><option value="기타">기타</option></select></label>
+      <label className="feedback-detail-field">상세 사유<select value={reason} onChange={(event) => setReason(event.target.value as FeedbackReason | "")} required><option value="">선택해 주세요</option>{FEEDBACK_REASONS.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}</select></label>
       <label className="feedback-detail-field">자유 의견<textarea rows={4} value={comment} onChange={(event) => setComment(event.target.value)} placeholder="구체적인 의견을 남겨주세요" /></label>
       <label className="check-card"><input type="checkbox" checked={reported} onChange={(event) => setReported(event.target.checked)} />부적절하거나 단정적인 표현으로 신고</label>
       {error && <p className="form-error" role="alert">{error}</p>}

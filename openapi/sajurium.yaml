@@ -1,0 +1,1210 @@
+openapi: 3.1.0
+info:
+  title: Sajurium API
+  version: 1.0.0
+  description: Authoritative HTTP contract for Sajurium clients.
+servers:
+  - url: /
+    description: Same-origin deployment; clients may configure another base URL.
+tags:
+  - name: Session
+  - name: Profiles
+  - name: Reports
+  - name: Consultations
+  - name: Commerce
+  - name: Sharing
+  - name: Consent
+  - name: Library
+  - name: Notifications
+  - name: Analytics
+  - name: Operations
+security:
+  - sessionCookie: []
+paths:
+  /api/v1/session:
+    get:
+      tags: [Session]
+      operationId: bootstrapSession
+      security: []
+      responses:
+        '200': { description: Current session and CSRF bootstrap, content: { application/json: { schema: { $ref: '#/components/schemas/SessionBootstrap' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/auth/anonymous:
+    post:
+      tags: [Session]
+      operationId: createAnonymousSession
+      security: []
+      parameters: [{ $ref: '#/components/parameters/RequestId' }]
+      responses:
+        '201': { description: Anonymous session created, content: { application/json: { schema: { $ref: '#/components/schemas/SessionBootstrap' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/auth/social:
+    post:
+      tags: [Session]
+      operationId: authenticateSocial
+      security: []
+      parameters: [{ $ref: '#/components/parameters/RequestId' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/SocialAuthRequest' } } } }
+      responses:
+        '200': { description: Authenticated session, content: { application/json: { schema: { $ref: '#/components/schemas/SessionBootstrap' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/auth/logout:
+    post:
+      tags: [Session]
+      operationId: logout
+      parameters: [{ $ref: '#/components/parameters/RequestId' }, { $ref: '#/components/parameters/CsrfToken' }]
+      responses:
+        '200': { description: Logged out, content: { application/json: { schema: { $ref: '#/components/schemas/MutationMeta' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/auth/anonymous/migrate:
+    post:
+      tags: [Session]
+      operationId: migrateAnonymousSession
+      parameters: [{ $ref: '#/components/parameters/RequestId' }, { $ref: '#/components/parameters/CsrfToken' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AnonymousMigrationRequest' } } } }
+      responses:
+        '200': { description: Migration completed or merge candidates created, content: { application/json: { schema: { $ref: '#/components/schemas/AnonymousMigrationResult' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/profile-merges/{mergeId}/resolve:
+    post:
+      tags: [Session]
+      operationId: resolveProfileMerge
+      parameters: [{ $ref: '#/components/parameters/MergeId' }, { $ref: '#/components/parameters/RequestId' }, { $ref: '#/components/parameters/CsrfToken' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ProfileMergeResolution' } } } }
+      responses:
+        '200': { description: Merge resolved, content: { application/json: { schema: { $ref: '#/components/schemas/ProfileMergeResult' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/account:
+    delete:
+      tags: [Session]
+      operationId: requestAccountDeletion
+      parameters: [{ $ref: '#/components/parameters/RequestId' }, { $ref: '#/components/parameters/CsrfToken' }]
+      responses:
+        '202': { $ref: '#/components/responses/Accepted' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/jobs/{jobId}:
+    get:
+      operationId: getAsyncJob
+      parameters: [{ $ref: '#/components/parameters/JobId' }]
+      responses:
+        '200':
+          description: Job state; poll while queued or running
+          headers: { Retry-After: { $ref: '#/components/headers/RetryAfter' } }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AsyncJob' } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/profiles:
+    get:
+      tags: [Profiles]
+      operationId: listProfiles
+      parameters: [{ $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' }]
+      responses:
+        '200': { description: Masked profile page, content: { application/json: { schema: { $ref: '#/components/schemas/ProfileCursorPage' } } } }
+        '400': { $ref: '#/components/responses/InvalidCursor' }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Profiles]
+      operationId: createProfile
+      parameters: [{ $ref: '#/components/parameters/RequestId' }, { $ref: '#/components/parameters/CsrfToken' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ProfileWrite' } } } }
+      responses:
+        '201': { description: Profile detail, content: { application/json: { schema: { $ref: '#/components/schemas/ProfileMutationResult' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/profiles/{profileId}:
+    parameters: [{ $ref: '#/components/parameters/ProfileId' }]
+    get:
+      tags: [Profiles]
+      operationId: getProfile
+      responses:
+        '200': { description: Authorized unmasked profile detail, content: { application/json: { schema: { $ref: '#/components/schemas/ProfileDetail' } } } }
+        default: { $ref: '#/components/responses/Error' }
+    patch:
+      tags: [Profiles]
+      operationId: updateProfile
+      parameters: [{ $ref: '#/components/parameters/RequestId' }, { $ref: '#/components/parameters/CsrfToken' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ProfileWrite' } } } }
+      responses:
+        '200': { description: Updated profile and new immutable chart reference, content: { application/json: { schema: { $ref: '#/components/schemas/ProfileMutationResult' } } } }
+        default: { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [Profiles]
+      operationId: deleteProfile
+      parameters: [{ $ref: '#/components/parameters/RequestId' }, { $ref: '#/components/parameters/CsrfToken' }]
+      responses:
+        '200': { description: Deleted, content: { application/json: { schema: { $ref: '#/components/schemas/MutationMeta' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/profiles/{profileId}/chart:
+    post:
+      tags: [Profiles]
+      operationId: calculateChart
+      parameters: [{ $ref: '#/components/parameters/ProfileId' }, { $ref: '#/components/parameters/RequestId' }, { $ref: '#/components/parameters/CsrfToken' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      responses:
+        '201': { description: Immutable deterministic chart snapshot, content: { application/json: { schema: { $ref: '#/components/schemas/ChartSnapshot' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/charts/{chartId}:
+    get:
+      tags: [Profiles]
+      operationId: getChart
+      parameters: [{ $ref: '#/components/parameters/ChartId' }]
+      responses:
+        '200': { description: Chart snapshot, content: { application/json: { schema: { $ref: '#/components/schemas/ChartSnapshot' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/charts/{chartId}/reports/basic:
+    post:
+      tags: [Reports]
+      operationId: createBasicReport
+      parameters: [{ $ref: '#/components/parameters/ChartId' }, { $ref: '#/components/parameters/RequestId' }, { $ref: '#/components/parameters/CsrfToken' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ReportCreateRequest' } } } }
+      responses:
+        '202': { $ref: '#/components/responses/Accepted' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/reports:
+    get:
+      tags: [Reports]
+      operationId: listReports
+      parameters: [{ $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' }, { name: profile_id, in: query, schema: { $ref: '#/components/schemas/OpaqueId' } }, { name: kind, in: query, schema: { $ref: '#/components/schemas/ReportKind' } }]
+      responses:
+        '200': { description: Report page, content: { application/json: { schema: { $ref: '#/components/schemas/ReportCursorPage' } } } }
+        '400': { $ref: '#/components/responses/InvalidCursor' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/reports/{reportId}:
+    get:
+      tags: [Reports]
+      operationId: getReport
+      parameters: [{ $ref: '#/components/parameters/ReportId' }]
+      responses:
+        '200': { description: Structured report, content: { application/json: { schema: { $ref: '#/components/schemas/Report' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/reports/{reportId}/retry:
+    post:
+      tags: [Reports]
+      operationId: retryReport
+      parameters: [{ $ref: '#/components/parameters/ReportId' }, { $ref: '#/components/parameters/RequestId' }, { $ref: '#/components/parameters/CsrfToken' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      responses:
+        '202': { $ref: '#/components/responses/Accepted' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/reports/{reportId}/report:
+    post:
+      tags: [Reports]
+      operationId: reportUnsafeReport
+      parameters: [{ $ref: '#/components/parameters/ReportId' }, { $ref: '#/components/parameters/RequestId' }, { $ref: '#/components/parameters/CsrfToken' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ContentReportRequest' } } } }
+      responses:
+        '201': { description: Report filed, content: { application/json: { schema: { $ref: '#/components/schemas/FeedbackResult' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/profiles/{profileId}/flow/{period}:
+    get:
+      tags: [Reports]
+      operationId: getProfileFlow
+      parameters: [{ $ref: '#/components/parameters/ProfileId' }, { name: period, in: path, required: true, schema: { type: string, enum: [today, month, year] } }]
+      responses:
+        '200': { description: Time flow report, content: { application/json: { schema: { $ref: '#/components/schemas/Report' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/consultations:
+    get:
+      tags: [Consultations]
+      operationId: listConsultations
+      parameters: [{ $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' }]
+      responses:
+        '200': { description: Consultation page, content: { application/json: { schema: { $ref: '#/components/schemas/ConsultationCursorPage' } } } }
+        '400': { $ref: '#/components/responses/InvalidCursor' }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Consultations]
+      operationId: createConsultation
+      parameters: [{ $ref: '#/components/parameters/RequestId' }, { $ref: '#/components/parameters/CsrfToken' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ConsultationCreateRequest' } } } }
+      responses:
+        '201': { description: Consultation created, content: { application/json: { schema: { $ref: '#/components/schemas/ConsultationMutationResult' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/consultations/{sessionId}:
+    parameters: [{ $ref: '#/components/parameters/SessionId' }]
+    get:
+      tags: [Consultations]
+      operationId: getConsultation
+      responses:
+        '200': { description: Consultation with messages, content: { application/json: { schema: { $ref: '#/components/schemas/ConsultationSession' } } } }
+        default: { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [Consultations]
+      operationId: deleteConsultation
+      parameters: [{ $ref: '#/components/parameters/RequestId' }, { $ref: '#/components/parameters/CsrfToken' }]
+      responses:
+        '200': { description: Deleted, content: { application/json: { schema: { $ref: '#/components/schemas/MutationMeta' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/consultations/{sessionId}/messages:
+    post:
+      tags: [Consultations]
+      operationId: createConsultationMessage
+      parameters: [{ $ref: '#/components/parameters/SessionId' }, { $ref: '#/components/parameters/RequestId' }, { $ref: '#/components/parameters/CsrfToken' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ConsultationMessageRequest' } } } }
+      responses:
+        '202': { $ref: '#/components/responses/Accepted' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/compatibilities:
+    post:
+      tags: [Reports]
+      operationId: createCompatibility
+      parameters: [{ $ref: '#/components/parameters/RequestId' }, { $ref: '#/components/parameters/CsrfToken' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CompatibilityCreateRequest' } } } }
+      responses:
+        '202': { $ref: '#/components/responses/Accepted' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/compatibilities/{compatibilityId}:
+    get:
+      tags: [Reports]
+      operationId: getCompatibility
+      parameters: [{ $ref: '#/components/parameters/CompatibilityId' }]
+      responses:
+        '200': { description: Compatibility report, content: { application/json: { schema: { $ref: '#/components/schemas/CompatibilityReport' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/compatibilities/{compatibilityId}/retry:
+    post:
+      tags: [Reports]
+      operationId: retryCompatibility
+      parameters: [{ $ref: '#/components/parameters/CompatibilityId' }, { $ref: '#/components/parameters/RequestId' }, { $ref: '#/components/parameters/CsrfToken' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      responses:
+        '202': { $ref: '#/components/responses/Accepted' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/products:
+    get:
+      tags: [Commerce]
+      operationId: listProducts
+      security: []
+      responses:
+        '200': { description: Active product catalog, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Product' } } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/orders:
+    post:
+      tags: [Commerce]
+      operationId: createOrder
+      parameters: [{ $ref: '#/components/parameters/RequestId' }, { $ref: '#/components/parameters/CsrfToken' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/OrderCreateRequest' } } } }
+      responses:
+        '201': { description: Order created from server catalog price, content: { application/json: { schema: { $ref: '#/components/schemas/OrderMutationResult' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/orders/{orderId}:
+    get:
+      tags: [Commerce]
+      operationId: getOrder
+      parameters: [{ $ref: '#/components/parameters/OrderId' }]
+      responses:
+        '200': { description: Order, content: { application/json: { schema: { $ref: '#/components/schemas/Order' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/payments/confirm:
+    post:
+      tags: [Commerce]
+      operationId: confirmPayment
+      parameters: [{ $ref: '#/components/parameters/RequestId' }, { $ref: '#/components/parameters/CsrfToken' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PaymentConfirmation' } } } }
+      responses:
+        '202': { $ref: '#/components/responses/Accepted' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/payments/webhooks/{provider}:
+    post:
+      tags: [Commerce]
+      operationId: receivePaymentWebhook
+      security: []
+      parameters: [{ name: provider, in: path, required: true, schema: { type: string, enum: [toss, apple, google] } }, { name: X-Webhook-Signature, in: header, required: true, schema: { type: string, minLength: 16 } }, { $ref: '#/components/parameters/RequestId' }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+      responses:
+        '200': { description: Verified event processed idempotently, content: { application/json: { schema: { $ref: '#/components/schemas/MutationMeta' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/orders/{orderId}/refunds:
+    post:
+      tags: [Commerce]
+      operationId: createRefund
+      parameters: [{ $ref: '#/components/parameters/OrderId' }, { $ref: '#/components/parameters/RequestId' }, { $ref: '#/components/parameters/CsrfToken' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/RefundRequest' } } } }
+      responses:
+        '202': { $ref: '#/components/responses/Accepted' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/credits:
+    get:
+      tags: [Commerce]
+      operationId: getCreditBalance
+      responses:
+        '200': { description: Authoritative balance, content: { application/json: { schema: { $ref: '#/components/schemas/CreditBalance' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/credit-ledger:
+    get:
+      tags: [Commerce]
+      operationId: listCreditLedger
+      parameters: [{ $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' }]
+      responses:
+        '200': { description: Immutable credit ledger page, content: { application/json: { schema: { $ref: '#/components/schemas/CreditLedgerCursorPage' } } } }
+        '400': { $ref: '#/components/responses/InvalidCursor' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/share-links:
+    get:
+      tags: [Sharing]
+      operationId: listShareLinks
+      parameters: [{ $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' }]
+      responses:
+        '200': { description: Share link page without raw tokens, content: { application/json: { schema: { $ref: '#/components/schemas/ShareLinkCursorPage' } } } }
+        '400': { $ref: '#/components/responses/InvalidCursor' }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Sharing]
+      operationId: createShareLink
+      parameters: [{ $ref: '#/components/parameters/RequestId' }, { $ref: '#/components/parameters/CsrfToken' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ShareLinkCreateRequest' } } } }
+      responses:
+        '201': { description: Link and one-time public URL, content: { application/json: { schema: { $ref: '#/components/schemas/ShareLinkCreated' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/share-links/{shareLinkId}:
+    parameters: [{ $ref: '#/components/parameters/ShareLinkId' }]
+    get:
+      tags: [Sharing]
+      operationId: getShareLink
+      responses:
+        '200': { description: Share link metadata, content: { application/json: { schema: { $ref: '#/components/schemas/ShareLink' } } } }
+        default: { $ref: '#/components/responses/Error' }
+    patch:
+      tags: [Sharing]
+      operationId: updateShareLink
+      parameters: [{ $ref: '#/components/parameters/RequestId' }, { $ref: '#/components/parameters/CsrfToken' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ShareLinkUpdateRequest' } } } }
+      responses:
+        '200': { description: Updated link, content: { application/json: { schema: { $ref: '#/components/schemas/ShareLinkMutationResult' } } } }
+        default: { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [Sharing]
+      operationId: deactivateShareLink
+      parameters: [{ $ref: '#/components/parameters/RequestId' }, { $ref: '#/components/parameters/CsrfToken' }]
+      responses:
+        '200': { description: Deactivated, content: { application/json: { schema: { $ref: '#/components/schemas/MutationMeta' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/shared/{token}:
+    get:
+      tags: [Sharing]
+      operationId: getPublicSharedResult
+      security: []
+      parameters: [{ name: token, in: path, required: true, schema: { type: string, minLength: 32, maxLength: 256 } }]
+      responses:
+        '200': { description: Redacted public result, headers: { X-Robots-Tag: { schema: { type: string, const: 'noindex, nofollow, noarchive' } } }, content: { application/json: { schema: { $ref: '#/components/schemas/PublicSharedResult' } } } }
+        '404': { $ref: '#/components/responses/Error' }
+        '410': { $ref: '#/components/responses/Error' }
+  /api/v1/consents:
+    get:
+      tags: [Consent]
+      operationId: listConsents
+      responses:
+        '200': { description: Current versioned consent records, content: { application/json: { schema: { $ref: '#/components/schemas/ConsentListResult' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/consents/{consentType}:
+    parameters: [{ $ref: '#/components/parameters/ConsentType' }]
+    get:
+      tags: [Consent]
+      operationId: getConsent
+      responses:
+        '200': { description: Current consent record, content: { application/json: { schema: { $ref: '#/components/schemas/ConsentRecord' } } } }
+        default: { $ref: '#/components/responses/Error' }
+    put:
+      tags: [Consent]
+      operationId: updateConsent
+      parameters: [{ $ref: '#/components/parameters/RequestId' }, { $ref: '#/components/parameters/CsrfToken' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ConsentUpdateRequest' } } } }
+      responses:
+        '200': { description: Versioned consent recorded, content: { application/json: { schema: { $ref: '#/components/schemas/ConsentMutationResult' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/consents/{consentType}/revoke:
+    post:
+      tags: [Consent]
+      operationId: revokeConsent
+      parameters: [{ $ref: '#/components/parameters/ConsentType' }, { $ref: '#/components/parameters/RequestId' }, { $ref: '#/components/parameters/CsrfToken' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ConsentRevokeRequest' } } } }
+      responses:
+        '200': { description: Consent revoked while retaining its immutable version history, content: { application/json: { schema: { $ref: '#/components/schemas/ConsentMutationResult' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/library:
+    get:
+      tags: [Library]
+      operationId: listLibraryItems
+      parameters:
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+        - { name: type, in: query, required: false, schema: { $ref: '#/components/schemas/LibraryItemType' } }
+        - { name: profile_id, in: query, required: false, schema: { $ref: '#/components/schemas/OpaqueId' } }
+        - { name: topic, in: query, required: false, schema: { $ref: '#/components/schemas/LibraryTopic' } }
+        - { name: hidden, in: query, required: false, schema: { type: boolean } }
+      responses:
+        '200': { description: Library cursor page, content: { application/json: { schema: { $ref: '#/components/schemas/LibraryCursorPage' } } } }
+        '400': { $ref: '#/components/responses/InvalidCursor' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/library/{libraryItemId}:
+    parameters: [{ $ref: '#/components/parameters/LibraryItemId' }]
+    get:
+      tags: [Library]
+      operationId: getLibraryItem
+      responses:
+        '200': { description: Library item with authoritative access and allowed actions, content: { application/json: { schema: { $ref: '#/components/schemas/LibraryItem' } } } }
+        default: { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [Library]
+      operationId: deleteLibraryItem
+      description: Deletes only non-purchased content. The server MUST reject deletion of purchased content with LIBRARY_PURCHASED_DELETE_FORBIDDEN; purchased content can only be hidden.
+      parameters: [{ $ref: '#/components/parameters/RequestId' }, { $ref: '#/components/parameters/CsrfToken' }]
+      responses:
+        '200': { description: Non-purchased item deleted, content: { application/json: { schema: { $ref: '#/components/schemas/MutationMeta' } } } }
+        '403': { $ref: '#/components/responses/PurchasedLibraryDeleteForbidden' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/library/{libraryItemId}/read:
+    put:
+      tags: [Library]
+      operationId: markLibraryItemRead
+      parameters: [{ $ref: '#/components/parameters/LibraryItemId' }, { $ref: '#/components/parameters/RequestId' }, { $ref: '#/components/parameters/CsrfToken' }]
+      responses:
+        '200': { description: Item marked read and allowed actions recomputed, content: { application/json: { schema: { $ref: '#/components/schemas/LibraryMutationResult' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/library/{libraryItemId}/hide:
+    put:
+      tags: [Library]
+      operationId: hideLibraryItem
+      parameters: [{ $ref: '#/components/parameters/LibraryItemId' }, { $ref: '#/components/parameters/RequestId' }, { $ref: '#/components/parameters/CsrfToken' }]
+      responses:
+        '200': { description: Item hidden and allowed actions recomputed, content: { application/json: { schema: { $ref: '#/components/schemas/LibraryMutationResult' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/library/{libraryItemId}/unhide:
+    put:
+      tags: [Library]
+      operationId: unhideLibraryItem
+      parameters: [{ $ref: '#/components/parameters/LibraryItemId' }, { $ref: '#/components/parameters/RequestId' }, { $ref: '#/components/parameters/CsrfToken' }]
+      responses:
+        '200': { description: Item unhidden and allowed actions recomputed, content: { application/json: { schema: { $ref: '#/components/schemas/LibraryMutationResult' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/notification-preferences:
+    get:
+      tags: [Notifications]
+      operationId: getNotificationPreferences
+      responses:
+        '200': { description: One preference view per supported delivery channel, content: { application/json: { schema: { type: array, minItems: 2, maxItems: 2, items: { $ref: '#/components/schemas/NotificationPreferences' } } } } }
+        default: { $ref: '#/components/responses/Error' }
+    patch:
+      tags: [Notifications]
+      operationId: updateNotificationPreferences
+      parameters: [{ $ref: '#/components/parameters/RequestId' }, { $ref: '#/components/parameters/CsrfToken' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationPreferencesWrite' } } } }
+      responses:
+        '200': { description: Updated preferences, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationPreferencesResult' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/push-tokens:
+    post:
+      operationId: registerPushToken
+      parameters: [{ $ref: '#/components/parameters/RequestId' }, { $ref: '#/components/parameters/CsrfToken' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PushTokenRequest' } } } }
+      responses:
+        '201': { description: Registered, content: { application/json: { schema: { $ref: '#/components/schemas/PushTokenResult' } } } }
+        default: { $ref: '#/components/responses/Error' }
+    delete:
+      operationId: revokePushToken
+      parameters: [{ $ref: '#/components/parameters/RequestId' }, { $ref: '#/components/parameters/CsrfToken' }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [push_token_id], properties: { push_token_id: { $ref: '#/components/schemas/OpaqueId' } } } } } }
+      responses:
+        '200': { description: Revoked, content: { application/json: { schema: { $ref: '#/components/schemas/MutationMeta' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/feedback:
+    post:
+      operationId: createFeedback
+      parameters: [{ $ref: '#/components/parameters/RequestId' }, { $ref: '#/components/parameters/CsrfToken' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/FeedbackRequest' } } } }
+      responses:
+        '201': { description: Feedback with immutable target provenance, content: { application/json: { schema: { $ref: '#/components/schemas/FeedbackResult' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/privacy/exports:
+    post:
+      operationId: requestPrivacyExport
+      parameters: [{ $ref: '#/components/parameters/RequestId' }, { $ref: '#/components/parameters/CsrfToken' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      responses:
+        '202': { $ref: '#/components/responses/Accepted' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/privacy/deletions:
+    post:
+      operationId: requestPrivacyDeletion
+      parameters: [{ $ref: '#/components/parameters/RequestId' }, { $ref: '#/components/parameters/CsrfToken' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PrivacyDeletionRequest' } } } }
+      responses:
+        '202': { $ref: '#/components/responses/Accepted' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/analytics/events:
+    post:
+      tags: [Analytics]
+      operationId: ingestAnalyticsEvents
+      security: []
+      parameters: [{ $ref: '#/components/parameters/RequestId' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AnalyticsBatch' } } } }
+      responses:
+        '202': { $ref: '#/components/responses/Accepted' }
+        '400': { $ref: '#/components/responses/SensitiveAnalyticsFields' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/admin/users:
+    get:
+      tags: [Operations]
+      operationId: adminListUsers
+      parameters: [{ $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' }, { name: status, in: query, schema: { type: string, enum: [ACTIVE, RESTRICTED, DELETION_REQUESTED, DELETED] } }]
+      responses:
+        '200': { description: RBAC-filtered user page, content: { application/json: { schema: { $ref: '#/components/schemas/AdminUserCursorPage' } } } }
+        '400': { $ref: '#/components/responses/InvalidCursor' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/admin/orders/{orderId}:
+    get:
+      tags: [Operations]
+      operationId: adminGetOrder
+      parameters: [{ $ref: '#/components/parameters/OrderId' }]
+      responses:
+        '200': { description: Order operations detail, content: { application/json: { schema: { $ref: '#/components/schemas/Order' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/admin/commands:
+    post:
+      tags: [Operations]
+      operationId: executeAdminCommand
+      description: Executes one stable, typed operational command with optimistic concurrency and creates an immutable audit record carrying the same request ID.
+      parameters: [{ $ref: '#/components/parameters/RequestId' }, { $ref: '#/components/parameters/CsrfToken' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AdminCommandRequest' } } } }
+      responses:
+        '202': { $ref: '#/components/responses/Accepted' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/admin/audit-logs:
+    get:
+      tags: [Operations]
+      operationId: listAuditLogs
+      parameters: [{ $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' }, { name: command_type, in: query, schema: { $ref: '#/components/schemas/AdminCommandType' } }, { name: target_type, in: query, schema: { $ref: '#/components/schemas/AdminTargetType' } }, { name: target_id, in: query, schema: { $ref: '#/components/schemas/OpaqueId' } }]
+      responses:
+        '200': { description: Immutable audit page, content: { application/json: { schema: { $ref: '#/components/schemas/AuditLogCursorPage' } } } }
+        '400': { $ref: '#/components/responses/InvalidCursor' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/admin/analytics:
+    get:
+      tags: [Operations]
+      operationId: getAdminAnalytics
+      parameters: [{ name: from, in: query, required: true, schema: { type: string, format: date } }, { name: to, in: query, required: true, schema: { type: string, format: date } }]
+      responses:
+        '200': { description: Aggregated non-sensitive funnel metrics, content: { application/json: { schema: { $ref: '#/components/schemas/AnalyticsSummary' } } } }
+        default: { $ref: '#/components/responses/Error' }
+components:
+  securitySchemes:
+    sessionCookie: { type: apiKey, in: cookie, name: sajurium_session }
+  parameters:
+    RequestId: { name: X-Request-ID, in: header, required: false, schema: { type: string, minLength: 8, maxLength: 128 } }
+    CsrfToken: { name: X-CSRFToken, in: header, required: true, schema: { type: string, minLength: 16 } }
+    IdempotencyKey: { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 8, maxLength: 255 } }
+    Cursor: { name: cursor, in: query, required: false, description: Opaque continuation token returned as next_cursor by the same operation and filter set. Clients MUST NOT inspect or modify it., schema: { type: string, minLength: 1, maxLength: 2048 } }
+    Limit: { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+    JobId: { name: jobId, in: path, required: true, schema: { $ref: '#/components/schemas/OpaqueId' } }
+    ProfileId: { name: profileId, in: path, required: true, schema: { $ref: '#/components/schemas/OpaqueId' } }
+    ChartId: { name: chartId, in: path, required: true, schema: { $ref: '#/components/schemas/OpaqueId' } }
+    ReportId: { name: reportId, in: path, required: true, schema: { $ref: '#/components/schemas/OpaqueId' } }
+    SessionId: { name: sessionId, in: path, required: true, schema: { $ref: '#/components/schemas/OpaqueId' } }
+    CompatibilityId: { name: compatibilityId, in: path, required: true, schema: { $ref: '#/components/schemas/OpaqueId' } }
+    OrderId: { name: orderId, in: path, required: true, schema: { $ref: '#/components/schemas/OpaqueId' } }
+    ShareLinkId: { name: shareLinkId, in: path, required: true, schema: { $ref: '#/components/schemas/OpaqueId' } }
+    MergeId: { name: mergeId, in: path, required: true, schema: { $ref: '#/components/schemas/OpaqueId' } }
+    LibraryItemId: { name: libraryItemId, in: path, required: true, schema: { $ref: '#/components/schemas/OpaqueId' } }
+    ConsentType: { name: consentType, in: path, required: true, schema: { $ref: '#/components/schemas/ConsentType' } }
+  headers:
+    RetryAfter: { description: Seconds before polling again, schema: { type: integer, minimum: 1 } }
+  responses:
+    Error:
+      description: API error
+      content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
+    Accepted:
+      description: Asynchronous work accepted
+      headers: { Retry-After: { $ref: '#/components/headers/RetryAfter' } }
+      content: { application/json: { schema: { $ref: '#/components/schemas/AcceptedJob' } } }
+    InvalidCursor:
+      description: Cursor is malformed, expired, or does not match the operation and filters.
+      content: { application/json: { schema: { $ref: '#/components/schemas/InvalidCursorError' } } }
+    PurchasedLibraryDeleteForbidden:
+      description: Purchased library content is retained and can only be hidden.
+      content: { application/json: { schema: { $ref: '#/components/schemas/PurchasedLibraryDeleteError' } } }
+    SensitiveAnalyticsFields:
+      description: Batch rejected because an event contains a forbidden sensitive field.
+      content: { application/json: { schema: { $ref: '#/components/schemas/SensitiveAnalyticsFieldError' } } }
+  schemas:
+    OpaqueId: { type: string, pattern: '^[A-Za-z][A-Za-z0-9_-]{7,127}$', examples: [profile_01JABCDEF123] }
+    DateTime: { type: string, format: date-time }
+    ApiError:
+      type: object
+      additionalProperties: false
+      required: [code, message, field_errors, request_id, retryable]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        field_errors: { type: object, additionalProperties: { type: array, items: { type: string } } }
+        request_id: { type: string }
+        retryable: { type: boolean }
+    InvalidCursorError:
+      allOf:
+        - $ref: '#/components/schemas/ApiError'
+        - type: object
+          properties: { code: { type: string, const: INVALID_CURSOR } }
+    PurchasedLibraryDeleteError:
+      allOf:
+        - $ref: '#/components/schemas/ApiError'
+        - type: object
+          properties: { code: { type: string, const: LIBRARY_PURCHASED_DELETE_FORBIDDEN } }
+    SensitiveAnalyticsFieldError:
+      allOf:
+        - $ref: '#/components/schemas/ApiError'
+        - type: object
+          properties: { code: { type: string, const: ANALYTICS_SENSITIVE_FIELD_FORBIDDEN } }
+    MutationMeta:
+      type: object
+      additionalProperties: false
+      required: [request_id, server_time]
+      properties: { request_id: { type: string }, server_time: { $ref: '#/components/schemas/DateTime' } }
+    CursorPage:
+      type: object
+      required: [next_cursor, has_more]
+      properties:
+        next_cursor: { type: [string, 'null'], maxLength: 2048, description: Opaque token for the next page; null when has_more is false. }
+        has_more: { type: boolean, description: Whether another page is currently available. }
+    JobStatus: { type: string, enum: [QUEUED, RUNNING, SUCCEEDED, FAILED, CANCELLED] }
+    AcceptedJob:
+      type: object
+      additionalProperties: false
+      required: [job_id, job_url, status, request_id, server_time]
+      properties:
+        job_id: { $ref: '#/components/schemas/OpaqueId' }
+        job_url: { type: string, format: uri-reference, pattern: '^/api/v1/jobs/[A-Za-z][A-Za-z0-9_-]{7,127}$', description: Observable polling endpoint for this accepted operation. }
+        status: { type: string, enum: [QUEUED, RUNNING] }
+        resource_id: { oneOf: [{ $ref: '#/components/schemas/OpaqueId' }, { type: 'null' }] }
+        resource_url: { type: [string, 'null'], format: uri-reference, description: Observable canonical resource endpoint when the target resource is already known. }
+        request_id: { type: string }
+        server_time: { $ref: '#/components/schemas/DateTime' }
+    AsyncJob:
+      type: object
+      additionalProperties: false
+      required: [job_id, job_type, status, attempt_count, idempotency_key, created_at, updated_at]
+      properties:
+        job_id: { $ref: '#/components/schemas/OpaqueId' }
+        job_type: { type: string, enum: [REPORT_GENERATION, COMPATIBILITY_GENERATION, CONSULTATION_RESPONSE, ORDER_FULFILLMENT, REFUND, PRIVACY_EXPORT, PRIVACY_DELETION, ANALYTICS_BATCH, ADMIN_COMMAND] }
+        status: { $ref: '#/components/schemas/JobStatus' }
+        attempt_count: { type: integer, minimum: 0 }
+        idempotency_key: { type: string }
+        resource_id: { oneOf: [{ $ref: '#/components/schemas/OpaqueId' }, { type: 'null' }] }
+        next_retry_at: { oneOf: [{ $ref: '#/components/schemas/DateTime' }, { type: 'null' }] }
+        error_code: { type: [string, 'null'] }
+        created_at: { $ref: '#/components/schemas/DateTime' }
+        updated_at: { $ref: '#/components/schemas/DateTime' }
+    SessionBootstrap:
+      type: object
+      required: [session_id, subject_type, csrf_token, expires_at]
+      properties:
+        session_id: { $ref: '#/components/schemas/OpaqueId' }
+        subject_type: { type: string, enum: [ANONYMOUS, USER] }
+        user_id: { oneOf: [{ $ref: '#/components/schemas/OpaqueId' }, { type: 'null' }] }
+        csrf_token: { type: string }
+        expires_at: { $ref: '#/components/schemas/DateTime' }
+    SocialAuthRequest:
+      type: object
+      additionalProperties: false
+      required: [provider, token]
+      properties: { provider: { type: string, enum: [KAKAO, APPLE, GOOGLE] }, token: { type: string, minLength: 16 }, redirect_uri: { type: string, format: uri } }
+    AnonymousMigrationRequest:
+      type: object
+      additionalProperties: false
+      required: [anonymous_session_id]
+      properties: { anonymous_session_id: { $ref: '#/components/schemas/OpaqueId' } }
+    ProfileMergeCandidate:
+      type: object
+      required: [merge_id, source_profile_id, target_profile_id, reason]
+      properties: { merge_id: { $ref: '#/components/schemas/OpaqueId' }, source_profile_id: { $ref: '#/components/schemas/OpaqueId' }, target_profile_id: { $ref: '#/components/schemas/OpaqueId' }, reason: { type: string } }
+    AnonymousMigrationResult:
+      type: object
+      required: [migrated_profile_ids, merge_candidates, request_id, server_time]
+      properties:
+        migrated_profile_ids: { type: array, items: { $ref: '#/components/schemas/OpaqueId' } }
+        merge_candidates: { type: array, items: { $ref: '#/components/schemas/ProfileMergeCandidate' } }
+        request_id: { type: string }
+        server_time: { $ref: '#/components/schemas/DateTime' }
+    ProfileMergeResolution:
+      type: object
+      additionalProperties: false
+      required: [action]
+      properties: { action: { type: string, enum: [KEEP_SOURCE, KEEP_TARGET, MERGE_INTO_TARGET] } }
+    ProfileMergeResult:
+      type: object
+      required: [merge_id, profile_id, status, request_id, server_time]
+      properties: { merge_id: { $ref: '#/components/schemas/OpaqueId' }, profile_id: { $ref: '#/components/schemas/OpaqueId' }, status: { type: string, const: RESOLVED }, request_id: { type: string }, server_time: { $ref: '#/components/schemas/DateTime' } }
+    CalendarType: { type: string, enum: [SOLAR, LUNAR] }
+    ProfileWrite:
+      type: object
+      additionalProperties: false
+      required: [nickname, ownership, calendar_type, birth_date, birth_time_unknown, birth_place, timezone, gender_basis, consent_version]
+      properties:
+        nickname: { type: string, minLength: 1, maxLength: 40 }
+        ownership: { type: string, enum: [SELF, OTHER] }
+        relationship: { type: [string, 'null'], maxLength: 40 }
+        calendar_type: { $ref: '#/components/schemas/CalendarType' }
+        lunar_leap_month: { type: boolean, default: false }
+        birth_date: { type: string, format: date }
+        birth_time: { type: [string, 'null'], format: time }
+        birth_time_unknown: { type: boolean }
+        birth_place: { type: string, minLength: 1, maxLength: 200 }
+        timezone: { type: string, examples: [Asia/Seoul] }
+        gender_basis: { type: string, enum: [MALE, FEMALE] }
+        interests: { type: array, maxItems: 20, items: { type: string } }
+        relationship_status: { type: [string, 'null'] }
+        employment_status: { type: [string, 'null'] }
+        current_concern: { type: [string, 'null'], maxLength: 500 }
+        third_party_consent_confirmed: { type: boolean, default: false }
+        consent_version: { type: string }
+    MaskedProfile:
+      type: object
+      required: [profile_id, nickname, ownership, masked_birth_date, masked_birth_place, birth_time_unknown, updated_at]
+      properties:
+        profile_id: { $ref: '#/components/schemas/OpaqueId' }
+        nickname: { type: string }
+        ownership: { type: string, enum: [SELF, OTHER] }
+        masked_birth_date: { type: string, examples: ['1990-**-**'] }
+        masked_birth_time: { type: [string, 'null'], examples: ['**:**'] }
+        masked_birth_place: { type: [string, 'null'], examples: ['서울 ***'] }
+        birth_time_unknown: { type: boolean }
+        updated_at: { $ref: '#/components/schemas/DateTime' }
+    ProfileDetail:
+      allOf:
+        - $ref: '#/components/schemas/ProfileWrite'
+        - type: object
+          required: [profile_id, created_at, updated_at]
+          properties: { profile_id: { $ref: '#/components/schemas/OpaqueId' }, current_chart_id: { oneOf: [{ $ref: '#/components/schemas/OpaqueId' }, { type: 'null' }] }, created_at: { $ref: '#/components/schemas/DateTime' }, updated_at: { $ref: '#/components/schemas/DateTime' } }
+    ProfileMutationResult:
+      type: object
+      required: [profile, request_id, server_time]
+      properties: { profile: { $ref: '#/components/schemas/ProfileDetail' }, chart_id: { oneOf: [{ $ref: '#/components/schemas/OpaqueId' }, { type: 'null' }] }, request_id: { type: string }, server_time: { $ref: '#/components/schemas/DateTime' } }
+    ProfileCursorPage:
+      allOf: [{ $ref: '#/components/schemas/CursorPage' }, { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/MaskedProfile' } } } }]
+    Pillar:
+      type: object
+      required: [heavenly_stem, earthly_branch]
+      properties: { heavenly_stem: { type: string }, earthly_branch: { type: string } }
+    ChartSnapshot:
+      type: object
+      required: [chart_id, profile_id, input_hash, engine_version, calendar_version, calculation_method, normalized_input, pillars, five_elements, created_at]
+      properties:
+        chart_id: { $ref: '#/components/schemas/OpaqueId' }
+        profile_id: { $ref: '#/components/schemas/OpaqueId' }
+        input_hash: { type: string }
+        engine_version: { type: string }
+        calendar_version: { type: string }
+        calculation_method: { type: string }
+        normalized_input: { type: object, additionalProperties: true }
+        pillars: { type: object, required: [year, month, day], properties: { year: { $ref: '#/components/schemas/Pillar' }, month: { $ref: '#/components/schemas/Pillar' }, day: { $ref: '#/components/schemas/Pillar' }, hour: { oneOf: [{ $ref: '#/components/schemas/Pillar' }, { type: 'null' }] } } }
+        five_elements: { type: object, required: [wood, fire, earth, metal, water], properties: { wood: { type: integer }, fire: { type: integer }, earth: { type: integer }, metal: { type: integer }, water: { type: integer } } }
+        ten_gods: { type: array, items: { type: string } }
+        fortune_cycles: { type: array, items: { type: object, required: [start_age, pillar], properties: { start_age: { type: number }, pillar: { $ref: '#/components/schemas/Pillar' } } } }
+        created_at: { $ref: '#/components/schemas/DateTime' }
+    ReportKind: { type: string, enum: [BASIC, TODAY, MONTH, YEAR, LOVE, CAREER, WEALTH, ANNUAL, DECADE] }
+    GenerationStatus: { type: string, enum: [QUEUED, GENERATING, READY, FAILED] }
+    ReportCreateRequest:
+      type: object
+      required: [kind]
+      properties: { kind: { $ref: '#/components/schemas/ReportKind' }, product_id: { oneOf: [{ $ref: '#/components/schemas/OpaqueId' }, { type: 'null' }] }, period_start: { type: [string, 'null'], format: date } }
+    Report:
+      type: object
+      required: [report_id, chart_id, profile_id, kind, status, sections, excluded_scopes, provenance, created_at, updated_at]
+      properties:
+        report_id: { $ref: '#/components/schemas/OpaqueId' }
+        chart_id: { $ref: '#/components/schemas/OpaqueId' }
+        profile_id: { $ref: '#/components/schemas/OpaqueId' }
+        kind: { $ref: '#/components/schemas/ReportKind' }
+        status: { $ref: '#/components/schemas/GenerationStatus' }
+        sections: { type: array, items: { type: object, required: [section_id, title, access, content, evidence], properties: { section_id: { $ref: '#/components/schemas/OpaqueId' }, title: { type: string }, access: { type: string, enum: [FREE, PAID, LOCKED] }, content: { type: [string, 'null'] }, evidence: { type: array, items: { type: string } } } } }
+        excluded_scopes: { type: array, items: { type: string } }
+        provenance: { $ref: '#/components/schemas/ContentProvenance' }
+        created_at: { $ref: '#/components/schemas/DateTime' }
+        updated_at: { $ref: '#/components/schemas/DateTime' }
+    ReportCursorPage:
+      allOf: [{ $ref: '#/components/schemas/CursorPage' }, { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/Report' } } } }]
+    ContentProvenance:
+      type: object
+      required: [model_version, prompt_version, template_version]
+      properties: { model_version: { type: string }, prompt_version: { type: string }, template_version: { type: string }, product_version: { type: [string, 'null'] }, order_id: { oneOf: [{ $ref: '#/components/schemas/OpaqueId' }, { type: 'null' }] } }
+    ConsultationCreateRequest:
+      type: object
+      required: [profile_id, topic]
+      properties: { profile_id: { $ref: '#/components/schemas/OpaqueId' }, topic: { type: string, maxLength: 100 }, chart_id: { $ref: '#/components/schemas/OpaqueId' } }
+    ConsultationMessageRequest:
+      type: object
+      required: [content]
+      properties: { content: { type: string, minLength: 1, maxLength: 4000 }, recommendation_id: { oneOf: [{ $ref: '#/components/schemas/OpaqueId' }, { type: 'null' }] } }
+    ConsultationMessage:
+      type: object
+      required: [message_id, role, content, created_at]
+      properties: { message_id: { $ref: '#/components/schemas/OpaqueId' }, role: { type: string, enum: [USER, ASSISTANT] }, content: { type: string }, credit_ledger_id: { oneOf: [{ $ref: '#/components/schemas/OpaqueId' }, { type: 'null' }] }, provenance: { oneOf: [{ $ref: '#/components/schemas/ContentProvenance' }, { type: 'null' }] }, created_at: { $ref: '#/components/schemas/DateTime' } }
+    ConsultationSession:
+      type: object
+      required: [session_id, profile_id, chart_id, topic, status, messages, created_at, updated_at]
+      properties: { session_id: { $ref: '#/components/schemas/OpaqueId' }, profile_id: { $ref: '#/components/schemas/OpaqueId' }, chart_id: { $ref: '#/components/schemas/OpaqueId' }, topic: { type: string }, status: { type: string, enum: [ACTIVE, CLOSED, DELETED] }, messages: { type: array, items: { $ref: '#/components/schemas/ConsultationMessage' } }, created_at: { $ref: '#/components/schemas/DateTime' }, updated_at: { $ref: '#/components/schemas/DateTime' } }
+    ConsultationMutationResult:
+      type: object
+      required: [consultation, request_id, server_time]
+      properties: { consultation: { $ref: '#/components/schemas/ConsultationSession' }, request_id: { type: string }, server_time: { $ref: '#/components/schemas/DateTime' } }
+    ConsultationCursorPage:
+      allOf: [{ $ref: '#/components/schemas/CursorPage' }, { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/ConsultationSession' } } } }]
+    CompatibilityCreateRequest:
+      type: object
+      required: [left_chart_id, right_chart_id, relationship_type]
+      properties: { left_chart_id: { $ref: '#/components/schemas/OpaqueId' }, right_chart_id: { $ref: '#/components/schemas/OpaqueId' }, relationship_type: { type: string, enum: [ROMANTIC, FAMILY, FRIEND, COLLEAGUE] }, product_id: { oneOf: [{ $ref: '#/components/schemas/OpaqueId' }, { type: 'null' }] } }
+    CompatibilityReport:
+      type: object
+      required: [compatibility_id, left_chart_id, right_chart_id, relationship_type, status, preview, deep_sections, excluded_scopes, provenance]
+      properties: { compatibility_id: { $ref: '#/components/schemas/OpaqueId' }, left_chart_id: { $ref: '#/components/schemas/OpaqueId' }, right_chart_id: { $ref: '#/components/schemas/OpaqueId' }, relationship_type: { type: string }, status: { $ref: '#/components/schemas/GenerationStatus' }, preview: { type: string }, deep_sections: { type: array, items: { type: string } }, excluded_scopes: { type: array, items: { type: string } }, provenance: { $ref: '#/components/schemas/ContentProvenance' } }
+    Product:
+      type: object
+      required: [product_id, product_slug, version, status, kind, title, description, answers_questions, required_inputs, requires_birth_time, included_sections, generation_method, price_minor, currency, refund_policy]
+      properties: { product_id: { $ref: '#/components/schemas/OpaqueId' }, product_slug: { type: string }, version: { type: string }, status: { type: string, enum: [draft, active, retired] }, kind: { type: string, enum: [report, consultation_credit, subscription] }, title: { type: string }, description: { type: string }, answers_questions: { type: array, minItems: 1, items: { type: string } }, required_inputs: { type: array, minItems: 1, items: { type: string } }, requires_birth_time: { type: boolean }, included_sections: { type: array, minItems: 1, items: { type: string } }, generation_method: { type: string }, price_minor: { type: integer, minimum: 0 }, currency: { type: string, pattern: '^[A-Z]{3}$' }, refund_policy: { type: string } }
+    OrderStatus: { type: string, enum: [CREATED, PAYMENT_PENDING, PAID, FULFILLING, COMPLETED, FAILED, REFUNDED] }
+    OrderProvider: { type: string, enum: [WEB, APP] }
+    OrderCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [product_id, chart_id, period_key, provider, quantity]
+      properties:
+        product_id: { $ref: '#/components/schemas/OpaqueId' }
+        chart_id: { $ref: '#/components/schemas/OpaqueId', description: Immutable server-issued calculation snapshot used for profile-scoped duplicate prevention. }
+        period_key: { type: string, minLength: 1, maxLength: 40 }
+        provider: { $ref: '#/components/schemas/OrderProvider' }
+        quantity: { type: integer, minimum: 1, maximum: 10 }
+      description: The server assigns order_id, profile_id, authoritative product/interpretation versions, price, and currency from the catalog and chart snapshot.
+    Order:
+      type: object
+      required: [order_id, product_id, product_version, profile_id, chart_id, period_key, interpretation_version, provider, quantity, amount_minor, currency, status, created_at, updated_at]
+      properties: { order_id: { $ref: '#/components/schemas/OpaqueId' }, product_id: { $ref: '#/components/schemas/OpaqueId' }, product_version: { type: string }, profile_id: { $ref: '#/components/schemas/OpaqueId' }, chart_id: { $ref: '#/components/schemas/OpaqueId' }, period_key: { type: string }, interpretation_version: { type: string }, provider: { $ref: '#/components/schemas/OrderProvider' }, provider_order_id: { type: [string, 'null'] }, quantity: { type: integer }, amount_minor: { type: integer }, currency: { type: string }, status: { $ref: '#/components/schemas/OrderStatus' }, created_at: { $ref: '#/components/schemas/DateTime' }, updated_at: { $ref: '#/components/schemas/DateTime' } }
+    OrderMutationResult:
+      type: object
+      required: [order, request_id, server_time]
+      properties: { order: { $ref: '#/components/schemas/Order' }, request_id: { type: string }, server_time: { $ref: '#/components/schemas/DateTime' } }
+    PaymentConfirmation:
+      type: object
+      required: [order_id, provider, provider_payment_id, amount_minor, verification_payload]
+      properties: { order_id: { $ref: '#/components/schemas/OpaqueId' }, provider: { type: string, enum: [TOSS, APPLE, GOOGLE] }, provider_payment_id: { type: string }, amount_minor: { type: integer, minimum: 0 }, verification_payload: { type: string, minLength: 1 } }
+    Payment:
+      type: object
+      required: [payment_id, order_id, provider, provider_payment_id, amount_minor, currency, status, verified_at]
+      properties: { payment_id: { $ref: '#/components/schemas/OpaqueId' }, order_id: { $ref: '#/components/schemas/OpaqueId' }, provider: { type: string, enum: [TOSS, APPLE, GOOGLE] }, provider_payment_id: { type: string }, amount_minor: { type: integer, minimum: 0 }, currency: { type: string, pattern: '^[A-Z]{3}$' }, status: { type: string, enum: [PENDING, VERIFIED, FAILED, CANCELLED] }, verified_at: { oneOf: [{ $ref: '#/components/schemas/DateTime' }, { type: 'null' }] } }
+    RefundRequest:
+      type: object
+      required: [amount_minor, reason]
+      properties: { amount_minor: { type: integer, minimum: 1 }, reason: { type: string, minLength: 3, maxLength: 500 } }
+    Refund:
+      type: object
+      required: [refund_id, order_id, amount_minor, reason, provider_status, credit_reversal_status, created_at, updated_at]
+      properties: { refund_id: { $ref: '#/components/schemas/OpaqueId' }, order_id: { $ref: '#/components/schemas/OpaqueId' }, payment_id: { $ref: '#/components/schemas/OpaqueId' }, amount_minor: { type: integer, minimum: 1 }, reason: { type: string }, provider_status: { type: string, enum: [PENDING, SUCCEEDED, FAILED] }, credit_reversal_status: { type: string, enum: [NOT_REQUIRED, PENDING, SUCCEEDED, FAILED] }, created_at: { $ref: '#/components/schemas/DateTime' }, updated_at: { $ref: '#/components/schemas/DateTime' } }
+    CreditBalance:
+      type: object
+      required: [balance, as_of]
+      properties: { balance: { type: integer, minimum: 0 }, as_of: { $ref: '#/components/schemas/DateTime' } }
+    CreditLedgerEntry:
+      type: object
+      required: [ledger_id, reason_type, delta, balance_after, created_at]
+      properties: { ledger_id: { $ref: '#/components/schemas/OpaqueId' }, reason_type: { type: string, enum: [PURCHASE, CONSULTATION_USE, REFUND, ERROR_RECOVERY, ADMIN_ADJUSTMENT] }, delta: { type: integer }, balance_after: { type: integer, minimum: 0 }, order_id: { oneOf: [{ $ref: '#/components/schemas/OpaqueId' }, { type: 'null' }] }, consultation_message_id: { oneOf: [{ $ref: '#/components/schemas/OpaqueId' }, { type: 'null' }] }, operation_reason: { type: [string, 'null'] }, created_at: { $ref: '#/components/schemas/DateTime' } }
+    CreditLedgerCursorPage:
+      allOf: [{ $ref: '#/components/schemas/CursorPage' }, { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/CreditLedgerEntry' } } } }]
+    ShareLinkCreateRequest:
+      type: object
+      required: [target_type, target_id, expires_at]
+      properties: { target_type: { type: string, enum: [REPORT, COMPATIBILITY] }, target_id: { $ref: '#/components/schemas/OpaqueId' }, expires_at: { $ref: '#/components/schemas/DateTime' } }
+    ShareLinkUpdateRequest:
+      type: object
+      minProperties: 1
+      properties: { expires_at: { $ref: '#/components/schemas/DateTime' }, active: { type: boolean } }
+    ShareLink:
+      type: object
+      required: [share_link_id, target_type, target_id, expires_at, active, created_at]
+      properties: { share_link_id: { $ref: '#/components/schemas/OpaqueId' }, target_type: { type: string, enum: [REPORT, COMPATIBILITY] }, target_id: { $ref: '#/components/schemas/OpaqueId' }, expires_at: { $ref: '#/components/schemas/DateTime' }, active: { type: boolean }, created_at: { $ref: '#/components/schemas/DateTime' } }
+    ShareLinkCreated:
+      type: object
+      required: [share_link, public_url, request_id, server_time]
+      properties: { share_link: { $ref: '#/components/schemas/ShareLink' }, public_url: { type: string, format: uri }, request_id: { type: string }, server_time: { $ref: '#/components/schemas/DateTime' } }
+    ShareLinkMutationResult:
+      type: object
+      required: [share_link, request_id, server_time]
+      properties: { share_link: { $ref: '#/components/schemas/ShareLink' }, request_id: { type: string }, server_time: { $ref: '#/components/schemas/DateTime' } }
+    ShareLinkCursorPage:
+      allOf: [{ $ref: '#/components/schemas/CursorPage' }, { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/ShareLink' } } } }]
+    PublicSharedResult:
+      type: object
+      required: [share_link_id, target_type, title, summary, expires_at]
+      properties: { share_link_id: { $ref: '#/components/schemas/OpaqueId' }, target_type: { type: string, enum: [REPORT, COMPATIBILITY] }, title: { type: string }, summary: { type: string }, sections: { type: array, items: { type: string } }, expires_at: { $ref: '#/components/schemas/DateTime' } }
+    ConsentType:
+      type: string
+      enum: [terms_of_service, privacy_policy, marketing_communications, third_party_profile]
+    ConsentStatus:
+      type: string
+      enum: [granted, revoked]
+    ConsentRecord:
+      type: object
+      additionalProperties: false
+      required: [consent_id, consent_type, version, status, agreed_at, revoked_at]
+      properties:
+        consent_id: { $ref: '#/components/schemas/OpaqueId' }
+        consent_type: { $ref: '#/components/schemas/ConsentType' }
+        version: { type: string, minLength: 1, maxLength: 64, description: Immutable version of the legal text accepted by the subject. }
+        status: { $ref: '#/components/schemas/ConsentStatus' }
+        agreed_at: { $ref: '#/components/schemas/DateTime' }
+        revoked_at: { oneOf: [{ $ref: '#/components/schemas/DateTime' }, { type: 'null' }] }
+    ConsentUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [version, granted]
+      properties:
+        version: { type: string, minLength: 1, maxLength: 64 }
+        granted: { type: boolean, const: true }
+    ConsentRevokeRequest:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 500 }
+    ConsentListResult:
+      type: object
+      additionalProperties: false
+      required: [items, request_id, server_time]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/ConsentRecord' } }
+        request_id: { type: string }
+        server_time: { $ref: '#/components/schemas/DateTime' }
+    ConsentMutationResult:
+      type: object
+      additionalProperties: false
+      required: [consent, request_id, server_time]
+      properties:
+        consent: { $ref: '#/components/schemas/ConsentRecord' }
+        request_id: { type: string }
+        server_time: { $ref: '#/components/schemas/DateTime' }
+    LibraryItemType:
+      type: string
+      enum: [report, consultation, compatibility]
+    LibraryAccess:
+      type: string
+      enum: [available, locked, expired]
+    LibraryAction:
+      type: string
+      enum: [open, mark_read, hide, unhide, delete]
+    LibraryTopic:
+      type: string
+      enum: [love, marriage, reunion, career, business, money, family, relationships, other]
+    LibraryProfile:
+      type: object
+      additionalProperties: false
+      required: [id, display_name]
+      properties:
+        id: { $ref: '#/components/schemas/OpaqueId' }
+        display_name: { type: string, minLength: 1 }
+    LibraryItem:
+      type: object
+      additionalProperties: false
+      required: [id, type, title, subtitle, href, access, purchased, read, hidden, profile, topic, created_at, allowed_actions]
+      properties:
+        id: { $ref: '#/components/schemas/OpaqueId' }
+        type: { $ref: '#/components/schemas/LibraryItemType' }
+        title: { type: string, minLength: 1 }
+        subtitle: { type: string }
+        href: { type: string, format: uri-reference, description: Same-origin client navigation target for opening the item. }
+        access: { $ref: '#/components/schemas/LibraryAccess' }
+        purchased: { type: boolean, description: Purchased items are retained and never include delete in allowed_actions. }
+        read: { type: boolean }
+        hidden: { type: boolean }
+        profile: { $ref: '#/components/schemas/LibraryProfile' }
+        topic: { oneOf: [{ $ref: '#/components/schemas/LibraryTopic' }, { type: 'null' }] }
+        created_at: { $ref: '#/components/schemas/DateTime' }
+        allowed_actions:
+          type: array
+          uniqueItems: true
+          items: { $ref: '#/components/schemas/LibraryAction' }
+          description: Server-authoritative actions. delete MUST be absent when purchased is true.
+    LibraryCursorPage:
+      allOf: [{ $ref: '#/components/schemas/CursorPage' }, { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/LibraryItem' } } } }]
+    LibraryMutationResult:
+      type: object
+      additionalProperties: false
+      required: [item, request_id, server_time]
+      properties:
+        item: { $ref: '#/components/schemas/LibraryItem' }
+        request_id: { type: string }
+        server_time: { $ref: '#/components/schemas/DateTime' }
+    NotificationPreferencesWrite:
+      type: object
+      additionalProperties: false
+      required: [channel]
+      minProperties: 1
+      properties:
+        channel: { $ref: '#/components/schemas/NotificationChannel' }
+        enabled: { type: boolean }
+        topics: { $ref: '#/components/schemas/NotificationTopics' }
+        quiet_hours: { $ref: '#/components/schemas/NotificationQuietHours' }
+        suppress_duplicates: { type: boolean }
+    NotificationChannel:
+      type: string
+      enum: [push, email]
+    NotificationTopics:
+      type: object
+      additionalProperties: false
+      required: [payment_completed, monthly_flow, important_period, report_completed, consultation_completed, low_credits, resume_consultation, interest_change]
+      properties:
+        payment_completed: { type: boolean, description: Service notification., x-notification-classification: service }
+        monthly_flow: { type: boolean, description: Marketing notification., x-notification-classification: marketing }
+        important_period: { type: boolean, description: Marketing notification., x-notification-classification: marketing }
+        report_completed: { type: boolean, description: Service notification., x-notification-classification: service }
+        consultation_completed: { type: boolean, description: Service notification., x-notification-classification: service }
+        low_credits: { type: boolean, description: Service notification., x-notification-classification: service }
+        resume_consultation: { type: boolean, description: Marketing notification., x-notification-classification: marketing }
+        interest_change: { type: boolean, description: Marketing notification., x-notification-classification: marketing }
+    NotificationQuietHours:
+      type: object
+      additionalProperties: false
+      required: [enabled, start, end, timezone]
+      properties:
+        enabled: { type: boolean }
+        start: { type: string, format: time }
+        end: { type: string, format: time }
+        timezone: { type: string, minLength: 1, examples: [Asia/Seoul], description: IANA timezone used to evaluate quiet hours. }
+    NotificationPreferences:
+      type: object
+      additionalProperties: false
+      required: [channel, enabled, topics, quiet_hours, suppress_duplicates]
+      properties:
+        channel: { $ref: '#/components/schemas/NotificationChannel' }
+        enabled: { type: boolean }
+        topics: { $ref: '#/components/schemas/NotificationTopics' }
+        quiet_hours: { $ref: '#/components/schemas/NotificationQuietHours' }
+        suppress_duplicates: { type: boolean, description: Suppresses repeat delivery of equivalent content per recipient and channel. }
+    NotificationPreferencesResult:
+      type: object
+      required: [preferences, request_id, server_time]
+      properties: { preferences: { $ref: '#/components/schemas/NotificationPreferences' }, request_id: { type: string }, server_time: { $ref: '#/components/schemas/DateTime' } }
+    PushTokenRequest:
+      type: object
+      required: [platform, token]
+      properties: { platform: { type: string, enum: [WEB, IOS, ANDROID] }, token: { type: string, minLength: 16 }, device_id: { type: string } }
+    PushTokenResult:
+      type: object
+      required: [push_token_id, request_id, server_time]
+      properties: { push_token_id: { $ref: '#/components/schemas/OpaqueId' }, request_id: { type: string }, server_time: { $ref: '#/components/schemas/DateTime' } }
+    FeedbackReportTarget:
+      type: object
+      additionalProperties: false
+      required: [target_type, target_id]
+      properties: { target_type: { type: string, const: REPORT }, target_id: { $ref: '#/components/schemas/OpaqueId' } }
+    FeedbackConsultationMessageTarget:
+      type: object
+      additionalProperties: false
+      required: [target_type, target_id, session_id]
+      properties: { target_type: { type: string, const: CONSULTATION_MESSAGE }, target_id: { $ref: '#/components/schemas/OpaqueId' }, session_id: { $ref: '#/components/schemas/OpaqueId' } }
+    FeedbackCompatibilityTarget:
+      type: object
+      additionalProperties: false
+      required: [target_type, target_id]
+      properties: { target_type: { type: string, const: COMPATIBILITY }, target_id: { $ref: '#/components/schemas/OpaqueId' } }
+    FeedbackTarget:
+      oneOf:
+        - { $ref: '#/components/schemas/FeedbackReportTarget' }
+        - { $ref: '#/components/schemas/FeedbackConsultationMessageTarget' }
+        - { $ref: '#/components/schemas/FeedbackCompatibilityTarget' }
+      discriminator:
+        propertyName: target_type
+        mapping:
+          REPORT: '#/components/schemas/FeedbackReportTarget'
+          CONSULTATION_MESSAGE: '#/components/schemas/FeedbackConsultationMessageTarget'
+          COMPATIBILITY: '#/components/schemas/FeedbackCompatibilityTarget'
+    FeedbackLineage:
+      type: object
+      additionalProperties: false
+      required: [profile_snapshot_id, chart_snapshot_ids]
+      properties:
+        profile_snapshot_id: { $ref: '#/components/schemas/OpaqueId' }
+        chart_snapshot_ids: { type: array, minItems: 1, uniqueItems: true, items: { $ref: '#/components/schemas/OpaqueId' } }
+      description: Server-derived immutable lineage. The client cannot supply or override it.
+    FeedbackRating: { type: string, enum: [HELPFUL, UNCLEAR, WRONG] }
+    FeedbackReason: { type: string, enum: [TOO_GENERIC, REPETITIVE, INCORRECT_CHART, UNANSWERED, INAPPROPRIATE, PURCHASE_MISMATCH, OTHER] }
+    FeedbackRequest:
+      type: object
+      additionalProperties: false
+      required: [target, rating, reason]
+      properties: { target: { $ref: '#/components/schemas/FeedbackTarget' }, rating: { $ref: '#/components/schemas/FeedbackRating' }, reason: { $ref: '#/components/schemas/FeedbackReason' }, comment: { type: [string, 'null'], maxLength: 2000 }, reported: { type: boolean, default: false } }
+    ContentReportRequest:
+      type: object
+      required: [reason]
+      properties: { reason: { type: string, enum: [UNSAFE, INACCURATE, PRIVACY, OTHER] }, details: { type: string, maxLength: 2000 } }
+    FeedbackResult:
+      type: object
+      additionalProperties: false
+      required: [feedback_id, target, rating, reason, comment, lineage, provenance, created_at, request_id, server_time]
+      properties: { feedback_id: { $ref: '#/components/schemas/OpaqueId' }, target: { $ref: '#/components/schemas/FeedbackTarget' }, rating: { $ref: '#/components/schemas/FeedbackRating' }, reason: { $ref: '#/components/schemas/FeedbackReason' }, comment: { type: [string, 'null'] }, lineage: { $ref: '#/components/schemas/FeedbackLineage' }, provenance: { $ref: '#/components/schemas/ContentProvenance' }, created_at: { $ref: '#/components/schemas/DateTime' }, request_id: { type: string }, server_time: { $ref: '#/components/schemas/DateTime' } }
+    PrivacyDeletionRequest:
+      type: object
+      required: [scope, confirmation]
+      properties: { scope: { type: string, enum: [ACCOUNT, PROFILE, CONSULTATIONS, SAVED_PERSON] }, resource_id: { oneOf: [{ $ref: '#/components/schemas/OpaqueId' }, { type: 'null' }] }, confirmation: { type: string, const: DELETE } }
+    AnalyticsEvent:
+      type: object
+      additionalProperties: false
+      required: [event_id, event_name, occurred_at, anonymous_id, source, properties]
+      properties: { event_id: { $ref: '#/components/schemas/OpaqueId' }, event_name: { type: string, pattern: '^[a-z][a-z0-9_]{1,63}$' }, occurred_at: { $ref: '#/components/schemas/DateTime' }, anonymous_id: { $ref: '#/components/schemas/OpaqueId' }, user_id: { oneOf: [{ $ref: '#/components/schemas/OpaqueId' }, { type: 'null' }] }, source: { type: string, enum: [WEB, IOS, ANDROID] }, acquisition_channel: { type: [string, 'null'] }, experiment_assignments: { type: object, additionalProperties: { type: string } }, properties: { $ref: '#/components/schemas/AnalyticsProperties' } }
+    AnalyticsProperties:
+      type: object
+      propertyNames:
+        not:
+          enum: [birth_date, birth_time, birth_place, consultation_text, consultation_content, payment_token, card_number, social_token, access_token, refresh_token, share_token, raw_share_token]
+      additionalProperties: { type: [string, number, boolean, 'null'] }
+      description: Flat non-sensitive event attributes. The server rejects the entire batch with ANALYTICS_SENSITIVE_FIELD_FORBIDDEN when a forbidden field is present.
+    AnalyticsBatch:
+      type: object
+      additionalProperties: false
+      required: [batch_id, events]
+      properties: { batch_id: { $ref: '#/components/schemas/OpaqueId' }, events: { type: array, minItems: 1, maxItems: 100, items: { $ref: '#/components/schemas/AnalyticsEvent' } } }
+    AdminUser:
+      type: object
+      required: [user_id, status, created_at]
+      properties: { user_id: { $ref: '#/components/schemas/OpaqueId' }, status: { type: string, enum: [ACTIVE, RESTRICTED, DELETION_REQUESTED, DELETED] }, profile_count: { type: integer, minimum: 0 }, created_at: { $ref: '#/components/schemas/DateTime' } }
+    AdminUserCursorPage:
+      allOf: [{ $ref: '#/components/schemas/CursorPage' }, { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/AdminUser' } } } }]
+    AdminCommandRequest:
+      type: object
+      additionalProperties: false
+      required: [command_type, target_type, target_id, expected_version, reason]
+      properties:
+        command_type: { $ref: '#/components/schemas/AdminCommandType' }
+        target_type: { $ref: '#/components/schemas/AdminTargetType' }
+        target_id: { $ref: '#/components/schemas/OpaqueId' }
+        expected_version: { type: [string, 'null'], minLength: 1, maxLength: 128, description: Opaque optimistic-concurrency version; null only for commands that create no lost-update risk. }
+        reason: { type: string, minLength: 5, maxLength: 1000 }
+        parameters: { type: object, additionalProperties: true }
+    AdminCommandType:
+      type: string
+      enum: [restrict_account, restore_account, process_deletion, refund_order, grant_credits, regenerate_report, hide_report, restore_credits, restrict_sensitive_access]
+    AdminTargetType:
+      type: string
+      enum: [account, profile, order, report, consultation]
+    AdminCommandOutcome:
+      type: string
+      enum: [accepted, rejected, failed]
+    RedactedAuditEvidence:
+      type: object
+      additionalProperties: false
+      required: [redacted, fields]
+      properties:
+        redacted: { type: boolean, const: true }
+        fields:
+          type: object
+          additionalProperties: { type: [string, number, boolean, 'null'] }
+          description: Allowlisted operational evidence only; birth data, consultation content, credentials, tokens, and payment instruments are omitted or replaced with fixed redaction markers.
+    AuditLog:
+      type: object
+      additionalProperties: false
+      required: [audit_id, actor_id, actor_role, command, outcome, request_id, before_evidence, after_evidence, created_at]
+      properties:
+        audit_id: { $ref: '#/components/schemas/OpaqueId' }
+        actor_id: { $ref: '#/components/schemas/OpaqueId' }
+        actor_role: { type: string, minLength: 1 }
+        command: { $ref: '#/components/schemas/AdminCommandRequest' }
+        outcome: { $ref: '#/components/schemas/AdminCommandOutcome' }
+        request_id: { type: string, minLength: 8, maxLength: 128 }
+        before_evidence: { oneOf: [{ $ref: '#/components/schemas/RedactedAuditEvidence' }, { type: 'null' }] }
+        after_evidence: { oneOf: [{ $ref: '#/components/schemas/RedactedAuditEvidence' }, { type: 'null' }] }
+        created_at: { $ref: '#/components/schemas/DateTime' }
+    AuditLogCursorPage:
+      allOf: [{ $ref: '#/components/schemas/CursorPage' }, { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/AuditLog' } } } }]
+    AnalyticsSummary:
+      type: object
+      required: [from, to, metrics]
+      properties: { from: { type: string, format: date }, to: { type: string, format: date }, metrics: { type: array, items: { type: object, required: [name, value], properties: { name: { type: string }, value: { type: number }, dimension: { type: [string, 'null'] } } } } }

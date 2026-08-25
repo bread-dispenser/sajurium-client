@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { INITIAL_BIRTH, INITIAL_COMMERCE_DATA, INITIAL_SETTINGS_DATA } from "@/lib/fixtures";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/");
@@ -37,7 +38,7 @@ test("keeps example journeys local and discloses unavailable real services", asy
 });
 
 test("persists a fixture consultation and follow-up", async ({ page }) => {
-  await page.goto("/checkout/consult-5/status?state=success");
+  await page.goto("/orders/ord_demo_consult_5?productId=consult-5&state=success");
   await page.getByRole("button", { name: "이 상태를 기기에 기록" }).click();
   await page.goto("/consult/new");
   await page.getByRole("button", { name: "이직을 고민할 때 어떤 조건을 먼저 봐야 하나요?" }).click();
@@ -75,7 +76,7 @@ test("creates a local fixture compatibility result", async ({ page }) => {
   await page.goto("/compatibility");
   await page.getByRole("button", { name: "예시 관계 요약 보기" }).click();
   await expect(page).toHaveURL(/\/compatibility\/result\//);
-  await expect(page.locator(".compatibility-dimensions article")).toHaveCount(5);
+  await expect(page.locator(".compatibility-dimensions article")).toHaveCount(8);
   await expect(page.getByText(/출생 시간 미상 상태/)).toBeVisible();
   await expect(page.getByRole("button", { name: "심층 궁합 · 이용 불가" })).toBeDisabled();
 });
@@ -110,9 +111,9 @@ test("records demo commerce state without enabling real payment", async ({ page 
   await expect(page.getByRole("button", { name: "실제 결제 · 이용 불가" })).toBeDisabled();
   await page.getByRole("link", { name: "성공 상태 보기" }).click();
   await page.getByRole("button", { name: "이 상태를 기기에 기록" }).click();
-  await expect(page.getByRole("status")).toContainText("체험 상태");
+  await expect(page.getByRole("status")).toContainText("멱등성 주문 ID");
   await page.getByRole("button", { name: "이 상태를 기기에 기록" }).click();
-  await expect(page.getByRole("status")).toContainText("이미 있어 추가 지급하지 않았어요");
+  await expect(page.getByRole("status")).toContainText("같은 멱등성 키로 다시 기록하지 않았어요");
   await page.goto("/products/credits");
   await expect(page.getByRole("heading").filter({ hasText: "5회" })).toBeVisible();
   await expect(page.locator(".credit-history article")).toHaveCount(1);
@@ -123,7 +124,7 @@ test("clears every service-owned local key from settings", async ({ page }) => {
   await page.evaluate(() => localStorage.setItem("sajurium-library", JSON.stringify({ version: 1, items: [] })));
   await page.reload();
   await expect(page.locator(".data-inventory article")).toHaveCount(12);
-  await expect(page.getByText("항상 마스킹됩니다")).toBeVisible();
+  await expect(page.getByText(/전체 프로필에서 관리하세요/)).toBeVisible();
   await page.getByRole("button", { name: "전체 기기 저장 정보 삭제" }).click();
   await page.getByRole("button", { name: "모두 삭제 확정" }).click();
   await expect(page.getByRole("status")).toContainText("모두 삭제");
@@ -134,16 +135,23 @@ test("clears every service-owned local key from settings", async ({ page }) => {
 });
 
 test("confirms individual settings and feedback deletion", async ({ page }) => {
-  await page.evaluate(() => {
-    localStorage.setItem("sajurium-profile", JSON.stringify({
-      version: 1,
-      birth: { nickname: "서연", calendar: "solar", gender: "female", birthDate: "1992-06-18", birthTime: "14:30", unknownTime: false },
-    }));
+  await page.evaluate((birth) => {
+    localStorage.setItem("sajurium-profile", JSON.stringify({ version: 1, birth }));
     localStorage.setItem("sajurium-feedback-list", JSON.stringify({
       version: 1,
-      entries: [{ id: "feedback-confirm", topic: "career", rating: "helpful", reason: "구체적이고 이해하기 쉬워요", comment: "", reported: false, createdAt: "2026-08-25T00:00:00.000Z" }],
+      entries: [{
+        id: "feedback-confirm",
+        target: { type: "report", reportId: "rpt_fixture_career" },
+        topic: "career",
+        rating: "helpful",
+        reason: "too_generic",
+        comment: "",
+        provenance: { profileSnapshotId: "profile_snapshot_fixture_primary", chartSnapshotIds: ["chart_fixture_primary"], modelVersion: null, promptVersion: null, templateVersion: "fixture-1" },
+        reported: false,
+        createdAt: "2026-08-25T00:00:00.000Z",
+      }],
     }));
-});
+  }, INITIAL_BIRTH);
 
   await page.goto("/settings");
   const profileRow = page.locator(".data-inventory article").filter({ hasText: "저장 프로필" });
@@ -201,8 +209,8 @@ test("surfaces corrupt domain stores before explicit recovery", async ({ page })
 });
 
 test("recovers a corrupt transaction record before reading settings stores", async ({ page }) => {
-  const before = await page.evaluate(() => {
-    const settings = JSON.stringify({ version: 1, notifications: { dailyFlow: true, monthlyFlow: false, email: false } });
+  const before = await page.evaluate(({ settingsData, birth }) => {
+    const settings = JSON.stringify(settingsData);
     localStorage.setItem("sajurium-settings", settings);
     localStorage.setItem("unowned-key", "keep-me");
     localStorage.setItem("sajurium-storage-transaction", JSON.stringify({
@@ -213,15 +221,12 @@ test("recovers a corrupt transaction record before reading settings stores", asy
         scope: "session",
         before: null,
         beforeKnown: true,
-        after: JSON.stringify({
-          version: 1,
-          birth: { nickname: "민감정보", calendar: "solar", gender: "female", birthDate: "1992-06-18", birthTime: "14:30", unknownTime: false },
-        }),
+        after: JSON.stringify({ version: 1, birth: { ...birth, displayName: "민감정보" } }),
         afterKnown: true,
       }],
     }));
     return settings;
-  });
+  }, { settingsData: INITIAL_SETTINGS_DATA, birth: INITIAL_BIRTH });
   await page.goto("/settings");
   await expect(page.getByRole("heading", { name: "저장 복구 기록을 확인해야 해요" })).toBeVisible();
   await expect(page.locator(".data-inventory")).toHaveCount(0);
@@ -235,11 +240,25 @@ test("recovers a corrupt transaction record before reading settings stores", asy
   }))).toEqual({ journal: null, draft: null, settings: before, unowned: "keep-me" });
 });
 
+test("rejects a demo order ID paired with another product", async ({ page }) => {
+  const response = await page.goto("/orders/ord_demo_love_report?productId=consult-5&state=success");
+  expect(response?.status()).toBe(404);
+  expect(await page.evaluate(() => localStorage.getItem("sajurium-commerce"))).toBeNull();
+});
+
+test("validates known birth time before settings persistence", async ({ page }) => {
+  await page.goto("/settings");
+  await page.getByLabel("출생 시간", { exact: true }).fill("");
+  await page.getByRole("button", { name: "출생 정보 저장" }).click();
+  await expect(page.getByRole("status")).toContainText("출생 시간을 HH:mm 형식으로 입력");
+  expect(await page.evaluate(() => localStorage.getItem("sajurium-profile"))).toBeNull();
+});
+
 test("shows pending and failure as non-payment example states", async ({ page }) => {
-  await page.goto("/checkout/love-report/status?state=pending");
+  await page.goto("/orders/ord_demo_love_report?productId=love-report&state=pending");
   await expect(page.getByRole("heading", { name: "결제 대기 상태 안내" })).toBeVisible();
   await expect(page.getByText("실제 결제액")).toBeVisible();
-  await page.goto("/checkout/love-report/status?state=failure");
+  await page.goto("/orders/ord_demo_love_report?productId=love-report&state=failure");
   await expect(page.getByRole("heading", { name: "결제 실패 상태 안내" })).toBeVisible();
   await expect(page.getByText("결제 수단이나 주문에는 아무 변화가 없습니다.")).toBeVisible();
 });
@@ -278,15 +297,15 @@ test("rolls back linked consultation writes when library persistence fails", asy
 
 test("reports partial failure instead of claiming full local deletion", async ({ page }) => {
   await page.goto("/settings");
-  await page.evaluate(() => {
-    localStorage.setItem("sajurium-profile", JSON.stringify({ version: 1, birth: { nickname: "남김", calendar: "solar", birthDate: "1990-01-01", birthTime: "12:00", unknownTime: false } }));
+  await page.evaluate((birth) => {
+    localStorage.setItem("sajurium-profile", JSON.stringify({ version: 1, birth: { ...birth, displayName: "남김", birthDate: "1990-01-01", birthTime: "12:00" } }));
     const original = Storage.prototype.removeItem;
     Object.defineProperty(window, "__restoreRemoveItem", { value: () => { Storage.prototype.removeItem = original; }, configurable: true });
     Storage.prototype.removeItem = function removeItem(key) {
       if (key === "sajurium-profile") throw new Error("injected remove failure");
       return original.call(this, key);
     };
-  });
+  }, INITIAL_BIRTH);
   await page.reload();
   await page.evaluate(() => {
     const original = Storage.prototype.removeItem;
@@ -306,8 +325,8 @@ test("reports partial failure instead of claiming full local deletion", async ({
 });
 
 test("disables destructive settings actions for unavailable owned storage", async ({ page }) => {
-  const commerce = JSON.stringify({ version: 1, orders: [], consultationCredits: 3, creditHistory: [] });
-  const settings = JSON.stringify({ version: 1, notifications: { dailyFlow: false, monthlyFlow: false, email: false } });
+  const commerce = JSON.stringify({ ...INITIAL_COMMERCE_DATA, consultationCredits: 3 });
+  const settings = JSON.stringify(INITIAL_SETTINGS_DATA);
   await page.evaluate(({ commerceRaw, settingsRaw }) => {
     localStorage.setItem("sajurium-commerce", commerceRaw);
     localStorage.setItem("sajurium-settings", settingsRaw);

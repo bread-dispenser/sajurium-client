@@ -24,7 +24,7 @@ describe("fixture repository", () => {
     expect(isProductId("real-payment")).toBe(false);
     expect(getTopic("love").title).toContain("연애");
     expect(getTopicPreview("career").headline).toContain("기준");
-    expect(getProduct("consult-5").price).toBe(4900);
+    expect(getProduct("consult-5").priceAmount).toBe(4900);
     expect(INITIAL_PEOPLE_DATA.freeLimit).toBe(2);
     expect(INITIAL_PEOPLE_DATA.people).toHaveLength(2);
   });

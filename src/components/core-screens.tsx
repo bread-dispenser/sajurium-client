@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState, useSyncExternalStore } from "react";
 import type { LibraryItem, LibraryItemType } from "@/lib/domain";
+import { withAllowedLibraryActions } from "@/lib/contracts";
 import { inspectCurrentBirth, libraryStore, resetBirthSource } from "@/lib/storage";
 import { APP_NAV_GROUPS, getDailyFlow, getMonthlyFlow, INITIAL_BIRTH, INITIAL_LIBRARY_ITEMS } from "@/lib/fixtures";
 import { useHydrated } from "@/hooks/use-hydrated";
@@ -33,13 +34,18 @@ export function HomeScreen() {
   const birth = birthState.birth;
   const today = localDate();
   const flow = getDailyFlow(today);
+  const month = getMonthlyFlow(today.slice(0, 7));
+  const libraryInspection = libraryStore.inspect();
+  const libraryItems = libraryInspection.status === "ok" ? libraryInspection.value.items : [...INITIAL_LIBRARY_ITEMS];
+  const latestItem = [...libraryItems].filter((item) => !item.hidden).sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
+  const purchasedItem = libraryItems.find((item) => item.purchased);
   const serviceGroups = APP_NAV_GROUPS.filter((group) => group.label !== "개요");
 
   return (
     <main className="screen-content home-content platform-home" aria-labelledby="home-title">
       <div className="platform-hero">
         <p className="section-kicker">사주리움 플랫폼</p>
-        <h1 id="home-title">{birth.nickname}님의 사주와 고민을<br />한곳에서 이어보세요</h1>
+        <h1 id="home-title">{birth.displayName}님의 사주와 고민을<br />한곳에서 이어보세요</h1>
         <p className="supporting">내 사주, 기간별 흐름, 상담, 관계, 기록과 상품을 하나의 작업 공간에서 오갈 수 있어요.</p>
       </div>
       <section className="platform-scope" aria-label="현재 제공 범위">
@@ -50,8 +56,24 @@ export function HomeScreen() {
       <section className="home-summary" aria-labelledby="today-summary-title">
         <small>{today} · 오늘의 흐름</small>
         <h2 id="today-summary-title">{flow.headline}</h2>
-        <p>{flow.suggestion}</p>
+        <p>{flow.suggestedQuestion}</p>
         <Link className="text-link" href="/flow/today">오늘의 흐름 자세히 보기 →</Link>
+      </section>
+      <section className="service-group" aria-labelledby="monthly-change-title">
+        <div className="platform-section-heading"><p className="section-kicker">이번 달 변화</p><h2 id="monthly-change-title">초반부터 후반까지</h2></div>
+        <div className="flow-sections">
+          <article><small>초반</small><p>{month.earlyPeriod}</p></article>
+          <article><small>중반</small><p>{month.middlePeriod}</p></article>
+          <article><small>후반</small><p>{month.latePeriod}</p></article>
+        </div>
+        <Link className="text-link" href="/flow/month">이번 달 흐름 자세히 보기 →</Link>
+      </section>
+      <section className="service-group" aria-labelledby="home-content-title">
+        <div className="platform-section-heading"><p className="section-kicker">내 콘텐츠</p><h2 id="home-content-title">구매한 내용과 추천</h2></div>
+        <nav aria-label="구매 및 추천 콘텐츠">
+          {purchasedItem && <Link href={purchasedItem.href}><strong>구매함 · {purchasedItem.title}</strong><small>{purchasedItem.profile.displayName} 프로필 · {purchasedItem.read ? "읽음" : "읽지 않음"}</small><span aria-hidden="true">→</span></Link>}
+          <Link href="/products/career-report"><strong>추천 · 커리어 심층 리포트</strong><small>관심 주제에 맞춘 체험용 추천이며 실제 개인화 계산은 하지 않아요.</small><span aria-hidden="true">→</span></Link>
+        </nav>
       </section>
       <section className="service-group home-recent-actions" aria-labelledby="recent-actions-title">
         <div className="platform-section-heading">
@@ -59,8 +81,7 @@ export function HomeScreen() {
           <h2 id="recent-actions-title">하던 일을 이어보세요</h2>
         </div>
         <nav aria-label="최근 행동 이어보기">
-          <Link href="/consult"><strong>최근 상담 이어보기</strong><small>브라우저에 남은 상담 세션과 질문을 다시 확인</small><span aria-hidden="true">→</span></Link>
-          <Link href="/library"><strong>최근 저장 결과 열기</strong><small>리포트·상담·관계 결과를 통합 보관함에서 확인</small><span aria-hidden="true">→</span></Link>
+          {latestItem ? <Link href={latestItem.href}><strong>{latestItem.profile.displayName} · {latestItem.title}</strong><small>{TYPE_LABELS[latestItem.type]} · {latestItem.subtitle}</small><span aria-hidden="true">→</span></Link> : <Link href="/report"><strong>{birth.displayName}님의 리포트 시작</strong><small>저장된 프로필로 체험용 요약 확인</small><span aria-hidden="true">→</span></Link>}
         </nav>
       </section>
       <div id="platform-services" className="platform-services">
@@ -100,7 +121,7 @@ export function FlowScreen({ mode }: { mode: "today" | "month" }) {
       <div className="editorial-hero">
         <p className="section-kicker">{mode === "today" ? "오늘의 흐름" : "이번 달 흐름"}</p>
         <h1 id="flow-title">{reading.headline}</h1>
-        <p className="supporting">{reading.summary}</p>
+        <p className="supporting">{reading.kind === "daily" ? reading.summary : reading.overview}</p>
       </div>
       <div className="period-control">
         <button type="button" onClick={previous} aria-label="이전 기간">‹</button>
@@ -108,15 +129,25 @@ export function FlowScreen({ mode }: { mode: "today" | "month" }) {
         <button type="button" onClick={next} aria-label="다음 기간">›</button>
       </div>
       <div className="flow-sections">
-        <article><small>관계</small><p>{reading.relationship}</p></article>
-        <article><small>일</small><p>{reading.career}</p></article>
-        <article><small>재물</small><p>{reading.money}</p></article>
-        <article><small>점검할 부분</small><p>{reading.caution}</p></article>
-        <article><small>추천 행동</small><p>{reading.suggestion}</p></article>
+        {reading.kind === "daily" ? <>
+          <article><small>오늘의 우선 영역</small><p>{reading.priorityArea === "relationship" ? "관계" : reading.priorityArea === "career" ? "일" : "재물"}</p></article>
+          <article><small>점검할 부분</small><p>{reading.caution}</p></article>
+          <article><small>추천 질문</small><p>{reading.suggestedQuestion}</p></article>
+        </> : <>
+          <article><small>초반</small><p>{reading.earlyPeriod}</p></article>
+          <article><small>중반</small><p>{reading.middlePeriod}</p></article>
+          <article><small>후반</small><p>{reading.latePeriod}</p></article>
+          <article><small>관계</small><p>{reading.relationship}</p></article>
+          <article><small>일</small><p>{reading.career}</p></article>
+          <article><small>재물</small><p>{reading.money}</p></article>
+          <article><small>기회 시기</small><p>{reading.opportunityPeriods.join(", ")}</p></article>
+          <article><small>주의 시기</small><p>{reading.cautionPeriods.join(", ")}</p></article>
+        </>}
       </div>
       <nav className="flow-switch" aria-label="기간별 흐름 전환">
         <Link className={mode === "today" ? "active" : undefined} href="/flow/today">오늘</Link>
         <Link className={mode === "month" ? "active" : undefined} href="/flow/month">이번 달</Link>
+        <Link href="/reports/year">올해</Link>
       </nav>
     </main>
   );
@@ -151,17 +182,22 @@ export function LibraryScreen() {
   const items = source
     .filter((item) => (showHidden || !item.hidden) && (type === "all" || item.type === type))
     .filter((item) => dateRange === "all" || (dateRange === "latest" ? item.createdAt.startsWith(latestDate) : new Date(item.createdAt).getTime() >= recentThreshold))
-    .filter((item) => profileScope === "all" || (profileScope === "relationship" ? item.type === "compatibility" : item.type !== "compatibility"))
-    .filter((item) => topic === "all" || (topic === "career" ? /일|커리어/.test(`${item.title} ${item.subtitle}`) : /연애|관계|궁합/.test(`${item.title} ${item.subtitle}`)))
-    .filter((item) => access === "all" || (access === "purchased" ? item.title.includes("심층") : !item.title.includes("심층")))
+    .filter((item) => profileScope === "all" || (profileScope === "relationship" ? item.profile.displayName.includes(" · ") : !item.profile.displayName.includes(" · ")))
+    .filter((item) => topic === "all" || (topic === "career" ? item.topic === "career" : item.topic === "love" || item.topic === "relationships"))
+    .filter((item) => access === "all" || (access === "purchased" ? item.purchased : !item.purchased))
     .filter((item) => `${item.title} ${item.subtitle}`.toLowerCase().includes(query.trim().toLowerCase()))
     .sort((left, right) => sort === "newest" ? right.createdAt.localeCompare(left.createdAt) : left.createdAt.localeCompare(right.createdAt));
 
   function updateItem(id: string, update: (item: LibraryItem) => LibraryItem) {
-    if (!libraryStore.write({ version: 1, items: source.map((item) => item.id === id ? update(item) : item) })) setError("보관함 항목을 변경할 수 없어요.");
+    if (!libraryStore.write({ version: 1, items: source.map((item) => item.id === id ? withAllowedLibraryActions(update(item)) : item) })) setError("보관함 항목을 변경할 수 없어요.");
   }
 
   function deleteItem(id: string) {
+    if (source.find((item) => item.id === id)?.purchased) {
+      setError("구매한 항목은 삭제할 수 없고 숨기기만 할 수 있어요.");
+      setPendingDeleteId(null);
+      return;
+    }
     if (!libraryStore.write({ version: 1, items: source.filter((item) => item.id !== id) })) {
       setError("보관함 항목을 삭제할 수 없어요.");
       return;
@@ -191,12 +227,11 @@ export function LibraryScreen() {
         <EmptyState title="조건에 맞는 항목이 없어요" description="검색어나 필터를 바꿔보세요." />
       ) : (
         <div className="library-list">{items.map((item) => {
-          const purchased = item.title.includes("심층");
           return <article key={item.id} className={item.hidden ? "hidden-item" : undefined}>
-            <div><small>{TYPE_LABELS[item.type]}{purchased ? " · 구매" : ""}</small><h2><Link href={item.href}>{item.title}</Link></h2><p>{item.subtitle}</p><time dateTime={item.createdAt}>{item.createdAt.slice(0, 10)}</time></div>
+            <div><small>{TYPE_LABELS[item.type]}{item.purchased ? " · 구매" : ""} · {item.profile.displayName} · {item.read ? "읽음" : "읽지 않음"}</small><h2>{item.allowedActions.includes("open") ? <Link href={item.href}>{item.title}</Link> : item.title}</h2><p>{item.subtitle}</p><time dateTime={item.createdAt}>{item.createdAt.slice(0, 10)}</time></div>
             <div className="library-item-actions">
-              <button type="button" onClick={() => updateItem(item.id, (current) => ({ ...current, hidden: !current.hidden }))}>{item.hidden ? "보이기" : "숨기기"}</button>
-              {purchased ? <small>구매 리포트는 삭제 대신 숨길 수 있어요.</small> : pendingDeleteId === item.id ? <div className="danger-confirm library-delete-confirm"><p>{item.title}을 기기에서 삭제할까요?</p><button type="button" onClick={() => deleteItem(item.id)}>보관함 항목 삭제 확정</button><button type="button" onClick={() => setPendingDeleteId(null)}>취소</button></div> : <button type="button" onClick={() => setPendingDeleteId(item.id)}>삭제</button>}
+              {(item.allowedActions.includes("hide") || item.allowedActions.includes("unhide")) && <button type="button" onClick={() => updateItem(item.id, (current) => ({ ...current, hidden: !current.hidden }))}>{item.hidden ? "보이기" : "숨기기"}</button>}
+              {item.purchased ? <small>구매 리포트는 삭제 대신 숨길 수 있어요.</small> : item.allowedActions.includes("delete") && (pendingDeleteId === item.id ? <div className="danger-confirm library-delete-confirm"><p>{item.title}을 기기에서 삭제할까요?</p><button type="button" onClick={() => deleteItem(item.id)}>보관함 항목 삭제 확정</button><button type="button" onClick={() => setPendingDeleteId(null)}>취소</button></div> : <button type="button" onClick={() => setPendingDeleteId(item.id)}>삭제</button>)}
             </div>
           </article>;
         })}</div>

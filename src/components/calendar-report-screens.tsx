@@ -4,45 +4,42 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
-type CalendarTopic = "all" | "relationship" | "work" | "money";
-type FlowLevel = "차분" | "고른 흐름" | "활발";
+type CalendarTopic = "love" | "conversation" | "contract" | "career" | "interview" | "money" | "rest" | "new-start";
+type FlowLevel = "활용하기 좋은 날" | "무난한 날" | "점검이 필요한 날";
 type ReportPeriod = "year" | "decade";
 
-const TOPICS: Array<{ value: CalendarTopic; label: string }> = [
-  { value: "all", label: "전체" },
-  { value: "relationship", label: "관계" },
-  { value: "work", label: "일" },
-  { value: "money", label: "재물" },
+const TOPICS: Array<{
+  value: CalendarTopic;
+  label: string;
+  consultationTopic: "love" | "career" | "money" | "family";
+  focus: string;
+  usefulAction: string;
+  cautionAction: string;
+}> = [
+  { value: "love", label: "연애", consultationTopic: "love", focus: "마음을 표현하는 속도", usefulAction: "전하고 싶은 마음을 한 문장으로 정리해 보세요.", cautionAction: "상대의 반응을 미리 단정하지 마세요." },
+  { value: "conversation", label: "대화", consultationTopic: "family", focus: "말을 주고받는 순서", usefulAction: "확인하고 싶은 내용을 질문 하나로 좁혀 보세요.", cautionAction: "답을 재촉하거나 침묵의 뜻을 추측하지 마세요." },
+  { value: "contract", label: "계약", consultationTopic: "career", focus: "조건과 책임의 범위", usefulAction: "금액·기한·해지 조건을 문서에서 다시 확인하세요.", cautionAction: "구두 설명만 듣고 중요한 조건을 넘기지 마세요." },
+  { value: "career", label: "이직", consultationTopic: "career", focus: "변화에 필요한 조건", usefulAction: "옮기려는 이유와 포기할 수 없는 조건을 적어 보세요.", cautionAction: "한 번의 감정으로 퇴사 시점을 정하지 마세요." },
+  { value: "interview", label: "면접", consultationTopic: "career", focus: "경험을 전달하는 방식", usefulAction: "대표 경험 하나를 상황·행동·결과 순서로 말해 보세요.", cautionAction: "준비한 답을 빠르게 쏟아내지 마세요." },
+  { value: "money", label: "돈", consultationTopic: "money", focus: "지출과 선택의 기준", usefulAction: "필요한 지출과 미룰 수 있는 지출을 나눠 보세요.", cautionAction: "비교 없이 큰 금액을 바로 결정하지 마세요." },
+  { value: "rest", label: "휴식", consultationTopic: "family", focus: "회복에 필요한 여백", usefulAction: "방해받지 않는 짧은 휴식 시간을 일정에 넣어 보세요.", cautionAction: "쉬는 시간을 남은 일로 다시 채우지 마세요." },
+  { value: "new-start", label: "새로운 시작", consultationTopic: "career", focus: "첫 단계를 정하는 기준", usefulAction: "오늘 끝낼 수 있는 가장 작은 첫 단계를 정하세요.", cautionAction: "완벽한 계획을 기다리며 시작을 미루지 마세요." },
 ];
 
 const LEVELS: Array<{ label: FlowLevel; color: string }> = [
-  { label: "차분", color: "#66757f" },
-  { label: "고른 흐름", color: "#9a712d" },
-  { label: "활발", color: "#a94d3d" },
+  { label: "활용하기 좋은 날", color: "#a94d3d" },
+  { label: "무난한 날", color: "#9a712d" },
+  { label: "점검이 필요한 날", color: "#66757f" },
 ];
 
-const TOPIC_DETAILS: Record<CalendarTopic, Record<FlowLevel, string>> = {
-  all: {
-    차분: "속도를 늦추고 관계·일·지출을 차례로 점검하는 날로 구성한 예시입니다.",
-    "고른 흐름": "익숙한 순서를 유지하며 한 가지 약속을 마무리하는 날로 구성한 예시입니다.",
-    활발: "여러 제안이 오갈 수 있어 우선순위를 먼저 정하는 날로 구성한 예시입니다.",
-  },
-  relationship: {
-    차분: "답을 서두르기보다 상대의 말을 끝까지 듣는 관계 예시입니다.",
-    "고른 흐름": "짧고 분명한 안부가 관계의 리듬을 잇는다는 예시입니다.",
-    활발: "새로운 만남보다 이미 한 약속을 구체화하는 관계 예시입니다.",
-  },
-  work: {
-    차분: "새 일을 벌이기보다 문서와 일정을 정리하는 업무 예시입니다.",
-    "고른 흐름": "집중할 한 가지를 정해 끝까지 이어가는 업무 예시입니다.",
-    활발: "제안과 협업이 늘 수 있어 역할을 명확히 하는 업무 예시입니다.",
-  },
-  money: {
-    차분: "큰 결정보다 반복 지출을 살펴보는 재물 예시입니다.",
-    "고른 흐름": "정한 예산 안에서 필요한 지출만 선택하는 재물 예시입니다.",
-    활발: "충동적인 선택을 피하고 비교 시간을 두는 재물 예시입니다.",
-  },
+const FLOW_DETAILS: Record<FlowLevel, string> = {
+  "활용하기 좋은 날": "준비한 기준을 실제 행동으로 옮겨 보기 좋은 흐름",
+  "무난한 날": "익숙한 순서를 지키며 한 가지를 마무리하는 흐름",
+  "점검이 필요한 날": "결론보다 빠뜨린 조건이 없는지 먼저 살피는 흐름",
 };
+
+const ACTION_TIMINGS = ["오전에", "오후에", "하루를 마치기 전에"] as const;
+const REVIEW_PROMPTS = ["실행 전에 한 번 더 확인하세요.", "관련된 사람과 사실을 맞춰 보세요.", "결정 이유를 짧게 기록해 두세요."] as const;
 
 function shiftMonth(value: string, amount: number) {
   const [year, month] = value.split("-").map(Number);
@@ -68,12 +65,16 @@ function levelFor(monthValue: string, day: number, topic: CalendarTopic) {
 
 export function TimingCalendarScreen() {
   const [month, setMonth] = useState("2026-08");
-  const [topic, setTopic] = useState<CalendarTopic>("all");
+  const [topic, setTopic] = useState<CalendarTopic>("love");
   const [selectedDay, setSelectedDay] = useState(1);
   const days = useMemo(() => calendarDays(month), [month]);
   const selectedLevel = levelFor(month, selectedDay, topic);
   const selectedDate = `${month}-${String(selectedDay).padStart(2, "0")}`;
-  const topicLabel = TOPICS.find((item) => item.value === topic)?.label ?? "전체";
+  const selectedTopic = TOPICS.find((item) => item.value === topic) ?? TOPICS[0];
+  const fixtureRule = ((Number(month.replace("-", "")) + selectedDay * 17 + TOPICS.findIndex((item) => item.value === topic) * 13) % 97) + 1;
+  const actionTiming = ACTION_TIMINGS[fixtureRule % ACTION_TIMINGS.length];
+  const reviewPrompt = REVIEW_PROMPTS[(fixtureRule + 1) % REVIEW_PROMPTS.length];
+  const consultationHref = `/consult/new?topic=${selectedTopic.consultationTopic}&period=${selectedDate}`;
 
   function moveMonth(amount: number) {
     setMonth((current) => shiftMonth(current, amount));
@@ -155,10 +156,16 @@ export function TimingCalendarScreen() {
       </div>
 
       <article className="insight-card current" aria-live="polite">
-        <small>{selectedDate} · {topicLabel}</small>
+        <small>{selectedDate} · {selectedTopic.label}</small>
         <strong>{selectedLevel.label} 흐름 예시</strong>
-        <p>{TOPIC_DETAILS[topic][selectedLevel.label]}</p>
-        <p>이 내용은 선택한 월·날짜·필터에 따라 같은 결과를 내는 결정형 화면 예시이며, 개인 출생 정보나 사주 원국을 사용하지 않았습니다.</p>
+        <dl>
+          <div><dt>핵심 흐름</dt><dd>{selectedTopic.focus}을 중심으로 {FLOW_DETAILS[selectedLevel.label]}입니다.</dd></div>
+          <div><dt>활용 행동</dt><dd>{actionTiming} {selectedTopic.usefulAction}</dd></div>
+          <div><dt>주의 행동</dt><dd>{selectedTopic.cautionAction} {reviewPrompt}</dd></div>
+          <div><dt>관련 근거</dt><dd>{selectedDate}과 {selectedTopic.label} 필터를 조합한 로컬 예시 규칙 #{fixtureRule}에 따른 내용입니다.</dd></div>
+        </dl>
+        <p>이 내용은 선택한 날짜와 필터에 따라 같은 결과를 내는 결정형 화면 예시이며, 개인 출생 정보나 사주 원국을 사용한 실제 계산이 아닙니다.</p>
+        <Link className="secondary-button" href={consultationHref}>이 날짜와 주제로 상담 시작하기</Link>
       </article>
     </main>
   );

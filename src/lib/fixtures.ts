@@ -7,9 +7,10 @@ import type {
   ConsultationDraft,
   CompatibilityDimension,
   CommerceData,
+  DailyFlow,
   FeedbackId,
-  FlowReading,
   LibraryItem,
+  MonthlyFlow,
   PeopleData,
   Product,
   ProductId,
@@ -20,13 +21,27 @@ import type {
   TopicId,
   TopicPreview,
 } from "./domain";
+import { withAllowedLibraryActions } from "./contracts";
 
 export const INITIAL_BIRTH: BirthInfo = {
-  nickname: "서연",
+  displayName: "서연",
   calendar: "solar",
+  leapMonth: false,
   birthDate: "1992-06-18",
   birthTime: "14:30",
-  unknownTime: false,
+  birthTimeUnknown: false,
+  birthplace: "서울",
+  timezone: "Asia/Seoul",
+  calculationGender: "female",
+  profileType: "self",
+  ownerRelationship: "self",
+  personalization: {
+    interests: ["love"],
+    relationshipStatus: null,
+    occupationStatus: null,
+    primaryConcern: null,
+  },
+  thirdPartyConsent: false,
 };
 
 export const TOPICS: readonly Topic[] = [
@@ -140,68 +155,107 @@ function deterministicIndex(key: string, length: number) {
   return hash % length;
 }
 
-export function getDailyFlow(date: string): FlowReading {
+const FIXTURE_PROVENANCE = {
+  chartSnapshotId: "chart_fixture_primary",
+  interpretationVersion: "fixture-1",
+  modelVersion: null,
+  promptVersion: null,
+  templateVersion: "fixture-1",
+  generatedAt: "2026-08-24T10:00:00.000Z",
+} as const;
+
+export function getDailyFlow(date: string): DailyFlow {
   const index = deterministicIndex(date, FLOW_HEADLINES.length);
   return {
-    period: date,
+    kind: "daily",
+    profileId: "prf_01J62Z7M4Q8Y3T1K9A5C6N2R0X",
+    date,
     headline: FLOW_HEADLINES[index],
     summary: "이 내용은 날짜에 따라 정해진 체험용 예시이며 실제 사주 계산 결과가 아닙니다.",
-    relationship: ["말보다 기대하는 방식을 먼저 확인해보세요.", "가까운 관계일수록 짧고 분명하게 표현해보세요."][index % 2],
-    career: ["해야 할 일을 세 단계로 줄이면 집중하기 쉬워요.", "새 제안은 조건을 적어본 뒤 판단해보세요."][index % 2],
-    money: ["작은 지출 기준 하나를 지켜보세요.", "필요한 지출과 미룰 수 있는 지출을 나눠보세요."][index % 2],
+    priorityArea: (["relationship", "career", "money"] as const)[index % 3],
     caution: "체험용 예시 문장을 중요한 결정의 유일한 근거로 사용하지 마세요.",
-    suggestion: "오늘 확인할 조건 한 가지를 메모해보세요.",
+    suggestedQuestion: "오늘 확인할 조건 한 가지를 메모해보세요.",
+    provenance: FIXTURE_PROVENANCE,
   };
 }
 
-export function getMonthlyFlow(month: string): FlowReading {
+export function getMonthlyFlow(month: string): MonthlyFlow {
   const index = deterministicIndex(month, FLOW_HEADLINES.length);
   return {
-    ...getDailyFlow(`${month}-01`),
-    period: month,
+    kind: "monthly",
+    profileId: "prf_01J62Z7M4Q8Y3T1K9A5C6N2R0X",
+    month,
     headline: FLOW_HEADLINES[(index + 1) % FLOW_HEADLINES.length],
-    summary: "같은 달에는 언제 다시 열어도 동일한 체험용 예시 내용을 표시합니다.",
-    suggestion: "이번 달에 유지할 기준과 바꿔볼 기준을 하나씩 적어보세요.",
+    overview: "같은 달에는 언제 다시 열어도 동일한 체험용 예시 내용을 표시합니다.",
+    earlyPeriod: "초반에는 이어오던 일의 조건을 정리하고 속도를 조절해보세요.",
+    middlePeriod: "중반에는 관계와 일에서 확인 질문을 먼저 건네는 편이 좋아요.",
+    latePeriod: "후반에는 새 일을 벌이기보다 선택한 일을 마무리해보세요.",
+    relationship: "기대하는 방식을 짐작하지 말고 짧게 확인해보세요.",
+    career: "새 제안은 원하는 조건을 적은 뒤 판단해보세요.",
+    money: "필요한 지출과 미룰 수 있는 지출을 나눠보세요.",
+    cautionPeriods: [`${month}-08 ~ ${month}-11`, `${month}-23 ~ ${month}-25`],
+    opportunityPeriods: [`${month}-14 ~ ${month}-18`],
+    provenance: FIXTURE_PROVENANCE,
   };
 }
 
 export const INITIAL_LIBRARY_ITEMS: readonly LibraryItem[] = [
-  {
+  withAllowedLibraryActions({
     id: "fixture-basic-report",
     type: "report",
     title: "무료 사주 요약",
     subtitle: "기본 성향과 현재 흐름",
     createdAt: "2026-08-24T10:00:00.000Z",
     href: "/report",
+    access: "available",
+    purchased: false,
+    read: true,
     hidden: false,
-  },
-  {
+    profile: { id: "prf_01J62Z7M4Q8Y3T1K9A5C6N2R0X", displayName: "서연" },
+    topic: null,
+  }),
+  withAllowedLibraryActions({
     id: "fixture-paid-report",
     type: "report",
     title: "연애 심층 리포트",
     subtitle: "구매한 리포트 · 숨김으로만 관리",
     createdAt: "2026-08-24T09:00:00.000Z",
     href: "/products/love-report",
+    access: "available",
+    purchased: true,
+    read: false,
     hidden: false,
-  },
-  {
+    profile: { id: "prf_01J62Z7M4Q8Y3T1K9A5C6N2R0X", displayName: "서연" },
+    topic: "love",
+  }),
+  withAllowedLibraryActions({
     id: "fixture-consultation",
     type: "consultation",
     title: "일과 변화에 대한 상담",
     subtitle: "기기에 저장된 대화 예시",
     createdAt: "2026-08-23T10:00:00.000Z",
     href: "/consult",
+    access: "available",
+    purchased: false,
+    read: false,
     hidden: false,
-  },
-  {
+    profile: { id: "prf_01J62Z7M4Q8Y3T1K9A5C6N2R0X", displayName: "서연" },
+    topic: "career",
+  }),
+  withAllowedLibraryActions({
     id: "fixture-compatibility",
     type: "compatibility",
     title: "두 사람의 관계 요약",
     subtitle: "두 사람의 관계 분석",
     createdAt: "2026-08-22T10:00:00.000Z",
     href: "/compatibility",
+    access: "available",
+    purchased: false,
+    read: false,
     hidden: false,
-  },
+    profile: { id: "prf_01J62Z7M4Q8Y3T1K9A5C6N2R0X", displayName: "서연 · 민준" },
+    topic: "love",
+  }),
 ] as const;
 
 export const RECOMMENDED_QUESTIONS: Readonly<Record<TopicId, readonly string[]>> = {
@@ -239,17 +293,23 @@ export const INITIAL_PEOPLE_DATA: PeopleData = {
   freeLimit: 2,
   people: [
     {
-      id: "person-self",
-      name: "서연",
-      relationship: "self",
-      birth: INITIAL_BIRTH,
+      id: "prf_01J62Z7M4Q8Y3T1K9A5C6N2R0X",
+      profile: INITIAL_BIRTH,
       createdAt: "2026-08-24T09:00:00.000Z",
     },
     {
-      id: "person-partner",
-      name: "민준",
-      relationship: "partner",
-      birth: { ...INITIAL_BIRTH, nickname: "민준", birthDate: "1991-03-12", birthTime: "", unknownTime: true },
+      id: "prf_01J62Z8B7H4W6D9P2F3K5M1Q0V",
+      profile: {
+        ...INITIAL_BIRTH,
+        displayName: "민준",
+        birthDate: "1991-03-12",
+        birthTime: null,
+        birthTimeUnknown: true,
+        calculationGender: "male",
+        profileType: "other",
+        ownerRelationship: "partner",
+        thirdPartyConsent: true,
+      },
       createdAt: "2026-08-23T09:00:00.000Z",
     },
   ],
@@ -264,25 +324,101 @@ export const COMPATIBILITY_DIMENSIONS: readonly CompatibilityDimension[] = [
 ] as const;
 
 export const PRODUCTS: readonly Product[] = [
-  { id: "consult-5", title: "상담 5회 이용권", price: 4900, description: "고민별 질문과 답변을 이어서 살펴보는 상담 상품", inclusions: ["질문 5회 표시", "상담 보관함", "후속 질문"], preview: "실제 AI 답변과 유료 이용권 지급은 포함되지 않습니다." },
-  { id: "love-report", title: "연애 심층 리포트", price: 9900, description: "관계 성향과 반복 패턴을 차분히 살펴보는 리포트", inclusions: ["관계 성향", "반복 패턴", "시기 미리보기"], preview: "서연님의 관계에서는 속도와 기대를 확인하는 항목이 미리보기로 표시돼요." },
-  { id: "compatibility-report", title: "궁합 심층 리포트", price: 12900, description: "두 사람의 관계를 여러 관점으로 살펴보는 리포트", inclusions: ["소통", "애정 표현", "생활 리듬", "갈등", "장기 관계"], preview: "저장된 두 사람의 이름만 화면에 반영하며 실제 궁합은 계산하지 않아요." },
-  { id: "money-report", title: "재물 흐름 리포트", price: 9900, description: "소비·저축·결정 기준을 시기별로 정리하는 리포트", inclusions: ["재물 습관", "변화 조건", "시기별 점검"], preview: "필요한 지출과 미룰 수 있는 지출을 나누는 화면 예시예요." },
-  { id: "year-report", title: "연간 흐름 리포트", price: 14900, description: "한 해의 방향과 관계·일·생활 흐름을 네 장면으로 읽는 리포트", inclusions: ["연간 방향", "분기별 장면", "관계와 일"], preview: "2026년 흐름을 네 장면으로 나눈 고정 예시를 먼저 확인해요." },
-  { id: "decade-report", title: "10년 장기 흐름 리포트", price: 19900, description: "긴 호흡의 변화를 세 구간으로 살펴보는 리포트", inclusions: ["10년 방향", "세 구간 전환", "생활 기반"], preview: "장기 변화를 세 구간으로 읽는 정적 예시이며 실제 대운 계산은 하지 않아요." },
-  { id: "career-report", title: "커리어 심층 리포트", price: 9900, description: "업무 환경과 변화 조건을 정리해보는 리포트", inclusions: ["업무 성향", "조직 환경", "변화 조건"], preview: "기준이 분명할수록 꾸준한 힘이 드러나는 미리보기예요." },
+  {
+    id: "consult-5", slug: "consult-5", version: "1", status: "active", kind: "consultation_credit", title: "상담 5회 이용권",
+    description: "고민별 질문과 답변을 이어서 살펴보는 상담 상품", answersQuestions: ["지금 고민에서 먼저 확인할 현실 조건은 무엇인가요?", "후속 질문으로 어떤 관점을 더 살펴볼 수 있나요?"],
+    requiredInputs: ["현재 프로필", "상담 주제", "질문 또는 상황"], requiresBirthTime: false, includedSections: ["질문 5회 표시", "상담 보관함", "후속 질문"],
+    generationMethod: "저장된 프로필과 사용자가 입력한 상담 맥락을 바탕으로 회차별 답변을 생성합니다.", priceAmount: 4900, priceCurrency: "KRW",
+    refundPolicy: "생성 전에는 환불할 수 있고, 생성 실패 시 재시도 또는 이용권 복구를 제공합니다.", preview: "선택한 고민 주제와 질문 맥락을 바탕으로 답변 구성을 미리 보여드려요.",
+  },
+  {
+    id: "love-report", slug: "love-report", version: "1", status: "active", kind: "report", title: "연애 심층 리포트",
+    description: "관계 성향과 반복 패턴을 차분히 살펴보는 리포트", answersQuestions: ["관계에서 반복되는 기대와 반응은 무엇인가요?", "관계를 편안하게 만드는 대화 기준은 무엇인가요?"],
+    requiredInputs: ["현재 프로필", "연애·관계 관심사 또는 고민"], requiresBirthTime: false, includedSections: ["관계 성향", "반복 패턴", "시기 미리보기"],
+    generationMethod: "프로필 입력과 선택한 관계 관심사를 리포트 템플릿에 반영해 생성합니다.", priceAmount: 9900, priceCurrency: "KRW",
+    refundPolicy: "생성 전에는 환불할 수 있고, 생성 실패 시 같은 해석 버전으로 재시도합니다.", preview: "관계의 속도와 기대를 확인하는 맞춤 항목을 먼저 보여드려요.",
+  },
+  {
+    id: "compatibility-report", slug: "compatibility-report", version: "1", status: "active", kind: "report", title: "궁합 심층 리포트",
+    description: "두 사람의 관계를 여러 관점으로 살펴보는 리포트", answersQuestions: ["두 사람의 소통 방식은 어디에서 맞거나 엇갈리나요?", "장기 관계에서 함께 조율할 조건은 무엇인가요?"],
+    requiredInputs: ["현재 프로필", "비교할 상대 프로필", "관계 유형"], requiresBirthTime: false, includedSections: ["소통", "애정 표현", "생활 리듬", "갈등", "장기 관계"],
+    generationMethod: "동의받아 저장한 두 프로필과 관계 유형을 함께 반영해 생성합니다.", priceAmount: 12900, priceCurrency: "KRW",
+    refundPolicy: "생성 전에는 환불할 수 있고, 생성 실패 시 재시도하거나 결제 상태를 복구합니다.", preview: "선택한 두 사람과 관계 유형에 맞춘 비교 항목을 먼저 보여드려요.",
+  },
+  {
+    id: "money-report", slug: "money-report", version: "1", status: "active", kind: "report", title: "재물 흐름 리포트",
+    description: "소비·저축·결정 기준을 시기별로 정리하는 리포트", answersQuestions: ["돈을 쓸 때 반복되는 판단 기준은 무엇인가요?", "변화기에는 어떤 재정 조건을 먼저 점검해야 하나요?"],
+    requiredInputs: ["현재 프로필", "재물 관심사 또는 고민"], requiresBirthTime: false, includedSections: ["재물 습관", "변화 조건", "시기별 점검"],
+    generationMethod: "프로필 입력과 재물 관심사를 기간별 리포트 템플릿에 반영해 생성합니다.", priceAmount: 9900, priceCurrency: "KRW",
+    refundPolicy: "생성 전에는 환불할 수 있고, 생성 실패 시 같은 해석 버전으로 재시도합니다.", preview: "필요한 지출과 미룰 수 있는 지출을 나누는 맞춤 점검 항목을 보여드려요.",
+  },
+  {
+    id: "year-report", slug: "year-report", version: "1", status: "active", kind: "report", title: "연간 흐름 리포트",
+    description: "한 해의 방향과 관계·일·생활 흐름을 네 장면으로 읽는 리포트", answersQuestions: ["올해 집중할 생활 영역은 무엇인가요?", "분기마다 점검할 변화 신호는 무엇인가요?"],
+    requiredInputs: ["현재 프로필", "조회 연도", "관심사 또는 고민"], requiresBirthTime: false, includedSections: ["연간 방향", "분기별 장면", "관계와 일"],
+    generationMethod: "프로필 입력과 조회 연도, 관심사를 연간 리포트 템플릿에 반영해 생성합니다.", priceAmount: 14900, priceCurrency: "KRW",
+    refundPolicy: "생성 전에는 환불할 수 있고, 생성 실패 시 같은 연도와 해석 버전으로 재시도합니다.", preview: "선택한 연도의 흐름을 현재 관심사에 맞춘 네 장면으로 구성해 보여드려요.",
+  },
+  {
+    id: "decade-report", slug: "decade-report", version: "1", status: "active", kind: "report", title: "10년 장기 흐름 리포트",
+    description: "긴 호흡의 변화를 세 구간으로 살펴보는 리포트", answersQuestions: ["장기 변화에서 지켜야 할 생활 기반은 무엇인가요?", "세 구간의 전환점마다 무엇을 점검해야 하나요?"],
+    requiredInputs: ["현재 프로필", "조회 시작 연도", "장기 관심사"], requiresBirthTime: true, includedSections: ["10년 방향", "세 구간 전환", "생활 기반"],
+    generationMethod: "출생 시간을 포함한 프로필과 시작 연도, 장기 관심사를 세 구간 템플릿에 반영해 생성합니다.", priceAmount: 19900, priceCurrency: "KRW",
+    refundPolicy: "생성 전에는 환불할 수 있고, 출생 시간 누락 시 생성하지 않으며 실패 시 재시도합니다.", preview: "현재 장기 관심사에 맞춰 세 구간에서 점검할 질문을 먼저 보여드려요.",
+  },
+  {
+    id: "career-report", slug: "career-report", version: "1", status: "active", kind: "report", title: "커리어 심층 리포트",
+    description: "업무 환경과 변화 조건을 정리해보는 리포트", answersQuestions: ["꾸준히 힘을 내기 좋은 업무 환경은 무엇인가요?", "변화를 결정하기 전에 확인할 조건은 무엇인가요?"],
+    requiredInputs: ["현재 프로필", "커리어 관심사 또는 고민", "현재 직업 상태"], requiresBirthTime: false, includedSections: ["업무 성향", "조직 환경", "변화 조건"],
+    generationMethod: "프로필 입력과 직업 상태, 커리어 관심사를 리포트 템플릿에 반영해 생성합니다.", priceAmount: 9900, priceCurrency: "KRW",
+    refundPolicy: "생성 전에는 환불할 수 있고, 생성 실패 시 같은 해석 버전으로 재시도합니다.", preview: "현재 커리어 고민을 기준으로 업무 환경과 변화 조건을 먼저 보여드려요.",
+  },
 ] as const;
 
 export const INITIAL_COMMERCE_DATA: CommerceData = {
   version: 1,
   orders: [],
+  generations: [],
   consultationCredits: 0,
   creditHistory: [],
 };
 
 export const INITIAL_SETTINGS_DATA: SettingsData = {
   version: 1,
-  notifications: { dailyFlow: false, monthlyFlow: false, email: false },
+  notifications: [
+    {
+      channel: "push",
+      enabled: false,
+      topics: {
+        payment_completed: true,
+        monthly_flow: false,
+        important_period: false,
+        report_completed: true,
+        consultation_completed: true,
+        low_credits: true,
+        resume_consultation: false,
+        interest_change: false,
+      },
+      quietHours: { enabled: true, start: "22:00", end: "08:00", timezone: "Asia/Seoul" },
+      suppressDuplicates: true,
+    },
+    {
+      channel: "email",
+      enabled: false,
+      topics: {
+        payment_completed: true,
+        monthly_flow: false,
+        important_period: false,
+        report_completed: true,
+        consultation_completed: true,
+        low_credits: true,
+        resume_consultation: false,
+        interest_change: false,
+      },
+      quietHours: { enabled: true, start: "22:00", end: "08:00", timezone: "Asia/Seoul" },
+      suppressDuplicates: true,
+    },
+  ],
 };
 
 export function isProductId(value: unknown): value is ProductId {
@@ -331,7 +467,7 @@ export const APP_NAV_GROUPS: readonly AppNavGroup[] = [
     { href: "/billing", label: "결제·복구 센터", shortLabel: "결제", description: "주문·지급·환불·멱등성·복구 상태 프로토타입" },
     { href: "/share", label: "공유 카드", shortLabel: "공유", description: "개인정보를 선택해 안전한 공유 카드 미리보기" },
     { href: "/share/links", label: "공유 링크 관리", shortLabel: "공유 링크", description: "만료·비활성화·민감정보 제한 프로토타입" },
-    { href: "/shared/compatibility", label: "공개 관계 결과", shortLabel: "공개 결과", description: "민감정보를 제외한 공개 관계 요약 화면" },
+    { href: "/shared/V7m2Q9x4Ka8Nz3Rt", label: "공개 관계 결과", shortLabel: "공개 결과", description: "민감정보를 제외한 공개 관계 요약 화면" },
     { href: "/life-log", label: "라이프 로그", shortLabel: "기록", description: "실제 사건과 선택을 시간순으로 기록하는 예시" },
   ] },
   { label: "계정과 관리", items: [

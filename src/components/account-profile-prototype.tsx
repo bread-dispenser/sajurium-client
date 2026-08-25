@@ -2,66 +2,92 @@
 
 import { useState } from "react";
 import type { FormEvent } from "react";
+import {
+  maskBirthDate,
+  maskBirthTime,
+  maskBirthplace,
+  toProfileSummary,
+} from "@/lib/contracts";
+import type { ProfileInput, ProfileSummary, TopicId } from "@/lib/contracts";
 
 type Provider = "카카오" | "Apple" | "Google";
 type GuestState = "active" | "expired" | "recovered";
 type DuplicateChoice = "merge" | "keep";
-type Calendar = "solar" | "lunar";
-
-type ProfileDraft = {
-  nickname: string;
-  birthDate: string;
-  calendar: Calendar;
-  leapMonth: boolean;
-  birthTime: string;
-  unknownTime: boolean;
-  birthplace: string;
-  genderBasis: string;
-  interests: string[];
-  relationship: string;
-  job: string;
-  concern: string;
+type MigrationOutcome = {
+  migrationId: string;
+  anonymousSessionId: string;
+  status: "migrated" | "skipped_expired";
 };
-
-type Snapshot = ProfileDraft & {
-  id: number;
+type MergeOutcome = {
+  mergeId: string;
+  sourceProfileId: string;
+  targetProfileId: string;
+  status: "merged" | "kept_existing";
+};
+type Snapshot = {
+  snapshotId: string;
+  profileId: string;
+  input: ProfileInput;
+  summary: ProfileSummary;
   label: string;
 };
 
 const PROVIDERS: Provider[] = ["카카오", "Apple", "Google"];
-const INTERESTS = ["연애·관계", "일·커리어", "재물", "건강", "가족"];
+const INTERESTS: Array<{ id: TopicId; label: string }> = [
+  { id: "love", label: "연애" },
+  { id: "relationships", label: "관계" },
+  { id: "career", label: "일·커리어" },
+  { id: "money", label: "재물" },
+  { id: "family", label: "가족" },
+];
+const PROFILE_ID = "prf_demo_7f2c";
+const ANONYMOUS_SESSION = {
+  id: "anon_demo_4c8f",
+  expiresAt: "2026-08-26T01:00:00.000Z",
+  expiryLabel: "2026-08-26 10:00 KST",
+} as const;
 
-const INITIAL_PROFILE: ProfileDraft = {
-  nickname: "다온",
+const INITIAL_PROFILE: ProfileInput = {
+  displayName: "다온",
   birthDate: "1992-08-17",
   calendar: "solar",
   leapMonth: false,
   birthTime: "14:30",
-  unknownTime: false,
+  birthTimeUnknown: false,
   birthplace: "서울특별시",
-  genderBasis: "여성",
-  interests: ["일·커리어"],
-  relationship: "연애 중",
-  job: "직장인",
-  concern: "지금 맡은 일과 새로운 기회 사이에서 어떤 선택을 해야 할지 고민이에요.",
+  timezone: "Asia/Seoul",
+  calculationGender: "female",
+  profileType: "self",
+  ownerRelationship: "self",
+  personalization: {
+    interests: ["career"],
+    relationshipStatus: "연애 중",
+    occupationStatus: "직장인",
+    primaryConcern: "지금 맡은 일과 새로운 기회 사이에서 어떤 선택을 해야 할지 고민이에요.",
+  },
+  thirdPartyConsent: false,
 };
 
-function maskBirthDate(value: string) {
-  const year = value.slice(0, 4) || "****";
-  return `${year}. **. **`;
-}
-
-function maskBirthTime(value: string, unknown: boolean) {
-  return unknown ? "시간 미상" : `${value.slice(0, 2) || "**"}:**`;
+function createSnapshot(input: ProfileInput, index: number): Snapshot {
+  const opaqueSuffix = ((index * 2654435761) >>> 0).toString(16).padStart(8, "0");
+  const snapshotId = `snp_demo_${opaqueSuffix}`;
+  const updatedAt = new Date(Date.UTC(2026, 7, 25, 10, index)).toISOString();
+  return {
+    snapshotId,
+    profileId: PROFILE_ID,
+    input: structuredClone(input),
+    summary: toProfileSummary({ ...input, id: PROFILE_ID, updatedAt }),
+    label: index === 1 ? "최초 입력 스냅샷" : `수정 스냅샷 ${index}`,
+  };
 }
 
 export function AccountPrototypeScreen() {
   const [guestState, setGuestState] = useState<GuestState>("active");
   const [provider, setProvider] = useState<Provider>("카카오");
   const [signedIn, setSignedIn] = useState(false);
-  const [migrated, setMigrated] = useState(false);
+  const [migrationOutcome, setMigrationOutcome] = useState<MigrationOutcome | null>(null);
   const [duplicateChoice, setDuplicateChoice] = useState<DuplicateChoice>("merge");
-  const [duplicateResolved, setDuplicateResolved] = useState(false);
+  const [mergeOutcome, setMergeOutcome] = useState<MergeOutcome | null>(null);
   const [deletionReview, setDeletionReview] = useState(false);
   const [deletionConfirmed, setDeletionConfirmed] = useState(false);
   const [deletePhrase, setDeletePhrase] = useState("");
@@ -69,8 +95,21 @@ export function AccountPrototypeScreen() {
 
   function connectAccount() {
     setSignedIn(true);
-    setMigrated(guestState !== "expired");
-    setDuplicateResolved(false);
+    setMigrationOutcome({
+      migrationId: "mig_demo_a91e",
+      anonymousSessionId: ANONYMOUS_SESSION.id,
+      status: guestState === "expired" ? "skipped_expired" : "migrated",
+    });
+    setMergeOutcome(null);
+  }
+
+  function resolveDuplicate() {
+    setMergeOutcome({
+      mergeId: "mrg_demo_b63d",
+      sourceProfileId: "prf_guest_21ad",
+      targetProfileId: PROFILE_ID,
+      status: duplicateChoice === "merge" ? "merged" : "kept_existing",
+    });
   }
 
   function deleteAccount(event: FormEvent<HTMLFormElement>) {
@@ -78,7 +117,7 @@ export function AccountPrototypeScreen() {
     if (!deletionConfirmed || deletePhrase !== "계정 삭제") return;
     setDeleted(true);
     setSignedIn(false);
-    setMigrated(false);
+    setMigrationOutcome(null);
     setDeletionReview(false);
   }
 
@@ -107,14 +146,14 @@ export function AccountPrototypeScreen() {
         </div>
         {guestState === "active" && (
           <article className="insight-card current" aria-live="polite">
-            <small>임시 결과 · 동일 브라우저</small>
+            <small>익명 세션 {ANONYMOUS_SESSION.id} · 만료 {ANONYMOUS_SESSION.expiryLabel}</small>
             <h2>오늘의 무료 사주 요약</h2>
             <p>임시 결과가 남아 있어 로그인 후 계정으로 이전할 수 있어요.</p>
             <button type="button" className="secondary-button" onClick={() => setGuestState("recovered")}>재방문 결과 복구 체험</button>
           </article>
         )}
         {guestState === "recovered" && (
-          <p className="action-note" role="status">이 브라우저의 유효 기간 안에 있는 임시 결과를 복구했어요. 실제 브라우저 저장은 사용하지 않았습니다.</p>
+          <p className="action-note" role="status">익명 세션 {ANONYMOUS_SESSION.id}를 유효 기간({ANONYMOUS_SESSION.expiresAt}) 안에 복구했어요. 실제 브라우저 저장은 사용하지 않았습니다.</p>
         )}
         {guestState === "expired" && (
           <div className="danger-confirm" role="status">
@@ -147,7 +186,8 @@ export function AccountPrototypeScreen() {
         <button className="primary-button" type="button" onClick={connectAccount}>{provider} 로그인과 결과 이전 체험</button>
         {signedIn && (
           <p className="action-note" role="status">
-            {provider} 연결 화면을 완료한 상태예요. {migrated ? "비회원 무료 결과를 잃지 않고 계정으로 이전했습니다." : "만료된 결과는 이전하지 않았습니다."}
+            {provider} 연결 완료 · 이전 ID {migrationOutcome?.migrationId} · 익명 세션 {migrationOutcome?.anonymousSessionId} · 상태{" "}
+            {migrationOutcome?.status === "migrated" ? "migrated (비회원 무료 결과 이전 완료)" : "skipped_expired (만료 결과 이전 안 함)"}
           </p>
         )}
       </section>
@@ -170,9 +210,13 @@ export function AccountPrototypeScreen() {
               <span><strong>기존 프로필만 유지</strong><br />임시 프로필은 만들지 않고 결과 이전도 건너뛰어요.</span>
             </label>
           </fieldset>
-          <button className="secondary-button" type="button" onClick={() => setDuplicateResolved(true)}>선택 적용</button>
-          {duplicateResolved && (
-            <p className="action-note" role="status">{duplicateChoice === "merge" ? "프로필 하나로 병합하고 임시 결과를 연결했어요." : "기존 프로필만 유지하고 중복 생성을 막았어요."} 화면 상태만 변경됐습니다.</p>
+          <button className="secondary-button" type="button" onClick={resolveDuplicate}>선택 적용</button>
+          {mergeOutcome && (
+            <p className="action-note" role="status">
+              병합 ID {mergeOutcome.mergeId} · 상태 {mergeOutcome.status}.{" "}
+              {mergeOutcome.status === "merged" ? "프로필 하나로 병합하고 임시 결과를 연결했어요." : "기존 프로필만 유지하고 중복 생성을 막았어요."}{" "}
+              대상 {mergeOutcome.targetProfileId} · 원본 {mergeOutcome.sourceProfileId}. 화면 상태만 변경됐습니다.
+            </p>
           )}
         </section>
       )}
@@ -221,29 +265,38 @@ export function AccountPrototypeScreen() {
 }
 
 export function ProfilePrototypeScreen() {
-  const [draft, setDraft] = useState<ProfileDraft>(INITIAL_PROFILE);
-  const [snapshots, setSnapshots] = useState<Snapshot[]>([{ ...INITIAL_PROFILE, id: 1, label: "최초 입력 스냅샷" }]);
+  const [draft, setDraft] = useState<ProfileInput>(INITIAL_PROFILE);
+  const [snapshots, setSnapshots] = useState<Snapshot[]>(() => [createSnapshot(INITIAL_PROFILE, 1)]);
   const [editing, setEditing] = useState(false);
   const [message, setMessage] = useState("");
 
-  function update<K extends keyof ProfileDraft>(key: K, value: ProfileDraft[K]) {
+  function update<K extends keyof ProfileInput>(key: K, value: ProfileInput[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
     setMessage("");
   }
 
-  function toggleInterest(value: string) {
-    update("interests", draft.interests.includes(value)
-      ? draft.interests.filter((item) => item !== value)
-      : [...draft.interests, value]);
+  function updatePersonalization<K extends keyof ProfileInput["personalization"]>(
+    key: K,
+    value: ProfileInput["personalization"][K],
+  ) {
+    setDraft((current) => ({
+      ...current,
+      personalization: { ...current.personalization, [key]: value },
+    }));
+    setMessage("");
+  }
+
+  function toggleInterest(value: TopicId) {
+    const interests = draft.personalization.interests;
+    updatePersonalization("interests", interests.includes(value)
+      ? interests.filter((item) => item !== value)
+      : [...interests, value]);
   }
 
   function saveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const nextId = snapshots.length + 1;
-    setSnapshots((current) => [
-      ...current,
-      { ...draft, id: nextId, label: current.length === 0 ? "최초 입력 스냅샷" : `수정 스냅샷 ${nextId}` },
-    ]);
+    const nextIndex = snapshots.length + 1;
+    setSnapshots((current) => [...current, createSnapshot(draft, nextIndex)]);
     setEditing(false);
     setMessage(snapshots.length === 0 ? "프로필 화면을 만들었어요." : "새 스냅샷을 만들었어요. 기존 리포트는 이전 정보로 남아 있습니다.");
   }
@@ -267,32 +320,33 @@ export function ProfilePrototypeScreen() {
         <section className="settings-section" aria-labelledby="masked-profile-title">
           <div>
             <small>기본 마스킹 목록 미리보기</small>
-            <h2 id="masked-profile-title">{latest.nickname}</h2>
-            <p>{maskBirthDate(latest.birthDate)} · {maskBirthTime(latest.birthTime, latest.unknownTime)} · {latest.birthplace.replace(/(.{1}).+/, "$1**")}</p>
-            <p>{latest.calendar === "solar" ? "양력" : latest.leapMonth ? "음력 윤달" : "음력 평달"} · 성별 기준값 {latest.genderBasis}</p>
+            <h2 id="masked-profile-title">{latest.summary.displayName}</h2>
+            <p>{latest.summary.maskedBirthDate} · {latest.summary.maskedBirthTime} · {latest.summary.maskedBirthplace}</p>
+            <p>{latest.summary.calendar === "solar" ? "양력" : latest.summary.leapMonth ? "음력 윤달" : "음력 평달"} · 시간대 {latest.summary.timezone}</p>
+            <p>프로필 ID {latest.profileId} · 현재 스냅샷 ID {latest.snapshotId}</p>
           </div>
-          <button className="primary-button" type="button" onClick={() => { setDraft({ ...latest }); setEditing(true); setMessage(""); }}>프로필 수정</button>
+          <button className="primary-button" type="button" onClick={() => { setDraft(structuredClone(latest.input)); setEditing(true); setMessage(""); }}>프로필 수정</button>
         </section>
       )}
 
       {editing && (
         <form className="birth-fields" onSubmit={saveProfile} aria-labelledby="profile-form-title">
           <h2 id="profile-form-title">{snapshots.length > 0 ? "프로필 수정" : "프로필 만들기"}</h2>
-          <label className="field-group">이름 또는 닉네임<input value={draft.nickname} onChange={(event) => update("nickname", event.target.value)} required /></label>
+          <label className="field-group">이름 또는 닉네임<input value={draft.displayName} onChange={(event) => update("displayName", event.target.value)} required /></label>
           <label className="field-group">생년월일<input type="date" value={draft.birthDate} onChange={(event) => update("birthDate", event.target.value)} required /></label>
 
           <fieldset>
             <legend>달력 기준</legend>
-            <label className="check-card"><input type="radio" name="calendar" checked={draft.calendar === "solar"} onChange={() => update("calendar", "solar")} />양력</label>
+            <label className="check-card"><input type="radio" name="calendar" checked={draft.calendar === "solar"} onChange={() => { update("calendar", "solar"); update("leapMonth", false); }} />양력</label>
             <label className="check-card"><input type="radio" name="calendar" checked={draft.calendar === "lunar"} onChange={() => update("calendar", "lunar")} />음력</label>
             {draft.calendar === "lunar" && (
               <label className="check-card"><input type="checkbox" checked={draft.leapMonth} onChange={(event) => update("leapMonth", event.target.checked)} />음력 윤달입니다</label>
             )}
           </fieldset>
 
-          <label className="field-group">출생 시간<input type="time" value={draft.birthTime} disabled={draft.unknownTime} onChange={(event) => update("birthTime", event.target.value)} required={!draft.unknownTime} /></label>
-          <label className="check-card"><input type="checkbox" checked={draft.unknownTime} onChange={(event) => update("unknownTime", event.target.checked)} />출생 시간을 몰라요</label>
-          {draft.unknownTime && (
+          <label className="field-group">출생 시간<input type="time" value={draft.birthTime ?? ""} disabled={draft.birthTimeUnknown} onChange={(event) => update("birthTime", event.target.value || null)} required={!draft.birthTimeUnknown} /></label>
+          <label className="check-card"><input type="checkbox" checked={draft.birthTimeUnknown} onChange={(event) => { update("birthTimeUnknown", event.target.checked); if (event.target.checked) update("birthTime", null); }} />출생 시간을 몰라요</label>
+          {draft.birthTimeUnknown && (
             <aside className="privacy-panel" role="status">
               <strong>시간을 추정해 채우지 않습니다</strong>
               <p>시주를 제외한 범위만 사용하고 시주 의존 해석은 만들지 않는 흐름이에요. 정확도가 제한되며 출생 시간이 필요한 유료 리포트 구매 전 경고가 필요합니다. 실제 계산·구매는 없습니다.</p>
@@ -300,22 +354,39 @@ export function ProfilePrototypeScreen() {
           )}
 
           <label className="field-group">출생지<input value={draft.birthplace} onChange={(event) => update("birthplace", event.target.value)} placeholder="시·군·구" required /></label>
-          <label className="field-group">명리 계산 성별 기준값<select value={draft.genderBasis} onChange={(event) => update("genderBasis", event.target.value)} required><option value="여성">여성</option><option value="남성">남성</option><option value="선택하지 않음">선택하지 않음</option></select></label>
+          <label className="field-group">시간대<input value={draft.timezone} onChange={(event) => update("timezone", event.target.value)} required /></label>
+          <label className="field-group">명리 계산 성별 기준값<select value={draft.calculationGender} onChange={(event) => update("calculationGender", event.target.value as ProfileInput["calculationGender"])} required><option value="female">여성</option><option value="male">남성</option></select></label>
+          <label className="field-group">프로필 유형<select value={draft.profileType} onChange={(event) => {
+            const profileType = event.target.value as ProfileInput["profileType"];
+            update("profileType", profileType);
+            if (profileType === "self") {
+              update("ownerRelationship", "self");
+              update("thirdPartyConsent", false);
+            } else {
+              update("ownerRelationship", "partner");
+            }
+          }}><option value="self">본인</option><option value="other">다른 사람</option></select></label>
+          {draft.profileType === "other" && (
+            <>
+              <label className="field-group">나와의 관계<select value={draft.ownerRelationship} onChange={(event) => update("ownerRelationship", event.target.value as ProfileInput["ownerRelationship"])}><option value="partner">연인·배우자</option><option value="family">가족</option><option value="friend">친구</option><option value="coworker">동료</option></select></label>
+              <label className="check-card"><input type="checkbox" checked={draft.thirdPartyConsent} onChange={(event) => update("thirdPartyConsent", event.target.checked)} required />당사자에게 정보 입력과 분석에 대한 동의를 받았습니다</label>
+            </>
+          )}
 
           <fieldset>
             <legend>현재 관심사 (선택)</legend>
             <p>초기 결과와 추천 질문을 개인화하는 용도로만 선택하는 항목입니다.</p>
             {INTERESTS.map((item) => (
-              <label className="check-card" key={item}><input type="checkbox" checked={draft.interests.includes(item)} onChange={() => toggleInterest(item)} />{item}</label>
+              <label className="check-card" key={item.id}><input type="checkbox" checked={draft.personalization.interests.includes(item.id)} onChange={() => toggleInterest(item.id)} />{item.label} <small>({item.id})</small></label>
             ))}
           </fieldset>
 
-          <label className="field-group">연애 상태 (선택)<select value={draft.relationship} onChange={(event) => update("relationship", event.target.value)}><option>선택하지 않음</option><option>솔로</option><option>연애 중</option><option>기혼</option><option>관계 고민 중</option></select></label>
-          <label className="field-group">직업 상태 (선택)<select value={draft.job} onChange={(event) => update("job", event.target.value)}><option>선택하지 않음</option><option>학생</option><option>직장인</option><option>프리랜서·사업</option><option>구직·전환 중</option></select></label>
-          <label className="field-group">현재 가장 큰 고민 (선택)<textarea rows={4} value={draft.concern} onChange={(event) => update("concern", event.target.value)} maxLength={300} /></label>
+          <label className="field-group">연애 상태 (선택)<select value={draft.personalization.relationshipStatus ?? ""} onChange={(event) => updatePersonalization("relationshipStatus", event.target.value || null)}><option value="">선택하지 않음</option><option>솔로</option><option>연애 중</option><option>기혼</option><option>관계 고민 중</option></select></label>
+          <label className="field-group">직업 상태 (선택)<select value={draft.personalization.occupationStatus ?? ""} onChange={(event) => updatePersonalization("occupationStatus", event.target.value || null)}><option value="">선택하지 않음</option><option>학생</option><option>직장인</option><option>프리랜서·사업</option><option>구직·전환 중</option></select></label>
+          <label className="field-group">현재 가장 큰 고민 (선택)<textarea rows={4} value={draft.personalization.primaryConcern ?? ""} onChange={(event) => updatePersonalization("primaryConcern", event.target.value || null)} maxLength={300} /></label>
 
           <button className="primary-button" type="submit">{snapshots.length > 0 ? "새 스냅샷으로 저장" : "프로필 만들기"}</button>
-          <button className="secondary-button" type="button" onClick={() => { setEditing(false); setDraft(latest ? { ...latest } : INITIAL_PROFILE); }}>취소</button>
+          <button className="secondary-button" type="button" onClick={() => { setEditing(false); setDraft(latest ? structuredClone(latest.input) : INITIAL_PROFILE); }}>취소</button>
         </form>
       )}
 
@@ -329,11 +400,12 @@ export function ProfilePrototypeScreen() {
         </div>
         <div className="library-list" aria-live="polite">
           {[...snapshots].reverse().map((snapshot, index) => (
-            <article key={snapshot.id}>
+            <article key={snapshot.snapshotId}>
               <div>
                 <small>{index === 0 ? "현재 프로필" : "이전 정보로 생성됨 · 기존 리포트"}</small>
                 <h2>{snapshot.label}</h2>
-                <p>{maskBirthDate(snapshot.birthDate)} · {maskBirthTime(snapshot.birthTime, snapshot.unknownTime)} · {snapshot.calendar === "solar" ? "양력" : snapshot.leapMonth ? "음력 윤달" : "음력 평달"}</p>
+                <p>{maskBirthDate(snapshot.input.birthDate)} · {maskBirthTime(snapshot.input.birthTime, snapshot.input.birthTimeUnknown)} · {maskBirthplace(snapshot.input.birthplace)} · {snapshot.input.calendar === "solar" ? "양력" : snapshot.input.leapMonth ? "음력 윤달" : "음력 평달"}</p>
+                <p>프로필 ID {snapshot.profileId} · 스냅샷 ID {snapshot.snapshotId}</p>
               </div>
             </article>
           ))}
