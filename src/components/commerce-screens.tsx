@@ -16,7 +16,10 @@ function getCommerceData(): CommerceData | null {
 }
 
 function price(value: number) {
-  return `${value.toLocaleString("ko-KR")}원`;
+  if (value < 10_000) return `${value.toLocaleString("ko-KR")}원`;
+  const tenThousands = Math.floor(value / 10_000);
+  const remainder = value % 10_000;
+  return remainder === 0 ? `${tenThousands}만원` : `${tenThousands}만 ${remainder.toLocaleString("ko-KR")}원`;
 }
 
 export function ProductListScreen() {

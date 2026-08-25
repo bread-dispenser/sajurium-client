@@ -48,11 +48,11 @@ export function HomeScreen() {
         <Link className="text-link" href="/flow/today">오늘의 흐름 자세히 보기 →</Link>
       </section>
       <nav className="home-links" aria-label="홈 바로가기">
-        <Link href="/report"><span>01</span><strong>내 사주 전체 보기</strong><small>무료 섹션과 잠긴 미리보기</small></Link>
-        <Link href="/flow/month"><span>02</span><strong>이번 달 흐름</strong><small>월에 따라 정해진 체험용 예시</small></Link>
-        <Link href="/library"><span>03</span><strong>보관함</strong><small>기기에 저장한 결과 관리</small></Link>
-        <Link href="/products"><span>04</span><strong>더 깊이 보기</strong><small>가격·잠금·결제 상태 확인</small></Link>
-        <Link href="/settings"><span>05</span><strong>설정과 개인정보</strong><small>기기 저장 정보와 안내 관리</small></Link>
+        <Link href="/report"><span>사주</span><strong>내 사주 전체 보기</strong><small>무료 섹션과 잠긴 미리보기</small></Link>
+        <Link href="/flow/month"><span>흐름</span><strong>이번 달 흐름</strong><small>월에 따라 정해진 체험용 예시</small></Link>
+        <Link href="/library"><span>기록</span><strong>보관함</strong><small>기기에 저장한 결과 관리</small></Link>
+        <Link href="/products"><span>상품</span><strong>더 깊이 보기</strong><small>가격·잠금·결제 상태 확인</small></Link>
+        <Link href="/settings"><span>관리</span><strong>설정과 개인정보</strong><small>기기 저장 정보와 안내 관리</small></Link>
       </nav>
     </main>
   );

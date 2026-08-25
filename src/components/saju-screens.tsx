@@ -254,7 +254,7 @@ export function ReportScreen() {
         {birth.unknownTime && <p className="accuracy-note">출생 시간 미상 상태만 화면 형식에 반영하며 정해진 예시 문장은 달라지지 않아요.</p>}
         <article className="insight-card current"><small>지금의 흐름</small><strong>{BASIC_REPORT.currentFlow}</strong></article>
         <h2>핵심 성향</h2>
-        <div className="insight-list">{BASIC_REPORT.insights.map((insight, index) => <article className="insight-card" key={insight.id}><small>{String(index + 1).padStart(2, "0")}</small><div><strong>{insight.title}</strong><p>{insight.description}</p></div></article>)}</div>
+        <div className="insight-list">{BASIC_REPORT.insights.map((insight) => <article className="insight-card" key={insight.id}><div><strong>{insight.title}</strong><p>{insight.description}</p></div></article>)}</div>
         <h2>주의할 패턴</h2>
         <aside className="check-list"><strong>{BASIC_REPORT.caution}</strong><span>{BASIC_REPORT.suggestion}</span></aside>
         <h2>상세 리포트</h2>
