@@ -245,4 +245,10 @@ export type AppNavItem = {
   href: string;
   label: string;
   shortLabel: string;
+  description: string;
+};
+
+export type AppNavGroup = {
+  label: string;
+  items: readonly AppNavItem[];
 };

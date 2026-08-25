@@ -21,7 +21,7 @@ test("tablet and desktop use the side navigation layout", async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/home");
     const layout = await page.evaluate(() => {
-      const nav = document.querySelector(".bottom-navigation");
+      const nav = document.querySelector(".platform-navigation");
       const content = document.querySelector(".app-content");
       if (!nav || !content) return null;
       const navBounds = nav.getBoundingClientRect();

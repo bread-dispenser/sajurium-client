@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState, useSyncExternalStore } from "react";
 import type { LibraryItem, LibraryItemType } from "@/lib/domain";
 import { inspectCurrentBirth, libraryStore, resetBirthSource } from "@/lib/storage";
-import { getDailyFlow, getMonthlyFlow, INITIAL_BIRTH, INITIAL_LIBRARY_ITEMS } from "@/lib/fixtures";
+import { APP_NAV_GROUPS, getDailyFlow, getMonthlyFlow, INITIAL_BIRTH, INITIAL_LIBRARY_ITEMS } from "@/lib/fixtures";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { CorruptState, EmptyState, LoadingState } from "./page-state";
 
@@ -27,33 +27,52 @@ function shiftMonth(value: string, months: number) {
 
 export function HomeScreen() {
   const hydrated = useHydrated();
-  if (!hydrated) return <LoadingState title="개인 홈을 준비하고 있어요" />;
+  if (!hydrated) return <LoadingState title="사주리움 플랫폼을 준비하고 있어요" />;
   const birthState = inspectCurrentBirth(INITIAL_BIRTH);
   if (birthState.status !== "ok") return <CorruptState title="출생 정보를 읽을 수 없어요" description="손상된 출생 정보를 확인 없이 체험용 예시로 바꾸지 않습니다." unavailable={birthState.status === "unavailable"} onReset={() => resetBirthSource(birthState.store)} />;
   const birth = birthState.birth;
   const today = localDate();
   const flow = getDailyFlow(today);
+  const serviceGroups = APP_NAV_GROUPS.filter((group) => group.label !== "개요");
 
   return (
-    <main className="screen-content home-content" aria-labelledby="home-title">
-      <div className="editorial-hero">
-        <p className="section-kicker">오늘의 흐름</p>
-        <h1 id="home-title">{birth.nickname}님,<br />오늘의 흐름을 살펴보세요</h1>
-        <p className="supporting">실제 사주를 계산하지 않으며, 날짜에 따라 정해진 예시 문장을 보여드려요.</p>
+    <main className="screen-content home-content platform-home" aria-labelledby="home-title">
+      <div className="platform-hero">
+        <p className="section-kicker">사주리움 플랫폼</p>
+        <h1 id="home-title">{birth.nickname}님의 사주와 고민을<br />한곳에서 이어보세요</h1>
+        <p className="supporting">내 사주, 기간별 흐름, 상담, 관계, 기록과 상품을 하나의 작업 공간에서 오갈 수 있어요.</p>
       </div>
+      <section className="platform-scope" aria-label="현재 제공 범위">
+        <strong>현재 제공 범위</strong>
+        <span>브라우저 체험</span>
+        <p>기기 저장 기능은 동작하지만 실제 사주 계산·계정 동기화·결제는 아직 연결되지 않았습니다.</p>
+      </section>
       <section className="home-summary" aria-labelledby="today-summary-title">
         <small>{today} · 오늘의 흐름</small>
         <h2 id="today-summary-title">{flow.headline}</h2>
         <p>{flow.suggestion}</p>
         <Link className="text-link" href="/flow/today">오늘의 흐름 자세히 보기 →</Link>
       </section>
-      <nav className="home-links" aria-label="홈 바로가기">
-        <Link href="/report"><span>사주</span><strong>내 사주 전체 보기</strong><small>무료 섹션과 잠긴 미리보기</small></Link>
-        <Link href="/flow/month"><span>흐름</span><strong>이번 달 흐름</strong><small>월에 따라 정해진 체험용 예시</small></Link>
-        <Link href="/library"><span>기록</span><strong>보관함</strong><small>기기에 저장한 결과 관리</small></Link>
-        <Link href="/products"><span>상품</span><strong>더 깊이 보기</strong><small>가격·잠금·결제 상태 확인</small></Link>
-        <Link href="/settings"><span>관리</span><strong>설정과 개인정보</strong><small>기기 저장 정보와 안내 관리</small></Link>
-      </nav>
+      <div id="platform-services" className="platform-services">
+        <div className="platform-section-heading">
+          <p className="section-kicker">전체 서비스</p>
+          <h2>필요한 일을 바로 시작하세요</h2>
+        </div>
+        {serviceGroups.map((group) => (
+          <section className="service-group" key={group.label} aria-labelledby={`service-${group.label}`}>
+            <h3 id={`service-${group.label}`}>{group.label}</h3>
+            <nav aria-label={`${group.label} 서비스`}>
+              {group.items.map((item) => (
+                <Link href={item.href} key={item.href}>
+                  <strong>{item.label}</strong>
+                  <small>{item.description}</small>
+                  <span aria-hidden="true">→</span>
+                </Link>
+              ))}
+            </nav>
+          </section>
+        ))}
+      </div>
     </main>
   );
 }

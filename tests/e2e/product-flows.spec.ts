@@ -237,10 +237,10 @@ test("recovers a corrupt transaction record before reading settings stores", asy
 
 test("shows pending and failure as non-payment example states", async ({ page }) => {
   await page.goto("/checkout/love-report/status?state=pending");
-  await expect(page.getByRole("heading")).toContainText("결제 대기 상태 안내");
+  await expect(page.getByRole("heading", { name: "결제 대기 상태 안내" })).toBeVisible();
   await expect(page.getByText("실제 결제액")).toBeVisible();
   await page.goto("/checkout/love-report/status?state=failure");
-  await expect(page.getByRole("heading")).toContainText("결제 실패 상태 안내");
+  await expect(page.getByRole("heading", { name: "결제 실패 상태 안내" })).toBeVisible();
   await expect(page.getByText("결제 수단이나 주문에는 아무 변화가 없습니다.")).toBeVisible();
 });
 

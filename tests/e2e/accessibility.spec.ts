@@ -36,8 +36,8 @@ test("honors reduced motion and exposes visible keyboard focus", async ({ page }
 
 test("navigation accessible names include their visible labels", async ({ page }) => {
   await page.goto("/home");
-  await expect(page.getByRole("link", { name: /사주리움.*오늘의 마음을 읽는 시간/ })).toBeVisible();
-  for (const label of ["홈", "사주", "상담", "궁합", "보관함"]) {
-    await expect(page.getByRole("navigation", { name: "주요 메뉴" }).getByRole("link", { name: new RegExp(label) })).toBeVisible();
+  await expect(page.getByRole("link", { name: /사주리움.*라이프 리딩 플랫폼/ })).toBeVisible();
+  for (const label of ["플랫폼 홈", "내 사주", "고민 상담", "두 사람의 관계", "통합 보관함", "설정과 개인정보"]) {
+    await expect(page.getByRole("navigation", { name: "전체 서비스" }).getByRole("link", { name: new RegExp(label) })).toBeVisible();
   }
 });

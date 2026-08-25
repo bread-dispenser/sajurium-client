@@ -1,4 +1,5 @@
 import type {
+  AppNavGroup,
   AppNavItem,
   BasicReport,
   BirthInfo,
@@ -282,12 +283,41 @@ export function getProduct(productId: ProductId): Product {
   return product;
 }
 
-export const APP_NAV_ITEMS: readonly AppNavItem[] = [
-  { href: "/home", label: "홈", shortLabel: "홈" },
-  { href: "/report", label: "내 사주", shortLabel: "사주" },
-  { href: "/consult", label: "고민 상담", shortLabel: "상담" },
-  { href: "/compatibility", label: "두 사람의 관계", shortLabel: "궁합" },
-  { href: "/library", label: "보관함", shortLabel: "보관함" },
+const HOME_NAV_ITEM: AppNavItem = { href: "/home", label: "플랫폼 홈", shortLabel: "홈", description: "오늘의 흐름과 전체 서비스를 한곳에서 확인" };
+const REPORT_NAV_ITEM: AppNavItem = { href: "/report", label: "내 사주", shortLabel: "사주", description: "기기에 저장된 출생 정보로 예시 리포트 확인" };
+const CONSULT_NAV_ITEM: AppNavItem = { href: "/consult", label: "고민 상담", shortLabel: "상담", description: "고민 주제별 질문과 체험용 답변 관리" };
+const COMPATIBILITY_NAV_ITEM: AppNavItem = { href: "/compatibility", label: "두 사람의 관계", shortLabel: "궁합", description: "저장한 두 사람으로 관계 예시 살펴보기" };
+const LIBRARY_NAV_ITEM: AppNavItem = { href: "/library", label: "통합 보관함", shortLabel: "보관함", description: "리포트·상담·관계 결과를 모아 관리" };
+
+export const APP_PRIMARY_NAV_ITEMS: readonly AppNavItem[] = [
+  HOME_NAV_ITEM,
+  REPORT_NAV_ITEM,
+  CONSULT_NAV_ITEM,
+  COMPATIBILITY_NAV_ITEM,
+  LIBRARY_NAV_ITEM,
+] as const;
+
+export const APP_NAV_GROUPS: readonly AppNavGroup[] = [
+  { label: "개요", items: [HOME_NAV_ITEM] },
+  { label: "사주와 흐름", items: [
+    REPORT_NAV_ITEM,
+    { href: "/flow/today", label: "오늘의 흐름", shortLabel: "오늘", description: "날짜에 따라 일관된 체험용 흐름 확인" },
+    { href: "/flow/month", label: "이번 달 흐름", shortLabel: "이번 달", description: "월별 관계·일·재물 흐름 예시 확인" },
+  ] },
+  { label: "상담과 관계", items: [
+    CONSULT_NAV_ITEM,
+    { href: "/people", label: "사람 보관함", shortLabel: "사람", description: "관계를 살펴볼 인물 정보를 이 기기에 저장" },
+    COMPATIBILITY_NAV_ITEM,
+  ] },
+  { label: "기록과 상품", items: [
+    LIBRARY_NAV_ITEM,
+    { href: "/products", label: "리포트와 이용권", shortLabel: "상품", description: "상품 미리보기와 주문 상태 예시 확인" },
+    { href: "/products/credits", label: "이용권 내역", shortLabel: "이용권", description: "체험용 상담 이용권과 변동 기록 확인" },
+  ] },
+  { label: "관리", items: [
+    { href: "/settings", label: "설정과 개인정보", shortLabel: "설정", description: "기기 저장 정보·알림 선호·안내 관리" },
+    { href: "/settings/feedback", label: "피드백과 신고", shortLabel: "피드백", description: "저장한 평가와 품질 신고 내용 관리" },
+  ] },
 ] as const;
 
 export function isTopicId(value: unknown): value is TopicId {
