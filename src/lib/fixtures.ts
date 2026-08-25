@@ -303,6 +303,9 @@ export const APP_NAV_GROUPS: readonly AppNavGroup[] = [
     REPORT_NAV_ITEM,
     { href: "/flow/today", label: "오늘의 흐름", shortLabel: "오늘", description: "날짜에 따라 일관된 체험용 흐름 확인" },
     { href: "/flow/month", label: "이번 달 흐름", shortLabel: "이번 달", description: "월별 관계·일·재물 흐름 예시 확인" },
+    { href: "/calendar", label: "시기 캘린더", shortLabel: "캘린더", description: "날짜별 관계·일·재물 흐름 프로토타입" },
+    { href: "/reports/year", label: "연간 리포트", shortLabel: "연간", description: "한 해의 방향을 네 장면으로 읽는 예시" },
+    { href: "/reports/decade", label: "10년 리포트", shortLabel: "10년", description: "장기 변화를 세 구간으로 읽는 예시" },
   ] },
   { label: "상담과 관계", items: [
     CONSULT_NAV_ITEM,
@@ -313,10 +316,17 @@ export const APP_NAV_GROUPS: readonly AppNavGroup[] = [
     LIBRARY_NAV_ITEM,
     { href: "/products", label: "리포트와 이용권", shortLabel: "상품", description: "상품 미리보기와 주문 상태 예시 확인" },
     { href: "/products/credits", label: "이용권 내역", shortLabel: "이용권", description: "체험용 상담 이용권과 변동 기록 확인" },
+    { href: "/share", label: "공유 카드", shortLabel: "공유", description: "개인정보를 선택해 안전한 공유 카드 미리보기" },
+    { href: "/life-log", label: "라이프 로그", shortLabel: "기록", description: "실제 사건과 선택을 시간순으로 기록하는 예시" },
   ] },
-  { label: "관리", items: [
+  { label: "계정과 관리", items: [
+    { href: "/login", label: "로그인", shortLabel: "로그인", description: "소셜 로그인과 계정 전환 화면 프로토타입" },
+    { href: "/notifications", label: "알림 센터", shortLabel: "알림", description: "흐름·리포트·결제 알림과 수신 선호 체험" },
     { href: "/settings", label: "설정과 개인정보", shortLabel: "설정", description: "기기 저장 정보·알림 선호·안내 관리" },
     { href: "/settings/feedback", label: "피드백과 신고", shortLabel: "피드백", description: "저장한 평가와 품질 신고 내용 관리" },
+  ] },
+  { label: "운영", items: [
+    { href: "/admin", label: "관리자 워크스페이스", shortLabel: "관리자", description: "사용자·주문·리포트·상담·품질 운영 프로토타입" },
   ] },
 ] as const;
 

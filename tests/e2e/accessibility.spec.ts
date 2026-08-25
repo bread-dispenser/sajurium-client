@@ -1,7 +1,11 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
-const routes = ["/", "/home", "/report", "/consult", "/compatibility", "/products", "/settings"];
+const routes = [
+  "/", "/home", "/report", "/consult", "/compatibility", "/products", "/settings",
+  "/login", "/notifications", "/calendar", "/reports/year", "/reports/decade",
+  "/admin", "/share", "/life-log",
+];
 
 for (const route of routes) {
   test(`${route} has no serious accessibility violations`, async ({ page }) => {
