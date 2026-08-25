@@ -4,7 +4,9 @@ import { expect, test } from "@playwright/test";
 const routes = [
   "/", "/home", "/report", "/consult", "/compatibility", "/products", "/settings",
   "/login", "/notifications", "/calendar", "/reports/year", "/reports/decade",
-  "/admin", "/share", "/life-log",
+  "/admin", "/share", "/life-log", "/account", "/profile", "/billing",
+  "/share/links", "/notifications/policy", "/admin/operations", "/admin/analytics",
+  "/platform-labs", "/shared/compatibility",
 ];
 
 for (const route of routes) {

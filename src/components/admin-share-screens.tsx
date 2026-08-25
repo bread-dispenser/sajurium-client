@@ -162,6 +162,12 @@ export function SharePrototypeScreen() {
     return ["사주리움 · 공유 카드 미리보기", fields.period ? content.eyebrow : null, content.title, fields.name ? "이름: 해온" : null, fields.birthDate ? "생년월일: 1992. 04. 18." : null, fields.elements ? "오행 균형: 목 30 · 화 20 · 토 20 · 금 10 · 수 20" : null, fields.insight ? content.insight : null, fields.action ? content.action : null, `만료 설정 표시: ${expiry}`, "공개 링크나 외부 업로드를 만들지 않은 로컬 프로토타입"].filter(Boolean).join("\n");
   }
 
+  function svgCard() {
+    const lines = cardText().split("\n").map((line) => line.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;"));
+    const text = lines.map((line, index) => `<text x="84" y="${120 + index * 54}" font-size="${index === 2 ? 38 : 24}" fill="${index === 2 ? "#fffdf8" : "#ddd7cb"}" font-family="serif">${line}</text>`).join("");
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080"><rect width="1080" height="1080" rx="56" fill="#201e1b"/><circle cx="940" cy="140" r="52" fill="#a93422"/>${text}</svg>`;
+  }
+
   async function copyLocally() {
     try {
       await navigator.clipboard.writeText(cardText());
@@ -172,14 +178,14 @@ export function SharePrototypeScreen() {
   }
 
   function downloadLocally() {
-    const blob = new Blob([cardText()], { type: "text/plain;charset=utf-8" });
+    const blob = new Blob([svgCard()], { type: "image/svg+xml;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = "sajurium-share-preview.txt";
+    anchor.download = "sajurium-share-card.svg";
     anchor.click();
     URL.revokeObjectURL(url);
-    setMessage("텍스트 미리보기 파일을 이 기기에서 만들었어요. 외부 업로드는 없습니다.");
+    setMessage("SVG 이미지 카드를 이 기기에서 만들었어요. 외부 업로드는 없습니다.");
   }
 
   const toggleRows: readonly [keyof ShareFields, string, string][] = [
@@ -236,7 +242,7 @@ export function SharePrototypeScreen() {
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8 }}>
         <button className="primary-button" type="button" onClick={copyLocally}>문구 로컬 복사</button>
-        <button className="secondary-button" type="button" onClick={downloadLocally}>텍스트 파일 다운로드</button>
+        <button className="secondary-button" type="button" onClick={downloadLocally}>이미지 카드 다운로드</button>
       </div>
       <p className="action-note">공개 URL·외부 업로드·서버 저장은 생성되지 않습니다.</p>
       <p role="status" style={{ ...panelStyle, ...mutedStyle, borderColor: "rgb(169 52 34 / 28%)" }}>{message}</p>

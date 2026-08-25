@@ -53,6 +53,16 @@ export function HomeScreen() {
         <p>{flow.suggestion}</p>
         <Link className="text-link" href="/flow/today">오늘의 흐름 자세히 보기 →</Link>
       </section>
+      <section className="service-group home-recent-actions" aria-labelledby="recent-actions-title">
+        <div className="platform-section-heading">
+          <p className="section-kicker">최근 행동</p>
+          <h2 id="recent-actions-title">하던 일을 이어보세요</h2>
+        </div>
+        <nav aria-label="최근 행동 이어보기">
+          <Link href="/consult"><strong>최근 상담 이어보기</strong><small>브라우저에 남은 상담 세션과 질문을 다시 확인</small><span aria-hidden="true">→</span></Link>
+          <Link href="/library"><strong>최근 저장 결과 열기</strong><small>리포트·상담·관계 결과를 통합 보관함에서 확인</small><span aria-hidden="true">→</span></Link>
+        </nav>
+      </section>
       <div id="platform-services" className="platform-services">
         <div className="platform-section-heading">
           <p className="section-kicker">전체 서비스</p>
@@ -124,6 +134,10 @@ export function LibraryScreen() {
   const [query, setQuery] = useState("");
   const [type, setType] = useState<"all" | LibraryItemType>("all");
   const [sort, setSort] = useState<"newest" | "oldest">("newest");
+  const [dateRange, setDateRange] = useState<"all" | "latest" | "recent">("all");
+  const [profileScope, setProfileScope] = useState<"all" | "self" | "relationship">("all");
+  const [topic, setTopic] = useState<"all" | "relationship" | "career">("all");
+  const [access, setAccess] = useState<"all" | "free" | "purchased">("all");
   const [showHidden, setShowHidden] = useState(false);
   const [error, setError] = useState("");
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
@@ -132,8 +146,14 @@ export function LibraryScreen() {
   if (!hydrated) return <LoadingState title="보관함을 확인하고 있어요" />;
   if (inspection.status === "corrupt" || inspection.status === "unavailable") return <CorruptState title="보관함 데이터를 읽을 수 없어요" description="손상된 보관함을 확인 없이 체험용 예시로 바꾸거나 수정하지 않습니다." unavailable={inspection.status === "unavailable"} onReset={libraryStore.remove} />;
   const source = inspection.status === "ok" ? inspection.value.items : [...INITIAL_LIBRARY_ITEMS];
+  const latestDate = source.reduce((latest, item) => item.createdAt > latest ? item.createdAt : latest, "").slice(0, 10);
+  const recentThreshold = latestDate ? new Date(`${latestDate}T00:00:00.000Z`).getTime() - 6 * 86_400_000 : 0;
   const items = source
     .filter((item) => (showHidden || !item.hidden) && (type === "all" || item.type === type))
+    .filter((item) => dateRange === "all" || (dateRange === "latest" ? item.createdAt.startsWith(latestDate) : new Date(item.createdAt).getTime() >= recentThreshold))
+    .filter((item) => profileScope === "all" || (profileScope === "relationship" ? item.type === "compatibility" : item.type !== "compatibility"))
+    .filter((item) => topic === "all" || (topic === "career" ? /일|커리어/.test(`${item.title} ${item.subtitle}`) : /연애|관계|궁합/.test(`${item.title} ${item.subtitle}`)))
+    .filter((item) => access === "all" || (access === "purchased" ? item.title.includes("심층") : !item.title.includes("심층")))
     .filter((item) => `${item.title} ${item.subtitle}`.toLowerCase().includes(query.trim().toLowerCase()))
     .sort((left, right) => sort === "newest" ? right.createdAt.localeCompare(left.createdAt) : left.createdAt.localeCompare(right.createdAt));
 
@@ -161,12 +181,25 @@ export function LibraryScreen() {
         <label><span>검색</span><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="제목 또는 설명" /></label>
         <label><span>유형</span><select value={type} onChange={(event) => setType(event.target.value as typeof type)}><option value="all">전체</option><option value="report">리포트</option><option value="consultation">상담</option><option value="compatibility">궁합</option></select></label>
         <label><span>정렬</span><select value={sort} onChange={(event) => setSort(event.target.value as typeof sort)}><option value="newest">최신순</option><option value="oldest">오래된순</option></select></label>
+        <label><span>생성 날짜</span><select value={dateRange} onChange={(event) => setDateRange(event.target.value as typeof dateRange)}><option value="all">전체</option><option value="latest">가장 최근 날짜</option><option value="recent">최근 7일</option></select></label>
+        <label><span>프로필</span><select value={profileScope} onChange={(event) => setProfileScope(event.target.value as typeof profileScope)}><option value="all">전체</option><option value="self">내 프로필</option><option value="relationship">관계 프로필</option></select></label>
+        <label><span>주제</span><select value={topic} onChange={(event) => setTopic(event.target.value as typeof topic)}><option value="all">전체</option><option value="relationship">연애·관계</option><option value="career">일·커리어</option></select></label>
+        <label><span>구매 여부</span><select value={access} onChange={(event) => setAccess(event.target.value as typeof access)}><option value="all">전체</option><option value="free">무료·로컬</option><option value="purchased">구매 리포트</option></select></label>
         <label className="show-hidden"><input type="checkbox" checked={showHidden} onChange={(event) => setShowHidden(event.target.checked)} /> 숨긴 항목 보기</label>
       </div>
       {items.length === 0 ? (
         <EmptyState title="조건에 맞는 항목이 없어요" description="검색어나 필터를 바꿔보세요." />
       ) : (
-        <div className="library-list">{items.map((item) => <article key={item.id} className={item.hidden ? "hidden-item" : undefined}><div><small>{TYPE_LABELS[item.type]}</small><h2><Link href={item.href}>{item.title}</Link></h2><p>{item.subtitle}</p><time dateTime={item.createdAt}>{item.createdAt.slice(0, 10)}</time></div><div className="library-item-actions"><button type="button" onClick={() => updateItem(item.id, (current) => ({ ...current, hidden: !current.hidden }))}>{item.hidden ? "보이기" : "숨기기"}</button>{pendingDeleteId === item.id ? <div className="danger-confirm library-delete-confirm"><p>{item.title}을 기기에서 삭제할까요?</p><button type="button" onClick={() => deleteItem(item.id)}>보관함 항목 삭제 확정</button><button type="button" onClick={() => setPendingDeleteId(null)}>취소</button></div> : <button type="button" onClick={() => setPendingDeleteId(item.id)}>삭제</button>}</div></article>)}</div>
+        <div className="library-list">{items.map((item) => {
+          const purchased = item.title.includes("심층");
+          return <article key={item.id} className={item.hidden ? "hidden-item" : undefined}>
+            <div><small>{TYPE_LABELS[item.type]}{purchased ? " · 구매" : ""}</small><h2><Link href={item.href}>{item.title}</Link></h2><p>{item.subtitle}</p><time dateTime={item.createdAt}>{item.createdAt.slice(0, 10)}</time></div>
+            <div className="library-item-actions">
+              <button type="button" onClick={() => updateItem(item.id, (current) => ({ ...current, hidden: !current.hidden }))}>{item.hidden ? "보이기" : "숨기기"}</button>
+              {purchased ? <small>구매 리포트는 삭제 대신 숨길 수 있어요.</small> : pendingDeleteId === item.id ? <div className="danger-confirm library-delete-confirm"><p>{item.title}을 기기에서 삭제할까요?</p><button type="button" onClick={() => deleteItem(item.id)}>보관함 항목 삭제 확정</button><button type="button" onClick={() => setPendingDeleteId(null)}>취소</button></div> : <button type="button" onClick={() => setPendingDeleteId(item.id)}>삭제</button>}
+            </div>
+          </article>;
+        })}</div>
       )}
       {error && <p className="form-error" role="alert">{error}</p>}
     </main>

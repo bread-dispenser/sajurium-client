@@ -176,6 +176,15 @@ export const INITIAL_LIBRARY_ITEMS: readonly LibraryItem[] = [
     hidden: false,
   },
   {
+    id: "fixture-paid-report",
+    type: "report",
+    title: "연애 심층 리포트",
+    subtitle: "구매한 리포트 · 숨김으로만 관리",
+    createdAt: "2026-08-24T09:00:00.000Z",
+    href: "/products/love-report",
+    hidden: false,
+  },
+  {
     id: "fixture-consultation",
     type: "consultation",
     title: "일과 변화에 대한 상담",
@@ -258,6 +267,9 @@ export const PRODUCTS: readonly Product[] = [
   { id: "consult-5", title: "상담 5회 이용권", price: 4900, description: "고민별 질문과 답변을 이어서 살펴보는 상담 상품", inclusions: ["질문 5회 표시", "상담 보관함", "후속 질문"], preview: "실제 AI 답변과 유료 이용권 지급은 포함되지 않습니다." },
   { id: "love-report", title: "연애 심층 리포트", price: 9900, description: "관계 성향과 반복 패턴을 차분히 살펴보는 리포트", inclusions: ["관계 성향", "반복 패턴", "시기 미리보기"], preview: "서연님의 관계에서는 속도와 기대를 확인하는 항목이 미리보기로 표시돼요." },
   { id: "compatibility-report", title: "궁합 심층 리포트", price: 12900, description: "두 사람의 관계를 여러 관점으로 살펴보는 리포트", inclusions: ["소통", "애정 표현", "생활 리듬", "갈등", "장기 관계"], preview: "저장된 두 사람의 이름만 화면에 반영하며 실제 궁합은 계산하지 않아요." },
+  { id: "money-report", title: "재물 흐름 리포트", price: 9900, description: "소비·저축·결정 기준을 시기별로 정리하는 리포트", inclusions: ["재물 습관", "변화 조건", "시기별 점검"], preview: "필요한 지출과 미룰 수 있는 지출을 나누는 화면 예시예요." },
+  { id: "year-report", title: "연간 흐름 리포트", price: 14900, description: "한 해의 방향과 관계·일·생활 흐름을 네 장면으로 읽는 리포트", inclusions: ["연간 방향", "분기별 장면", "관계와 일"], preview: "2026년 흐름을 네 장면으로 나눈 고정 예시를 먼저 확인해요." },
+  { id: "decade-report", title: "10년 장기 흐름 리포트", price: 19900, description: "긴 호흡의 변화를 세 구간으로 살펴보는 리포트", inclusions: ["10년 방향", "세 구간 전환", "생활 기반"], preview: "장기 변화를 세 구간으로 읽는 정적 예시이며 실제 대운 계산은 하지 않아요." },
   { id: "career-report", title: "커리어 심층 리포트", price: 9900, description: "업무 환경과 변화 조건을 정리해보는 리포트", inclusions: ["업무 성향", "조직 환경", "변화 조건"], preview: "기준이 분명할수록 꾸준한 힘이 드러나는 미리보기예요." },
 ] as const;
 
@@ -316,17 +328,28 @@ export const APP_NAV_GROUPS: readonly AppNavGroup[] = [
     LIBRARY_NAV_ITEM,
     { href: "/products", label: "리포트와 이용권", shortLabel: "상품", description: "상품 미리보기와 주문 상태 예시 확인" },
     { href: "/products/credits", label: "이용권 내역", shortLabel: "이용권", description: "체험용 상담 이용권과 변동 기록 확인" },
+    { href: "/billing", label: "결제·복구 센터", shortLabel: "결제", description: "주문·지급·환불·멱등성·복구 상태 프로토타입" },
     { href: "/share", label: "공유 카드", shortLabel: "공유", description: "개인정보를 선택해 안전한 공유 카드 미리보기" },
+    { href: "/share/links", label: "공유 링크 관리", shortLabel: "공유 링크", description: "만료·비활성화·민감정보 제한 프로토타입" },
+    { href: "/shared/compatibility", label: "공개 관계 결과", shortLabel: "공개 결과", description: "민감정보를 제외한 공개 관계 요약 화면" },
     { href: "/life-log", label: "라이프 로그", shortLabel: "기록", description: "실제 사건과 선택을 시간순으로 기록하는 예시" },
   ] },
   { label: "계정과 관리", items: [
+    { href: "/account", label: "계정 전환·삭제", shortLabel: "계정", description: "비회원 이전·중복 병합·삭제 검토 프로토타입" },
+    { href: "/profile", label: "내 프로필", shortLabel: "프로필", description: "전체 출생 정보·관심사·스냅샷 수정 프로토타입" },
     { href: "/login", label: "로그인", shortLabel: "로그인", description: "소셜 로그인과 계정 전환 화면 프로토타입" },
     { href: "/notifications", label: "알림 센터", shortLabel: "알림", description: "흐름·리포트·결제 알림과 수신 선호 체험" },
+    { href: "/notifications/policy", label: "알림 정책", shortLabel: "알림 정책", description: "조용한 시간·중복 억제·딥링크 정책 프로토타입" },
     { href: "/settings", label: "설정과 개인정보", shortLabel: "설정", description: "기기 저장 정보·알림 선호·안내 관리" },
     { href: "/settings/feedback", label: "피드백과 신고", shortLabel: "피드백", description: "저장한 평가와 품질 신고 내용 관리" },
   ] },
   { label: "운영", items: [
     { href: "/admin", label: "관리자 워크스페이스", shortLabel: "관리자", description: "사용자·주문·리포트·상담·품질 운영 프로토타입" },
+    { href: "/admin/operations", label: "운영 상세", shortLabel: "운영", description: "템플릿·프롬프트·환불·복구·감사 프로토타입" },
+    { href: "/admin/analytics", label: "분석 대시보드", shortLabel: "분석", description: "퍼널·전환·실패·품질 지표 프로토타입" },
+  ] },
+  { label: "플랫폼 랩스", items: [
+    { href: "/platform-labs", label: "장기 확장 실험", shortLabel: "랩스", description: "검증·가족·자동 리포트·구독·전문가·글로벌 체험" },
   ] },
 ] as const;
 

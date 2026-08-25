@@ -161,7 +161,7 @@ export type CompatibilityData = {
   results: CompatibilityResult[];
 };
 
-export type ProductId = "consult-5" | "love-report" | "compatibility-report" | "career-report";
+export type ProductId = "consult-5" | "love-report" | "compatibility-report" | "career-report" | "money-report" | "year-report" | "decade-report";
 
 export type Product = {
   id: ProductId;

@@ -26,6 +26,7 @@ export function AppHeader({ title, backHref }: { title?: string; backHref?: stri
 function isActive(pathname: string, item: AppNavItem) {
   if (item.href === "/home") return pathname === "/home";
   if (item.href === "/products") return pathname === "/products" || (pathname.startsWith("/products/") && !pathname.startsWith("/products/credits"));
+  if (item.href === "/share" || item.href === "/notifications" || item.href === "/admin") return pathname === item.href;
   if (item.href === "/settings") return pathname === "/settings" || (pathname.startsWith("/settings/") && !pathname.startsWith("/settings/feedback"));
   return pathname === item.href || pathname.startsWith(`${item.href}/`);
 }

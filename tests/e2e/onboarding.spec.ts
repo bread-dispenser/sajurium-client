@@ -14,7 +14,7 @@ test("completes routed onboarding and stores the local report", async ({ page })
   await expect(page).toHaveURL(/\/birth$/);
   await page.getByRole("button", { name: "다음" }).click();
   await expect(page).toHaveURL(/\/report$/, { timeout: 5_000 });
-  await expect(page.getByRole("navigation", { name: "전체 서비스" }).getByRole("link")).toHaveCount(20);
+  await expect(page.getByRole("navigation", { name: "전체 서비스" }).getByRole("link")).toHaveCount(29);
 
   await page.getByRole("link", { name: "관심 주제로 더 보기" }).click();
   await page.getByRole("radio", { name: /일 · 커리어/ }).click();
