@@ -51,6 +51,33 @@ export function hasValidLeapMonthSemantics(profile: Pick<ProfileInput, "calendar
   return profile.calendar === "lunar" || !profile.leapMonth;
 }
 
+/**
+ * Parses a birth date as a local calendar date and applies the product's
+ * shared input bounds. A Date object is returned only for a real date from
+ * 1900-01-01 through today; invalid, future, and non-ISO values return null.
+ */
+export function parseBirthDate(value: string, now = new Date()): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+  const [, yearText, monthText, dayText] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const date = new Date(year, month - 1, day);
+  if (
+    year < 1900 ||
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) return null;
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return date <= today ? date : null;
+}
+
+export function isValidBirthDate(value: string, now = new Date()): boolean {
+  return parseBirthDate(value, now) !== null;
+}
+
 export function maskBirthDate(value: string): string {
   const year = /^\d{4}/.exec(value)?.[0] ?? "****";
   return `${year}. **. **`;

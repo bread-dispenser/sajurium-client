@@ -5,7 +5,7 @@ import { useState, useSyncExternalStore } from "react";
 import type { LibraryItem, LibraryItemType } from "@/lib/domain";
 import { withAllowedLibraryActions } from "@/lib/contracts";
 import { inspectCurrentBirth, libraryStore, resetBirthSource } from "@/lib/storage";
-import { APP_NAV_GROUPS, getDailyFlow, getMonthlyFlow, INITIAL_BIRTH, INITIAL_LIBRARY_ITEMS } from "@/lib/fixtures";
+import { getDailyFlow, getMonthlyFlow, INITIAL_BIRTH, INITIAL_LIBRARY_ITEMS } from "@/lib/fixtures";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { CorruptState, EmptyState, LoadingState } from "./page-state";
 
@@ -26,6 +26,54 @@ function shiftMonth(value: string, months: number) {
   return localDate(date).slice(0, 7);
 }
 
+type MonthlyPhase = "early" | "middle" | "late";
+
+const MONTHLY_PHASES: ReadonlyArray<{ id: MonthlyPhase; label: string; emphasis: string }> = [
+  { id: "early", label: "초순", emphasis: "정리와 관찰" },
+  { id: "middle", label: "중순", emphasis: "대화와 확장" },
+  { id: "late", label: "하순", emphasis: "점검과 마무리" },
+];
+
+const PRIORITY_LABELS = {
+  relationship: "관계",
+  career: "일",
+  money: "재물",
+} as const;
+
+function formatKoreanDate(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  return `${year}년 ${month}월 ${day}일`;
+}
+
+function formatSignalDate(value: string) {
+  const date = new Date(`${value}T12:00:00`);
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const weekday = ["일", "월", "화", "수", "목", "금", "토"][date.getDay()];
+  return `${month}.${day} (${weekday})`;
+}
+
+function formatMonthLabel(value: string) {
+  const [year, month] = value.split("-").map(Number);
+  return `${year}년 ${month}월`;
+}
+
+function formatDateRange(value: string) {
+  return value
+    .split(" ~ ")
+    .map((date) => date.slice(5).replace("-", "."))
+    .join("–");
+}
+
+function monthlyPhaseForDate(value: string): MonthlyPhase {
+  const day = Number(value.slice(8, 10));
+  return day <= 10 ? "early" : day <= 20 ? "middle" : "late";
+}
+
+function monthlyPhaseForMonth(month: string, today = localDate()): MonthlyPhase {
+  return month === today.slice(0, 7) ? monthlyPhaseForDate(today) : "middle";
+}
+
 export function HomeScreen() {
   const hydrated = useHydrated();
   if (!hydrated) return <LoadingState title="사주리움 플랫폼을 준비하고 있어요" />;
@@ -37,73 +85,84 @@ export function HomeScreen() {
   const month = getMonthlyFlow(today.slice(0, 7));
   const libraryInspection = libraryStore.inspect();
   const libraryItems = libraryInspection.status === "ok" ? libraryInspection.value.items : [...INITIAL_LIBRARY_ITEMS];
-  const latestItem = [...libraryItems].filter((item) => !item.hidden).sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
-  const purchasedItem = libraryItems.find((item) => item.purchased);
-  const serviceGroups = APP_NAV_GROUPS.filter((group) => group.label !== "개요");
+  const visibleLibraryItems = libraryItems.filter((item) => !item.hidden);
+  const latestItem = [...visibleLibraryItems].sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
+  const currentPhase = monthlyPhaseForDate(today);
+  const monthTimeline = [
+    { id: "early" as const, label: "초순", summary: month.earlyPeriod },
+    { id: "middle" as const, label: "중순", summary: month.middlePeriod },
+    { id: "late" as const, label: "하순", summary: month.latePeriod },
+  ];
 
   return (
-    <main className="screen-content home-content platform-home" aria-labelledby="home-title">
-      <div className="platform-hero">
-        <p className="section-kicker">사주리움 플랫폼</p>
-        <h1 id="home-title">{birth.displayName}님의 사주와 고민을<br />한곳에서 이어보세요</h1>
-        <p className="supporting">내 사주, 기간별 흐름, 상담, 관계, 기록과 상품을 하나의 작업 공간에서 오갈 수 있어요.</p>
-      </div>
-      <section className="platform-scope" aria-label="현재 제공 범위">
-        <strong>현재 제공 범위</strong>
-        <span>브라우저 체험</span>
-        <p>기기 저장 기능은 동작하지만 실제 사주 계산·계정 동기화·결제는 아직 연결되지 않았습니다.</p>
-      </section>
-      <section className="home-summary" aria-labelledby="today-summary-title">
-        <small>{today} · 오늘의 흐름</small>
+    <main className="screen-content home-content platform-home signal-atlas-home-screen" aria-labelledby="home-title">
+      <header className="signal-atlas-home-lead">
+        <div className="signal-atlas-date-context" aria-label={`오늘 ${formatKoreanDate(today)}`}>
+          <p>오늘 · {formatKoreanDate(today)}</p>
+          <span>내 기록 {visibleLibraryItems.length}개</span>
+        </div>
+        <div className="signal-atlas-question-lead">
+          <h1 id="home-title">요즘, 어떤 선택 앞에 있나요?</h1>
+          <p>지금의 흐름을 한 문장으로 정리해볼게요.</p>
+        </div>
+      </header>
+
+      <section className="home-summary signal-atlas-today-signal" aria-labelledby="today-summary-title">
+        <div className="signal-atlas-signal-context">
+          <p>오늘의 신호</p>
+          <time dateTime={today}>{formatSignalDate(today)}</time>
+        </div>
         <h2 id="today-summary-title">{flow.headline}</h2>
-        <p>{flow.suggestedQuestion}</p>
-        <Link className="text-link" href="/flow/today">오늘의 흐름 자세히 보기 →</Link>
+        <p className="signal-atlas-signal-evidence">
+          {PRIORITY_LABELS[flow.priorityArea]} 흐름을 먼저 살펴보기 좋아요. {flow.caution}
+        </p>
+        <p className="signal-atlas-disclaimer">{flow.summary}</p>
+        <Link className="text-link signal-atlas-evidence-link" href="/flow/today">
+          <span>이 문장이 나온 이유 보기</span>
+          <span aria-hidden="true">↗</span>
+        </Link>
       </section>
-      <section className="service-group" aria-labelledby="monthly-change-title">
-        <div className="platform-section-heading"><p className="section-kicker">이번 달 변화</p><h2 id="monthly-change-title">초반부터 후반까지</h2></div>
-        <div className="flow-sections">
-          <article><small>초반</small><p>{month.earlyPeriod}</p></article>
-          <article><small>중반</small><p>{month.middlePeriod}</p></article>
-          <article><small>후반</small><p>{month.latePeriod}</p></article>
+
+      <section className="service-group signal-atlas-month-timeline" aria-labelledby="monthly-change-title">
+        <div className="platform-section-heading signal-atlas-section-heading">
+          <h2 id="monthly-change-title">이번 달의 흐름</h2>
+          <Link className="text-link signal-atlas-section-link" href="/flow/month">전체 보기</Link>
         </div>
-        <Link className="text-link" href="/flow/month">이번 달 흐름 자세히 보기 →</Link>
-      </section>
-      <section className="service-group" aria-labelledby="home-content-title">
-        <div className="platform-section-heading"><p className="section-kicker">내 콘텐츠</p><h2 id="home-content-title">구매한 내용과 추천</h2></div>
-        <nav aria-label="구매 및 추천 콘텐츠">
-          {purchasedItem && <Link href={purchasedItem.href}><strong>구매함 · {purchasedItem.title}</strong><small>{purchasedItem.profile.displayName} 프로필 · {purchasedItem.read ? "읽음" : "읽지 않음"}</small><span aria-hidden="true">→</span></Link>}
-          <Link href="/products/career-report"><strong>추천 · 커리어 심층 리포트</strong><small>관심 주제에 맞춘 체험용 추천이며 실제 개인화 계산은 하지 않아요.</small><span aria-hidden="true">→</span></Link>
-        </nav>
-      </section>
-      <section className="service-group home-recent-actions" aria-labelledby="recent-actions-title">
-        <div className="platform-section-heading">
-          <p className="section-kicker">최근 행동</p>
-          <h2 id="recent-actions-title">하던 일을 이어보세요</h2>
+        <div className="signal-atlas-timeline-list" role="list">
+          {monthTimeline.map((item) => {
+            const current = item.id === currentPhase;
+            return (
+              <article className={`signal-atlas-timeline-row${current ? " current" : ""}`} key={item.id} role="listitem" aria-current={current ? "true" : undefined}>
+                <span className="signal-atlas-timeline-marker" aria-hidden="true" />
+                <div>
+                  <small>{item.label}</small>
+                  <p>{item.summary}</p>
+                </div>
+              </article>
+            );
+          })}
         </div>
-        <nav aria-label="최근 행동 이어보기">
-          {latestItem ? <Link href={latestItem.href}><strong>{latestItem.profile.displayName} · {latestItem.title}</strong><small>{TYPE_LABELS[latestItem.type]} · {latestItem.subtitle}</small><span aria-hidden="true">→</span></Link> : <Link href="/report"><strong>{birth.displayName}님의 리포트 시작</strong><small>저장된 프로필로 체험용 요약 확인</small><span aria-hidden="true">→</span></Link>}
-        </nav>
       </section>
-      <div id="platform-services" className="platform-services">
-        <div className="platform-section-heading">
-          <p className="section-kicker">전체 서비스</p>
-          <h2>필요한 일을 바로 시작하세요</h2>
-        </div>
-        {serviceGroups.map((group) => (
-          <section className="service-group" key={group.label} aria-labelledby={`service-${group.label}`}>
-            <h3 id={`service-${group.label}`}>{group.label}</h3>
-            <nav aria-label={`${group.label} 서비스`}>
-              {group.items.map((item) => (
-                <Link href={item.href} key={item.href}>
-                  <strong>{item.label}</strong>
-                  <small>{item.description}</small>
-                  <span aria-hidden="true">→</span>
-                </Link>
-              ))}
-            </nav>
-          </section>
-        ))}
-      </div>
+
+      <section className="service-group signal-atlas-continue-reading" aria-labelledby="continue-reading-title">
+        <div className="signal-atlas-continue-reading-line" aria-hidden="true" />
+        <Link href={latestItem?.href ?? "/report"} className="signal-atlas-continue-reading-link">
+          <span>
+            <small id="continue-reading-title">이어 읽기</small>
+            <strong>
+              {latestItem ? latestItem.title : `${birth.displayName}님의 리포트 시작`}
+            </strong>
+          </span>
+          <span aria-hidden="true">›</span>
+        </Link>
+      </section>
+
+      <section className="service-group signal-atlas-consultation-cta" aria-label="상담 시작">
+        <Link href="/consult/new">
+          <strong>오늘의 고민을 남겨볼까요?</strong>
+          <span aria-hidden="true">↗</span>
+        </Link>
+      </section>
     </main>
   );
 }
@@ -116,37 +175,114 @@ export function FlowScreen({ mode }: { mode: "today" | "month" }) {
   const previous = () => setPeriod((current) => mode === "today" ? shiftDate(current, -1) : shiftMonth(current, -1));
   const next = () => setPeriod((current) => mode === "today" ? shiftDate(current, 1) : shiftMonth(current, 1));
 
+  if (reading.kind === "daily") {
+    return (
+      <main className="screen-content flow-content signal-atlas-flow-screen signal-atlas-today-flow" aria-labelledby="flow-title">
+        <div className="editorial-hero signal-atlas-flow-lead">
+          <p className="section-kicker">오늘의 흐름</p>
+          <h1 id="flow-title">{reading.headline}</h1>
+          <p className="supporting">{reading.summary}</p>
+        </div>
+        <div className="period-control signal-atlas-period-navigation">
+          <button type="button" onClick={previous} aria-label="이전 날짜">‹</button>
+          <label>
+            <span className="sr-only">조회 날짜</span>
+            <input type="date" value={period} onChange={(event) => setPeriod(event.target.value)} />
+          </label>
+          <button type="button" onClick={next} aria-label="다음 날짜">›</button>
+        </div>
+        <section className="flow-sections signal-atlas-today-sections" aria-label="오늘의 세부 흐름">
+          <article className="signal-atlas-today-detail">
+            <small>오늘의 우선 영역</small>
+            <p>{PRIORITY_LABELS[reading.priorityArea]}</p>
+          </article>
+          <article className="signal-atlas-today-detail">
+            <small>점검할 부분</small>
+            <p>{reading.caution}</p>
+          </article>
+          <article className="signal-atlas-today-detail">
+            <small>추천 질문</small>
+            <p>{reading.suggestedQuestion}</p>
+          </article>
+        </section>
+        <nav className="flow-switch signal-atlas-flow-switch" aria-label="기간별 흐름 전환">
+          <Link className="active" href="/flow/today">오늘</Link>
+          <Link href="/flow/month">이번 달</Link>
+          <Link href="/reports/year">올해</Link>
+        </nav>
+      </main>
+    );
+  }
+
+  const currentPhase = monthlyPhaseForMonth(period);
+  const intensityRows = [
+    { ...MONTHLY_PHASES[0], summary: reading.earlyPeriod, level: "낮음", value: 22 },
+    { ...MONTHLY_PHASES[1], summary: reading.middlePeriod, level: "높음", value: 55 },
+    { ...MONTHLY_PHASES[2], summary: reading.latePeriod, level: "보통", value: 34 },
+  ];
+  const currentRow = intensityRows.find((row) => row.id === currentPhase) ?? intensityRows[1];
+  const keyDates = [
+    ...reading.opportunityPeriods.map((date) => ({ date, label: "기회" })),
+    ...reading.cautionPeriods.map((date) => ({ date, label: "점검" })),
+  ];
+
   return (
-    <main className="screen-content flow-content" aria-labelledby="flow-title">
-      <div className="editorial-hero">
-        <p className="section-kicker">{mode === "today" ? "오늘의 흐름" : "이번 달 흐름"}</p>
+    <main className="screen-content flow-content signal-atlas-flow-screen signal-atlas-month-flow" aria-labelledby="flow-title">
+      <div className="period-control signal-atlas-month-navigation">
+        <button type="button" onClick={previous} aria-label="이전 달">‹</button>
+        <label className="signal-atlas-month-picker">
+          <span aria-hidden="true">{formatMonthLabel(period)}</span>
+          <input aria-label="조회 월" type="month" value={period} onChange={(event) => setPeriod(event.target.value)} />
+        </label>
+        <button type="button" onClick={next} aria-label="다음 달">›</button>
+      </div>
+      <div className="editorial-hero signal-atlas-month-lead">
+        <p className="section-kicker">{formatMonthLabel(period)}</p>
         <h1 id="flow-title">{reading.headline}</h1>
-        <p className="supporting">{reading.kind === "daily" ? reading.summary : reading.overview}</p>
+        <p className="supporting">계산을 바탕으로 본 시기별 흐름 강도</p>
+        <p className="signal-atlas-disclaimer">{reading.overview}</p>
       </div>
-      <div className="period-control">
-        <button type="button" onClick={previous} aria-label="이전 기간">‹</button>
-        <label><span className="sr-only">조회 기간</span><input type={mode === "today" ? "date" : "month"} value={period} onChange={(event) => setPeriod(event.target.value)} /></label>
-        <button type="button" onClick={next} aria-label="다음 기간">›</button>
-      </div>
-      <div className="flow-sections">
-        {reading.kind === "daily" ? <>
-          <article><small>오늘의 우선 영역</small><p>{reading.priorityArea === "relationship" ? "관계" : reading.priorityArea === "career" ? "일" : "재물"}</p></article>
-          <article><small>점검할 부분</small><p>{reading.caution}</p></article>
-          <article><small>추천 질문</small><p>{reading.suggestedQuestion}</p></article>
-        </> : <>
-          <article><small>초반</small><p>{reading.earlyPeriod}</p></article>
-          <article><small>중반</small><p>{reading.middlePeriod}</p></article>
-          <article><small>후반</small><p>{reading.latePeriod}</p></article>
-          <article><small>관계</small><p>{reading.relationship}</p></article>
-          <article><small>일</small><p>{reading.career}</p></article>
-          <article><small>재물</small><p>{reading.money}</p></article>
-          <article><small>기회 시기</small><p>{reading.opportunityPeriods.join(", ")}</p></article>
-          <article><small>주의 시기</small><p>{reading.cautionPeriods.join(", ")}</p></article>
-        </>}
-      </div>
-      <nav className="flow-switch" aria-label="기간별 흐름 전환">
-        <Link className={mode === "today" ? "active" : undefined} href="/flow/today">오늘</Link>
-        <Link className={mode === "month" ? "active" : undefined} href="/flow/month">이번 달</Link>
+      <section className="signal-atlas-intensity-rows" aria-labelledby="monthly-intensity-title">
+        <h2 id="monthly-intensity-title" className="sr-only">월간 흐름 강도</h2>
+        {intensityRows.map((row) => {
+          const current = row.id === currentPhase;
+          return (
+            <article className={`signal-atlas-intensity-row${current ? " current" : ""}`} key={row.id} aria-current={current ? "true" : undefined} aria-label={`${row.label} · ${row.emphasis} · ${row.level}. ${row.summary}`}>
+              <div className="signal-atlas-intensity-label">
+                <strong>{row.label} · {row.emphasis} · {row.level}{current ? " · 지금" : ""}</strong>
+              </div>
+              <div className="signal-atlas-intensity-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={row.value} aria-label={`${row.label} 흐름 강도`}>
+                <span style={{ width: `${row.value}%` }} />
+              </div>
+            </article>
+          );
+        })}
+      </section>
+      <section className="signal-atlas-period-focus" aria-labelledby="period-focus-title">
+        <p className="section-kicker">{currentRow.label}의 초점</p>
+        <h2 id="period-focus-title">{currentRow.id === "late" ? "이번 주엔 제안, 다음 주엔 결정." : currentRow.id === "middle" ? "대화로 조건을 넓혀보세요." : "정리한 기준으로 한 가지를 제안해보세요."}</h2>
+        <p>{currentRow.summary}</p>
+      </section>
+      <section className="signal-atlas-key-dates" aria-labelledby="key-dates-title">
+        <div className="signal-atlas-section-heading">
+          <h2 id="key-dates-title">주요 날짜</h2>
+        </div>
+        <div className="signal-atlas-date-chips" role="list">
+          {keyDates.map((item) => (
+            <span className="signal-atlas-date-chip" key={`${item.label}-${item.date}`} role="listitem">
+              <time dateTime={item.date.split(" ~ ")[0]}>{formatDateRange(item.date)}</time>
+              <small>{item.label}</small>
+            </span>
+          ))}
+        </div>
+      </section>
+      <section className="signal-atlas-action-suggestion" aria-labelledby="action-suggestion-title">
+        <p className="section-kicker" id="action-suggestion-title">{currentRow.label} 행동 제안</p>
+        <p>{currentRow.id === "late" ? "조건을 적고, 결정은 다음 주로 미뤄두세요." : currentRow.id === "middle" ? reading.relationship : reading.career}</p>
+      </section>
+      <nav className="flow-switch signal-atlas-flow-switch" aria-label="기간별 흐름 전환">
+        <Link href="/flow/today">오늘</Link>
+        <Link className="active" href="/flow/month">이번 달</Link>
         <Link href="/reports/year">올해</Link>
       </nav>
     </main>
@@ -206,36 +342,57 @@ export function LibraryScreen() {
     setError("");
   }
 
+  const activeFilterCount = [type !== "all", dateRange !== "all", profileScope !== "all", topic !== "all", access !== "all", showHidden].filter(Boolean).length;
+
   return (
-    <main className="screen-content library-content" aria-labelledby="library-title">
-      <div className="editorial-hero">
-        <p className="section-kicker">기기 보관함</p>
-        <h1 id="library-title">저장한 내용을<br />한곳에서 살펴보세요</h1>
+    <main className="screen-content library-content signal-atlas-library-screen" aria-labelledby="library-title">
+      <header className="editorial-hero signal-atlas-library-lead">
+        <p className="section-kicker">보관함</p>
+        <h1 id="library-title">저장한 기록</h1>
         <p className="supporting">다른 기기와 공유되지 않고 이 브라우저에만 저장됩니다.</p>
-      </div>
-      <div className="library-controls">
-        <label><span>검색</span><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="제목 또는 설명" /></label>
-        <label><span>유형</span><select value={type} onChange={(event) => setType(event.target.value as typeof type)}><option value="all">전체</option><option value="report">리포트</option><option value="consultation">상담</option><option value="compatibility">궁합</option></select></label>
-        <label><span>정렬</span><select value={sort} onChange={(event) => setSort(event.target.value as typeof sort)}><option value="newest">최신순</option><option value="oldest">오래된순</option></select></label>
-        <label><span>생성 날짜</span><select value={dateRange} onChange={(event) => setDateRange(event.target.value as typeof dateRange)}><option value="all">전체</option><option value="latest">가장 최근 날짜</option><option value="recent">최근 7일</option></select></label>
-        <label><span>프로필</span><select value={profileScope} onChange={(event) => setProfileScope(event.target.value as typeof profileScope)}><option value="all">전체</option><option value="self">내 프로필</option><option value="relationship">관계 프로필</option></select></label>
-        <label><span>주제</span><select value={topic} onChange={(event) => setTopic(event.target.value as typeof topic)}><option value="all">전체</option><option value="relationship">연애·관계</option><option value="career">일·커리어</option></select></label>
-        <label><span>구매 여부</span><select value={access} onChange={(event) => setAccess(event.target.value as typeof access)}><option value="all">전체</option><option value="free">무료·로컬</option><option value="purchased">구매 리포트</option></select></label>
-        <label className="show-hidden"><input type="checkbox" checked={showHidden} onChange={(event) => setShowHidden(event.target.checked)} /> 숨긴 항목 보기</label>
-      </div>
-      {items.length === 0 ? (
-        <EmptyState title="조건에 맞는 항목이 없어요" description="검색어나 필터를 바꿔보세요." />
-      ) : (
-        <div className="library-list">{items.map((item) => {
-          return <article key={item.id} className={item.hidden ? "hidden-item" : undefined}>
-            <div><small>{TYPE_LABELS[item.type]}{item.purchased ? " · 구매" : ""} · {item.profile.displayName} · {item.read ? "읽음" : "읽지 않음"}</small><h2>{item.allowedActions.includes("open") ? <Link href={item.href}>{item.title}</Link> : item.title}</h2><p>{item.subtitle}</p><time dateTime={item.createdAt}>{item.createdAt.slice(0, 10)}</time></div>
-            <div className="library-item-actions">
-              {(item.allowedActions.includes("hide") || item.allowedActions.includes("unhide")) && <button type="button" onClick={() => updateItem(item.id, (current) => ({ ...current, hidden: !current.hidden }))}>{item.hidden ? "보이기" : "숨기기"}</button>}
-              {item.purchased ? <small>구매 리포트는 삭제 대신 숨길 수 있어요.</small> : item.allowedActions.includes("delete") && (pendingDeleteId === item.id ? <div className="danger-confirm library-delete-confirm"><p>{item.title}을 기기에서 삭제할까요?</p><button type="button" onClick={() => deleteItem(item.id)}>보관함 항목 삭제 확정</button><button type="button" onClick={() => setPendingDeleteId(null)}>취소</button></div> : <button type="button" onClick={() => setPendingDeleteId(item.id)}>삭제</button>)}
-            </div>
-          </article>;
-        })}</div>
-      )}
+      </header>
+      <section className="library-controls signal-atlas-library-controls" aria-label="보관함 검색과 필터">
+        <label className="signal-atlas-library-search">
+          <span>검색</span>
+          <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="제목 또는 설명" />
+        </label>
+        <details className="signal-atlas-library-filter-disclosure">
+          <summary>필터{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ""}</summary>
+          <div className="signal-atlas-library-filter-grid">
+            <label><span>유형</span><select value={type} onChange={(event) => setType(event.target.value as typeof type)}><option value="all">전체</option><option value="report">리포트</option><option value="consultation">상담</option><option value="compatibility">궁합</option></select></label>
+            <label><span>정렬</span><select value={sort} onChange={(event) => setSort(event.target.value as typeof sort)}><option value="newest">최신순</option><option value="oldest">오래된순</option></select></label>
+            <label><span>생성 날짜</span><select value={dateRange} onChange={(event) => setDateRange(event.target.value as typeof dateRange)}><option value="all">전체</option><option value="latest">가장 최근 날짜</option><option value="recent">최근 7일</option></select></label>
+            <label><span>프로필</span><select value={profileScope} onChange={(event) => setProfileScope(event.target.value as typeof profileScope)}><option value="all">전체</option><option value="self">내 프로필</option><option value="relationship">관계 프로필</option></select></label>
+            <label><span>주제</span><select value={topic} onChange={(event) => setTopic(event.target.value as typeof topic)}><option value="all">전체</option><option value="relationship">연애·관계</option><option value="career">일·커리어</option></select></label>
+            <label><span>구매 여부</span><select value={access} onChange={(event) => setAccess(event.target.value as typeof access)}><option value="all">전체</option><option value="free">무료·로컬</option><option value="purchased">구매 리포트</option></select></label>
+            <label className="show-hidden"><input type="checkbox" checked={showHidden} onChange={(event) => setShowHidden(event.target.checked)} /> 숨긴 항목 보기</label>
+          </div>
+        </details>
+      </section>
+      <section className="signal-atlas-library-results" aria-labelledby="library-results-title">
+        <header className="signal-atlas-library-results-heading">
+          <h2 id="library-results-title">저장한 기록</h2>
+          <span>{items.length}개</span>
+        </header>
+        {items.length === 0 ? (
+          <EmptyState title="조건에 맞는 항목이 없어요" description="검색어나 필터를 바꿔보세요." />
+        ) : (
+          <div className="library-list signal-atlas-library-list">{items.map((item) => {
+            return <article key={item.id} className={`signal-atlas-library-item${item.hidden ? " hidden-item" : ""}`}>
+              <div className="signal-atlas-library-item-content">
+                <small className="signal-atlas-library-item-meta">{TYPE_LABELS[item.type]}{item.purchased ? " · 구매" : ""} · {item.profile.displayName} · {item.read ? "읽음" : "읽지 않음"}</small>
+                <h2>{item.allowedActions.includes("open") ? <Link href={item.href}>{item.title}</Link> : item.title}</h2>
+                <p>{item.subtitle}</p>
+                <time dateTime={item.createdAt}>{item.createdAt.slice(0, 10)}</time>
+              </div>
+              <div className="library-item-actions signal-atlas-library-item-actions">
+                {(item.allowedActions.includes("hide") || item.allowedActions.includes("unhide")) && <button type="button" onClick={() => updateItem(item.id, (current) => ({ ...current, hidden: !current.hidden }))}>{item.hidden ? "보이기" : "숨기기"}</button>}
+                {item.purchased ? <small>구매 리포트는 삭제 대신 숨길 수 있어요.</small> : item.allowedActions.includes("delete") && (pendingDeleteId === item.id ? <div className="danger-confirm library-delete-confirm"><p>{item.title}을 기기에서 삭제할까요?</p><button type="button" onClick={() => deleteItem(item.id)}>보관함 항목 삭제 확정</button><button type="button" onClick={() => setPendingDeleteId(null)}>취소</button></div> : <button type="button" onClick={() => setPendingDeleteId(item.id)}>삭제</button>)}
+              </div>
+            </article>;
+          })}</div>
+        )}
+      </section>
       {error && <p className="form-error" role="alert">{error}</p>}
     </main>
   );

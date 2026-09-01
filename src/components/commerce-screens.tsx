@@ -53,14 +53,44 @@ export function ProductListScreen() {
   const commerce = getCommerceData();
   if (!commerce) return <CorruptState title="체험 구매 기록을 읽을 수 없어요" description="손상된 구매 기록을 확인 없이 초기화하지 않습니다." unavailable={commerceStore.inspect().status === "unavailable"} onReset={commerceStore.remove} />;
   const purchased = new Set(commerce.orders.filter((order) => order.status === "COMPLETED").map((order) => order.productId));
+  const creditProducts = PRODUCTS.filter((product) => product.kind === "consultation_credit");
+  const reportProducts = PRODUCTS.filter((product) => product.kind === "report");
+  const renderProduct = (product: (typeof PRODUCTS)[number]) => (
+    <article className="commerce-price-row" key={product.id}>
+      <div>
+        <small>{purchased.has(product.id) ? "구매 기록 있음 · 보관함" : "단건 구매"}</small>
+        <h2><Link href={`/products/${product.id}`}>{product.title}</Link></h2>
+        <p>{product.description}</p>
+        {product.kind === "consultation_credit" && <small>현재 {commerce.consultationCredits}회 남음</small>}
+      </div>
+      <strong>{price(product.priceAmount)}</strong>
+    </article>
+  );
 
   return (
-    <main className="screen-content products-content" aria-labelledby="products-title">
-      <p className="section-kicker">더 깊은 살펴보기</p>
-      <h1 id="products-title">고민별로 더 깊게<br />살펴보세요</h1>
-      <p className="supporting">이곳의 표시 가격과 결제 상태는 예시이며 실제 구매나 상품 지급은 발생하지 않습니다.</p>
-      <div className="product-list">{PRODUCTS.map((product) => <article key={product.id}><div><small>{purchased.has(product.id) ? "기기 저장 기록 있음" : "잠긴 미리보기"}</small><h2><Link href={`/products/${product.id}`}>{product.title}</Link></h2><p>{product.description}</p></div><strong>{price(product.priceAmount)}</strong></article>)}</div>
-      <Link className="secondary-button" href="/products/credits">상담 이용권과 사용 내역</Link>
+    <main className="screen-content products-content signal-atlas-commerce-list" aria-labelledby="products-title">
+      <header className="commerce-page-header">
+        <p className="section-kicker signal-atlas-overline">이용권 · 결제</p>
+        <h1 id="products-title">필요한 만큼만<br />단건으로</h1>
+        <p className="supporting">구독 없이 필요한 것만 구매해요. 표시 가격은 예시이며 실제 구매나 상품 지급은 발생하지 않습니다.</p>
+      </header>
+      <div className="commerce-type-labels" aria-label="상품 안내">
+        <span>이용권</span><span aria-hidden="true">·</span><span>리포트</span><span aria-hidden="true">·</span><span>이 브라우저 저장</span>
+      </div>
+      <section className="commerce-price-group signal-commerce-group" aria-labelledby="consultation-products-heading">
+        <h2 id="consultation-products-heading">상담 이용권</h2>
+        <div className="product-list signal-commerce-price-list">{creditProducts.map(renderProduct)}</div>
+      </section>
+      <section className="commerce-price-group signal-commerce-group" aria-labelledby="report-products-heading">
+        <h2 id="report-products-heading">리포트</h2>
+        <div className="product-list signal-commerce-price-list">{reportProducts.map(renderProduct)}</div>
+      </section>
+      <aside className="commerce-preservation-note signal-commerce-note">
+        <strong>구매 기록 안내</strong>
+        <p>구매한 리포트는 보관함에서 이어 읽는 흐름을 보여드려요. 결제 전 구성도 확인할 수 있어요.</p>
+        <p>이 화면은 실제 결제와 상품 지급 없이 주문 상태만 체험합니다.</p>
+      </aside>
+      <Link className="secondary-button signal-commerce-history" href="/products/credits">상담 이용권과 사용 내역</Link>
     </main>
   );
 }
@@ -83,10 +113,11 @@ export function ProductDetailScreen({ productId }: { productId: ProductId }) {
   const maskedBasis = `${maskBirthDate(birth.birthDate)} · ${maskBirthTime(birth.birthTime, birth.birthTimeUnknown)} · ${maskBirthplace(birth.birthplace)}`;
 
   return (
-    <main className="screen-content product-detail" aria-labelledby="product-title">
-      <p className="section-kicker">상품 상세</p>
+    <main className="screen-content product-detail signal-atlas-commerce-detail" aria-labelledby="product-title">
+      <p className="section-kicker signal-atlas-overline">상품 상세</p>
       <h1 id="product-title">{product.title}</h1>
       <p className="lead">{product.description}</p>
+      <p className="commerce-purchase-mode">단건 구매 · 구독 없음 · 구매 기록은 이 브라우저에만 반영돼요.</p>
       <p className="supporting">{product.kind === "report" ? "리포트" : product.kind === "consultation_credit" ? "상담 이용권" : "구독"} · {product.status === "active" ? "판매 중" : product.status === "draft" ? "검토 중" : "판매 종료"} · 상품 버전 {product.version}</p>
       <strong className="product-price">{price(product.priceAmount)}</strong>
       {purchased && <aside className="duplicate-notice"><strong>같은 프로필·기간·해석 버전의 체험 성공 기록이 있어요.</strong><p>실제 구매 내역이 아니며 중복 결제도 발생하지 않습니다.</p><nav aria-label="중복 주문 선택지"><Link href="/library">기존 리포트 보기</Link><Link href={`/products/${product.id}#generation-policy`}>새 해석 버전 확인</Link><Link href="/profile">다른 프로필 선택</Link></nav></aside>}
@@ -103,7 +134,11 @@ export function ProductDetailScreen({ productId }: { productId: ProductId }) {
       <section id="generation-policy"><h2>생성 방식</h2><p>{product.generationMethod}</p></section>
       <section><h2>환불·재시도 정책</h2><p>{product.refundPolicy}</p></section>
       <section className="locked-product"><p className="section-kicker">잠긴 콘텐츠</p><h2>세부 해석과 시기</h2><p>세부 해석과 시기는 제공하지 않으며 실제 결제나 상품 지급도 발생하지 않습니다.</p></section>
-      <Link className="primary-button" href={`/checkout/${product.id}`}>주문 상태 예시 보기</Link>
+      <aside className="commerce-safety-note signal-commerce-note">
+        <strong>안전한 구매 안내</strong>
+        <p>실제 결제·상품 지급 없이 주문 상태 예시만 보여드려요. 사주 해석은 중요한 결정이나 전문가 판단을 대신하지 않습니다.</p>
+      </aside>
+      <Link className="primary-button signal-primary-cta" href={`/checkout/${product.id}`}>단건 구매 흐름 확인</Link>
       <p className="action-note">실제 결제 수단은 수집하지 않습니다.</p>
     </main>
   );
@@ -114,18 +149,22 @@ export function CheckoutScreen({ productId }: { productId: ProductId }) {
   const orderId = `ord_demo_${product.id.replaceAll("-", "_")}`;
   const duplicateKey = getOrderDuplicateKey(productId, product.version);
   return (
-    <main className="screen-content checkout-content" aria-labelledby="checkout-title">
-      <p className="section-kicker">주문 확인</p>
+    <main className="screen-content checkout-content signal-atlas-checkout" aria-labelledby="checkout-title">
+      <p className="section-kicker signal-atlas-overline">주문 확인</p>
       <h1 id="checkout-title">{product.title}</h1>
+      <p className="supporting commerce-purchase-mode">단건 구매 · 구독 없음 · 표시 금액은 예시이며 실제 청구는 0원이에요.</p>
       <div className="order-summary"><span>상품 ID</span><strong>{product.id}</strong><span>주문 ID</span><strong>{orderId}</strong><span>프로필 ID</span><strong>{duplicateKey.profileId}</strong><span>차트 스냅샷 ID</span><strong>{duplicateKey.chartSnapshotId}</strong><span>기간</span><strong>{duplicateKey.periodKey}</strong><span>해석 버전</span><strong>{duplicateKey.interpretationVersion}</strong><span>상품 금액</span><strong>{price(product.priceAmount)}</strong><span>실제 청구</span><strong>0원</strong></div>
-      <aside className="check-list"><strong>확인 사항</strong><span>· 실제 결제 서비스나 결제 수단에 연결되지 않아요.</span><span>· 성공 상태를 기록해도 상품은 지급되지 않아요.</span><span>· 이 브라우저에 저장된 체험 기록만 변경돼요.</span></aside>
-      <nav className="demo-status-links" aria-label="결제 상태 예시 선택">
+      <aside className="check-list commerce-safety-note"><strong>확인 사항</strong><span>· 실제 결제 서비스나 결제 수단에 연결되지 않아요.</span><span>· 성공 상태를 기록해도 상품은 지급되지 않아요.</span><span>· 이 브라우저에 저장된 체험 기록만 변경돼요.</span><span>· 주문과 상품은 단건 구매 흐름만 보여드려요.</span></aside>
+      <section className="commerce-status-picker" aria-labelledby="commerce-status-heading">
+        <h2 id="commerce-status-heading">주문 상태 예시</h2>
+        <nav className="demo-status-links" aria-label="결제 상태 예시 선택">
         <Link href={`/orders/${orderId}?productId=${product.id}&state=pending`}>대기 상태 보기</Link>
         <Link href={`/orders/${orderId}?productId=${product.id}&state=success`}>성공 상태 보기</Link>
         <Link href={`/orders/${orderId}?productId=${product.id}&state=failure`}>실패 상태 보기</Link>
-      </nav>
+        </nav>
+      </section>
       <aside className="check-list"><strong>주문 상태 7단계</strong>{ORDER_STATUSES.map((state) => <span key={state}>· {state}</span>)}</aside>
-      <button className="disabled-login" type="button" disabled>실제 결제 · 이용 불가</button>
+      <button className="disabled-login signal-disabled-payment" type="button" disabled>실제 결제 · 이용 불가</button>
     </main>
   );
 }
@@ -182,12 +221,16 @@ export function PaymentStatusScreen({ orderId, productId, status }: { orderId: s
   }
 
   return (
-    <main className="screen-content payment-status" aria-labelledby="payment-status-title">
-      <p className="section-kicker">{copy.label} · 결제 상태 안내</p>
+    <main className="screen-content payment-status signal-atlas-payment-status" aria-labelledby="payment-status-title">
+      <p className="section-kicker signal-atlas-overline">{copy.label} · 결제 상태 안내</p>
       <h1 id="payment-status-title">{copy.title}</h1>
       <p className="supporting">{copy.description}</p>
+      <aside className="commerce-safety-note signal-commerce-note">
+        <strong>체험 기록 안내</strong>
+        <p>이 상태는 단건 구매 흐름을 확인하기 위한 예시이며 실제 결제·상품 지급은 발생하지 않습니다.</p>
+      </aside>
       <aside className="order-summary"><span>상품</span><strong>{product.title}</strong><span>상품 ID</span><strong>{product.id}</strong><span>주문 ID</span><strong>{orderId}</strong><span>프로필 ID</span><strong>{duplicateKey.profileId}</strong><span>차트 스냅샷 ID</span><strong>{duplicateKey.chartSnapshotId}</strong><span>기간</span><strong>{duplicateKey.periodKey}</strong><span>해석 버전</span><strong>{duplicateKey.interpretationVersion}</strong><span>정규 주문 상태</span><strong>{ORDER_STATUS_ADAPTER[status]}</strong><span>실제 결제액</span><strong>0원</strong></aside>
-      <button className="primary-button" type="button" onClick={recordDemoState}>이 상태를 기기에 기록</button>
+      <button className="primary-button signal-primary-cta" type="button" onClick={recordDemoState}>이 상태를 기기에 기록</button>
       {message && <p className="form-error" role="status">{message}</p>}
       <Link className="secondary-button" href={`/products/${productId}`}>상품 상세로 돌아가기</Link>
     </main>
@@ -202,8 +245,8 @@ export function CreditsScreen() {
   const data = getCommerceData();
   if (!data) return <CorruptState title="이용권 데이터를 읽을 수 없어요" description="손상된 이용권 기록을 확인 없이 초기화하지 않습니다." unavailable={commerceStore.inspect().status === "unavailable"} onReset={commerceStore.remove} />;
   return (
-    <main className="screen-content credits-content" aria-labelledby="credits-title">
-      <p className="section-kicker">이 기기의 이용권 기록</p>
+    <main className="screen-content credits-content signal-atlas-credits" aria-labelledby="credits-title">
+      <p className="section-kicker signal-atlas-overline">이 기기의 이용권 기록</p>
       <h1 id="credits-title">상담 이용권<br />{data.consultationCredits}회</h1>
       <p className="supporting">이 브라우저에만 저장되는 체험 기록이며 실제 상담 이용권으로 사용할 수 없습니다.</p>
       <section className="credit-history"><h2>변경 내역</h2>{data.creditHistory.length === 0 ? <p>아직 체험용 이용권 변경 내역이 없어요.</p> : data.creditHistory.map((item) => <article key={item.id}><div><strong>{item.description}</strong><small>{item.reason} · {item.sourceId ?? "연결 리소스 없음"}</small><time dateTime={item.createdAt}>{item.createdAt.slice(0, 10)}</time></div><span>{item.delta > 0 ? `+${item.delta}` : item.delta}</span></article>)}</section>

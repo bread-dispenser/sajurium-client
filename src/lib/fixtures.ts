@@ -285,7 +285,18 @@ export function getFixtureConsultationResponse(draft: ConsultationDraft) {
 }
 
 export function isRestrictedConsultationQuestion(question: string) {
-  return /(죽|사망|수명|질병|암 |진단|치료|주식|코인|종목|투자.*추천|당첨|범죄)/i.test(question);
+  const normalized = question.replace(/\s+/g, " ").trim();
+  return [
+    /죽|사망|수명/i,
+    /질병|암|진단|치료/i,
+    /임신|출산/i,
+    /범죄|재판|소송|판결|법정|유죄|무죄/i,
+    /주식|코인|종목/i,
+    /투자.{0,30}(?:추천|수익|보장|확정)|(?:추천|수익|보장|확정).{0,30}투자/i,
+    /도박|복권|로또|카지노|베팅|당첨/i,
+    /(?:타인|다른 사람|상대(?:방)?|그 사람).{0,20}(?:속마음|생각|마음|진심)|(?:속마음|생각|마음|진심).{0,20}(?:타인|다른 사람|상대(?:방)?|그 사람)/i,
+    /외도|불륜|바람/i,
+  ].some((pattern) => pattern.test(normalized));
 }
 
 export const INITIAL_PEOPLE_DATA: PeopleData = {

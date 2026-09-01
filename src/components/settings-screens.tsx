@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState, useSyncExternalStore } from "react";
 import type { FormEvent } from "react";
+import { maskBirthDate, maskBirthTime, parseBirthDate } from "@/lib/contracts";
 import type { NotificationPreferenceView } from "@/lib/contracts";
 import type { FeedbackEntry, FeedbackReason, SettingsData } from "@/lib/domain";
 import { INITIAL_BIRTH, INITIAL_SETTINGS_DATA, getTopic } from "@/lib/fixtures";
@@ -89,6 +90,13 @@ export function SettingsScreen() {
   const birth = birthState.birth;
   const inventory = getOwnedStorageInventory();
   const hasUnavailableStorage = inventory.some((item) => item.status === "unavailable");
+  const profileInventory = inventory.find((item) => item.id === "profile");
+  const peopleInventory = inventory.find((item) => item.id === "people");
+  const commerceInspection = commerceStore.inspect();
+  const consultationCredits = commerceInspection.status === "ok" ? commerceInspection.value.consultationCredits : null;
+  const profileSummary = `${maskBirthDate(birth.birthDate)} · ${maskBirthTime(birth.birthTime, birth.birthTimeUnknown)} · ${birth.calendar === "solar" ? "양력" : birth.leapMonth ? "음력 윤달" : "음력 평달"}`;
+  const profileStorageSummary = profileInventory?.status === "ok" ? "저장됨 · 이 기기" : profileInventory?.status === "unavailable" ? "확인 필요" : "저장 상태 확인";
+  const peopleStorageSummary = peopleInventory?.status === "ok" ? `${peopleInventory.count}명 저장됨` : peopleInventory?.status === "unavailable" ? "확인 필요" : "저장 상태 확인";
 
   function updateSettings(update: Partial<SettingsData>) {
     const next: SettingsData = { version: 1, notifications: update.notifications ?? activeSettings.notifications };
@@ -138,9 +146,7 @@ export function SettingsScreen() {
     const birthDate = String(form.get("birthDate") ?? "");
     const birthTime = String(form.get("birthTime") ?? "");
     const birthTimeUnknown = form.get("birthTimeUnknown") === "on";
-    const [year, month, day] = birthDate.split("-").map(Number);
-    const parsedDate = new Date(Date.UTC(year, month - 1, day));
-    const validDate = /^\d{4}-\d{2}-\d{2}$/.test(birthDate) && parsedDate.getUTCFullYear() === year && parsedDate.getUTCMonth() === month - 1 && parsedDate.getUTCDate() === day;
+    const validDate = parseBirthDate(birthDate) !== null;
     if (!displayName || !validDate) return setMessage("이름과 실제 존재하는 생년월일을 입력해 주세요.");
     const [hour, minute] = birthTime.split(":").map(Number);
     const validTime = /^\d{2}:\d{2}$/.test(birthTime) && hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59;
@@ -166,32 +172,128 @@ export function SettingsScreen() {
   }
 
   return (
-    <main className="screen-content settings-content" aria-labelledby="settings-title">
-      <p className="section-kicker">설정과 개인정보</p>
-      <h1 id="settings-title">이 기기에 저장된<br />정보를 관리하세요</h1>
-      <p className="supporting">계정 기능이 없으므로 모든 설정은 현재 브라우저에만 적용됩니다.</p>
-      <section className="settings-section"><h2>출생 정보</h2><p>현재 프로필의 핵심 값만 수정합니다. 달력·윤달·출생지·시간대·계산 기준과 관심사는 전체 프로필에서 관리하세요.</p><form className="settings-birth-form" onSubmit={saveBirth}><label>이름 또는 닉네임<input name="displayName" defaultValue={birth.displayName} /></label><label>생년월일<input name="birthDate" type="date" defaultValue={birth.birthDate} /></label><label>출생 시간<input name="birthTime" type="time" defaultValue={birth.birthTime ?? ""} /></label><label className="check-card"><input name="birthTimeUnknown" type="checkbox" defaultChecked={birth.birthTimeUnknown} /> 출생 시간을 몰라요</label><button className="secondary-button" type="submit">출생 정보 저장</button><Link className="text-link" href="/profile">전체 프로필 관리</Link></form></section>
-      <section className="settings-section">
-        <h2>알림 환경설정</h2>
+    <main className="screen-content settings-content signal-atlas-settings-screen" aria-labelledby="settings-title">
+      <header className="signal-settings-header">
+        <p className="section-kicker signal-atlas-overline">설정과 데이터</p>
+        <h1 id="settings-title">설정과 데이터</h1>
+        <p className="supporting">이 기기에 저장된 정보와 알림을 관리해요.</p>
+        <p className="signal-local-storage-note">계정 기능이 없으므로 모든 설정은 현재 브라우저에만 적용됩니다.</p>
+      </header>
+
+      <section className="settings-profile-summary signal-settings-profile" aria-labelledby="settings-profile-title">
+        <div className="signal-settings-profile-copy">
+          <span className="signal-settings-avatar" aria-hidden="true">{Array.from(birth.displayName)[0] ?? "나"}</span>
+          <div>
+            <h2 id="settings-profile-title">{birth.displayName}</h2>
+            <p>{profileSummary}</p>
+          </div>
+        </div>
+        <Link className="settings-row-action" href="/profile">수정</Link>
+      </section>
+
+      <section className="settings-section signal-settings-group signal-settings-records" aria-labelledby="settings-records-title">
+        <h2 id="settings-records-title">기록 관리</h2>
+        <nav className="signal-settings-row-list" aria-label="기록 관리">
+          <Link className="signal-settings-row" href="/profile">
+            <span><strong>내 사주 원국</strong><small>{profileStorageSummary}</small></span>
+            <span className="signal-settings-row-marker" aria-hidden="true">›</span>
+          </Link>
+          <Link className="signal-settings-row" href="/products/credits">
+            <span><strong>상담과 이용권</strong><small>{consultationCredits === null ? "내역 보기" : `${consultationCredits}회 남음 · 내역 보기`}</small></span>
+            <span className="signal-settings-row-marker" aria-hidden="true">›</span>
+          </Link>
+          <Link className="signal-settings-row" href="/people">
+            <span><strong>사람 · 궁합 기록</strong><small>{peopleStorageSummary}</small></span>
+            <span className="signal-settings-row-marker" aria-hidden="true">›</span>
+          </Link>
+        </nav>
+        <div className="settings-inline-editor signal-settings-editor">
+          <h3>출생 정보 수정</h3>
+          <p>현재 프로필의 핵심 값만 수정합니다. 달력·윤달·출생지·시간대·계산 기준과 관심사는 전체 프로필에서 관리하세요.</p>
+          <form className="settings-birth-form" onSubmit={saveBirth}>
+            <label>이름 또는 닉네임<input name="displayName" defaultValue={birth.displayName} /></label>
+            <label>생년월일<input name="birthDate" type="date" defaultValue={birth.birthDate} /></label>
+            <label>출생 시간<input name="birthTime" type="time" defaultValue={birth.birthTime ?? ""} /></label>
+            <label className="check-card"><input name="birthTimeUnknown" type="checkbox" defaultChecked={birth.birthTimeUnknown} /> 출생 시간을 몰라요</label>
+            <button className="secondary-button" type="submit">출생 정보 저장</button>
+            <Link className="text-link" href="/profile">전체 프로필 관리</Link>
+          </form>
+        </div>
+      </section>
+
+      <section className="settings-section signal-settings-group signal-settings-notifications" aria-labelledby="settings-notifications-title">
+        <h2 id="settings-notifications-title">알림 설정</h2>
         <p>실제 푸시·이메일 발송은 제공되지 않으며 선호도만 현재 브라우저에 저장됩니다.</p>
         {settings.notifications.map((preference) => (
-          <article key={preference.channel}>
+          <article className="signal-notification-channel" key={preference.channel}>
             <h3>{preference.channel === "push" ? "푸시" : "이메일"}</h3>
-            <label className="setting-toggle"><span><strong>채널 사용</strong><small>{preference.channel === "push" ? "운영체제 권한을 요청하지 않음" : "이메일 주소를 수집하지 않음"}</small></span><input type="checkbox" checked={preference.enabled} onChange={(event) => updateNotification(preference.channel, (current) => ({ ...current, enabled: event.target.checked }))} /></label>
-            {notificationTopics.map((topic) => <label className="setting-toggle" key={topic.code}><span><strong>{topic.label} · {topic.classification}</strong><small>topic · {topic.code}</small></span><input type="checkbox" checked={preference.topics[topic.code]} onChange={(event) => updateNotification(preference.channel, (current) => ({ ...current, topics: { ...current.topics, [topic.code]: event.target.checked } }))} /></label>)}
-            <label className="setting-toggle"><span><strong>조용한 시간 사용</strong><small>{preference.quietHours.start}–{preference.quietHours.end} · {preference.quietHours.timezone}</small></span><input type="checkbox" checked={preference.quietHours.enabled} onChange={(event) => updateNotification(preference.channel, (current) => ({ ...current, quietHours: { ...current.quietHours, enabled: event.target.checked } }))} /></label>
-            <div className="settings-birth-form">
+            <label className="setting-toggle signal-settings-row"><span><strong>채널 사용</strong><small>{preference.channel === "push" ? "운영체제 권한을 요청하지 않음" : "이메일 주소를 수집하지 않음"}</small></span><input type="checkbox" checked={preference.enabled} onChange={(event) => updateNotification(preference.channel, (current) => ({ ...current, enabled: event.target.checked }))} /></label>
+            {notificationTopics.map((topic) => <label className="setting-toggle signal-settings-row" key={topic.code}><span><strong>{topic.label} · {topic.classification}</strong><small>topic · {topic.code}</small></span><input type="checkbox" checked={preference.topics[topic.code]} onChange={(event) => updateNotification(preference.channel, (current) => ({ ...current, topics: { ...current.topics, [topic.code]: event.target.checked } }))} /></label>)}
+            <label className="setting-toggle signal-settings-row"><span><strong>조용한 시간 사용</strong><small>{preference.quietHours.start}–{preference.quietHours.end} · {preference.quietHours.timezone}</small></span><input type="checkbox" checked={preference.quietHours.enabled} onChange={(event) => updateNotification(preference.channel, (current) => ({ ...current, quietHours: { ...current.quietHours, enabled: event.target.checked } }))} /></label>
+            <div className="settings-birth-form signal-notification-quiet-hours">
               <label>시작<input type="time" value={preference.quietHours.start} onChange={(event) => updateNotification(preference.channel, (current) => ({ ...current, quietHours: { ...current.quietHours, start: event.target.value } }))} /></label>
               <label>종료<input type="time" value={preference.quietHours.end} onChange={(event) => updateNotification(preference.channel, (current) => ({ ...current, quietHours: { ...current.quietHours, end: event.target.value } }))} /></label>
               <label>시간대<select value={preference.quietHours.timezone} onChange={(event) => updateNotification(preference.channel, (current) => ({ ...current, quietHours: { ...current.quietHours, timezone: event.target.value } }))}><option value="Asia/Seoul">Asia/Seoul (KST)</option><option value="UTC">UTC</option></select></label>
             </div>
-            <label className="setting-toggle"><span><strong>동일 내용 중복 억제</strong><small>같은 본문과 대상의 반복 알림을 합침</small></span><input type="checkbox" checked={preference.suppressDuplicates} onChange={(event) => updateNotification(preference.channel, (current) => ({ ...current, suppressDuplicates: event.target.checked }))} /></label>
+            <label className="setting-toggle signal-settings-row"><span><strong>동일 내용 중복 억제</strong><small>같은 본문과 대상의 반복 알림을 합침</small></span><input type="checkbox" checked={preference.suppressDuplicates} onChange={(event) => updateNotification(preference.channel, (current) => ({ ...current, suppressDuplicates: event.target.checked }))} /></label>
           </article>
         ))}
       </section>
-      <section className="settings-section"><h2>기기 저장 정보</h2><div className="data-inventory">{inventory.map((item) => <article key={item.id}><span>{item.label}<small>{item.scope === "session" ? "현재 탭" : "현재 브라우저"}</small></span><strong>{item.status === "unavailable" ? "사용 불가" : item.status === "corrupt" ? "확인 필요" : `${item.count}개`}</strong>{pendingClearId === item.id ? <div className="danger-confirm inventory-confirm"><p>{item.label} 정보를 이 기기에서 {item.status === "corrupt" ? "초기화" : "삭제"}할까요?</p><button type="button" onClick={() => { clearInventoryItem(item.id, item.status); setPendingClearId(null); }}>{item.status === "corrupt" ? "초기화 확정" : "삭제 확정"}</button><button type="button" onClick={() => setPendingClearId(null)}>취소</button></div> : <button type="button" onClick={() => item.status === "unavailable" ? clearInventoryItem(item.id, item.status) : setPendingClearId(item.id)} disabled={item.status === "empty" || (hasUnavailableStorage && item.status !== "unavailable")}>{item.status === "unavailable" ? "다시 확인" : item.status === "corrupt" ? "초기화" : "삭제"}</button>}</article>)}</div>{hasUnavailableStorage ? <><p className="form-error" role="alert">확인할 수 없는 저장소가 있어 삭제 기능을 사용할 수 없어요.</p><button className="secondary-button" type="button" disabled>전체 기기 저장 정보 삭제 · 사용 불가</button></> : confirmClear ? <div className="danger-confirm"><p>결 서비스가 만든 기기 저장 정보를 모두 삭제합니다.</p><button type="button" onClick={clearAllLocalData}>모두 삭제 확정</button><button type="button" onClick={() => setConfirmClear(false)}>취소</button></div> : <button className="secondary-button" type="button" onClick={() => setConfirmClear(true)}>전체 기기 저장 정보 삭제</button>}</section>
-      <section className="settings-section"><h2>안내와 기록</h2><nav className="settings-links"><Link href="/settings/feedback">피드백과 신고 관리</Link><Link href="/settings/about-ai">AI 사용 안내</Link><Link href="/settings/privacy">개인정보 안내</Link><Link href="/settings/terms">이용약관</Link><Link href="/settings/safety">콘텐츠 안전 안내</Link></nav></section>
-      <section className="settings-section"><h2>계정 삭제</h2><p>현재 계정 기능과 다른 기기 저장이 없어 실제 계정 삭제는 제공되지 않습니다.</p><button className="disabled-login" type="button" disabled>계정 삭제 · 이용 불가</button></section>
+
+      <section className="settings-section signal-settings-group signal-settings-privacy" aria-labelledby="settings-privacy-title">
+        <h2 id="settings-privacy-title">개인정보</h2>
+        <p>저장 범위와 서비스 안내를 확인하세요.</p>
+        <nav className="settings-links signal-settings-row-list" aria-label="개인정보 및 안내">
+          <Link className="signal-settings-row" href="/settings/feedback"><span><strong>피드백과 신고 관리</strong><small>이 기기에 저장된 평가와 신고</small></span><span className="signal-settings-row-marker" aria-hidden="true">›</span></Link>
+          <Link className="signal-settings-row" href="/settings/about-ai"><span><strong>AI 사용 안내</strong><small>계산과 설명을 구분해요</small></span><span className="signal-settings-row-marker" aria-hidden="true">›</span></Link>
+          <Link className="signal-settings-row" href="/settings/privacy"><span><strong>개인정보 안내</strong><small>브라우저 저장과 삭제 범위</small></span><span className="signal-settings-row-marker" aria-hidden="true">›</span></Link>
+          <Link className="signal-settings-row" href="/settings/terms"><span><strong>이용약관</strong><small>현재 제공 범위</small></span><span className="signal-settings-row-marker" aria-hidden="true">›</span></Link>
+          <Link className="signal-settings-row" href="/settings/safety"><span><strong>콘텐츠 안전 안내</strong><small>공포를 판매하지 않아요</small></span><span className="signal-settings-row-marker" aria-hidden="true">›</span></Link>
+        </nav>
+      </section>
+
+      <section className="settings-section signal-settings-group signal-settings-deletion" aria-labelledby="settings-deletion-title">
+        <h2 id="settings-deletion-title">기기 기록 삭제</h2>
+        <p>이 기기의 모든 사주 기록을 지워요.</p>
+        <div className="data-inventory signal-data-inventory">
+          {inventory.map((item) => (
+            <article className="signal-data-row" key={item.id}>
+              <span>{item.label}<small>{item.scope === "session" ? "현재 탭" : "현재 브라우저"}</small></span>
+              <strong>{item.status === "unavailable" ? "사용 불가" : item.status === "corrupt" ? "확인 필요" : `${item.count}개`}</strong>
+              {pendingClearId === item.id ? (
+                <div className="danger-confirm inventory-confirm">
+                  <p>{item.label} 정보를 이 기기에서 {item.status === "corrupt" ? "초기화" : "삭제"}할까요?</p>
+                  <button type="button" onClick={() => { clearInventoryItem(item.id, item.status); setPendingClearId(null); }}>{item.status === "corrupt" ? "초기화 확정" : "삭제 확정"}</button>
+                  <button type="button" onClick={() => setPendingClearId(null)}>취소</button>
+                </div>
+              ) : (
+                <button type="button" onClick={() => item.status === "unavailable" ? clearInventoryItem(item.id, item.status) : setPendingClearId(item.id)} disabled={item.status === "empty" || (hasUnavailableStorage && item.status !== "unavailable")}>{item.status === "unavailable" ? "다시 확인" : item.status === "corrupt" ? "초기화" : "삭제"}</button>
+              )}
+            </article>
+          ))}
+        </div>
+        {hasUnavailableStorage ? (
+          <>
+            <p className="form-error" role="alert">확인할 수 없는 저장소가 있어 삭제 기능을 사용할 수 없어요.</p>
+            <button className="secondary-button" type="button" disabled>전체 기기 저장 정보 삭제 · 사용 불가</button>
+          </>
+        ) : confirmClear ? (
+          <div className="danger-confirm">
+            <p>사주리움 서비스가 만든 기기 저장 정보를 모두 삭제합니다.</p>
+            <button type="button" onClick={clearAllLocalData}>모두 삭제 확정</button>
+            <button type="button" onClick={() => setConfirmClear(false)}>취소</button>
+          </div>
+        ) : (
+          <button className="secondary-button" type="button" onClick={() => setConfirmClear(true)}>전체 기기 저장 정보 삭제</button>
+        )}
+      </section>
+
+      <section className="settings-section signal-settings-group signal-settings-account-deletion" aria-labelledby="account-deletion-title">
+        <h2 id="account-deletion-title">계정 기록 삭제</h2>
+        <p>현재 계정 기능과 다른 기기 저장이 없어 실제 계정 삭제는 제공되지 않습니다.</p>
+        <p className="signal-settings-note">이 프로토타입에서는 계정 삭제를 처리하지 않아요. 이 브라우저 기록은 위의 ‘기기 기록 삭제’에서 직접 지울 수 있습니다.</p>
+        <button className="disabled-login" type="button" disabled>계정 삭제 · 이용 불가</button>
+      </section>
       {message && <p className="settings-message" role="status">{message}</p>}
     </main>
   );

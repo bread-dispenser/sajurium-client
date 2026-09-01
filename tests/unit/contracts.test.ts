@@ -9,6 +9,7 @@ import {
   isGenerationStatus,
   isJobStatus,
   isOrderStatus,
+  parseBirthDate,
   maskBirthDate,
   maskBirthTime,
   maskBirthplace,
@@ -30,6 +31,16 @@ describe("canonical frontend contracts", () => {
     expect(maskBirthTime(null, false)).toBe("시간 미상");
     expect(maskBirthplace("서울특별시")).toBe("서****");
     expect(maskBirthplace(" ")).toBe("***");
+  });
+
+  it("validates real birth dates against the shared bounds", () => {
+    const now = new Date(2026, 8, 1, 12, 30);
+    expect(parseBirthDate("1900-01-01", now)).not.toBeNull();
+    expect(parseBirthDate("1899-12-31", now)).toBeNull();
+    expect(parseBirthDate("2026-09-01", now)).not.toBeNull();
+    expect(parseBirthDate("2026-09-02", now)).toBeNull();
+    expect(parseBirthDate("2024-02-30", now)).toBeNull();
+    expect(parseBirthDate("2024-02-29", now)).not.toBeNull();
   });
 
   it("never permits deleting a purchased library item", () => {

@@ -1,9 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import type { FormEvent } from "react";
 
-type Provider = "카카오" | "Apple" | "Google";
+type Provider = "카카오" | "Apple" | "Google" | "이메일";
 type NotificationTab = "all" | "unread";
 type NotificationKind = "흐름" | "리포트" | "결제";
 
@@ -16,7 +17,7 @@ type PrototypeNotification = {
   read: boolean;
 };
 
-const PROVIDERS: Provider[] = ["카카오", "Apple", "Google"];
+const PROVIDERS: Provider[] = ["카카오", "Apple", "Google", "이메일"];
 
 const INITIAL_NOTIFICATIONS: PrototypeNotification[] = [
   {
@@ -60,48 +61,59 @@ export function LoginPrototypeScreen() {
 
   if (account) {
     return (
-      <main className="screen-content settings-content" aria-labelledby="account-summary-title">
-        <p className="section-kicker">로그인 체험 완료</p>
+      <main className="screen-content settings-content signal-atlas-account-summary" aria-labelledby="account-summary-title">
+        <p className="section-kicker signal-atlas-overline">로그인 체험 완료</p>
         <h1 id="account-summary-title">사주리움에<br />돌아오셨네요</h1>
         <p className="supporting" role="status">입력한 내용으로 로그인 이후 화면을 미리 보여드려요.</p>
 
-        <section className="insight-card current" aria-labelledby="prototype-account-heading">
-          <small>PROTOTYPE ACCOUNT</small>
+        <section className="insight-card current signal-account-summary-card" aria-labelledby="prototype-account-heading">
+          <small>체험 계정</small>
           <h2 id="prototype-account-heading">체험 계정 요약</h2>
           <p><strong>연결 방식</strong> · {account.provider}</p>
-          <p><strong>이메일</strong> · {account.email}</p>
+          <p><strong>이메일</strong> · {account.email || "소셜 로그인 방식"}</p>
           <p><strong>소식 수신 선호</strong> · {account.marketing ? "선택함" : "선택하지 않음"}</p>
         </section>
 
-        <aside className="privacy-panel">
+        <aside className="privacy-panel signal-local-only-note">
           <strong>실제 로그인이 아닙니다</strong>
           <p>계정과 세션은 생성되지 않으며, 입력한 이메일과 선택 내용은 저장되거나 외부로 전송되지 않습니다.</p>
         </aside>
 
-        <button className="secondary-button" type="button" onClick={() => setAccount(null)}>로그인 화면으로 돌아가기</button>
+        <button className="secondary-button signal-secondary-action" type="button" onClick={() => setAccount(null)}>로그인 화면으로 돌아가기</button>
       </main>
     );
   }
 
   return (
-    <main className="screen-content form-content" aria-labelledby="login-title">
-      <header className="form-hero">
-        <p className="section-kicker">계정 프로토타입</p>
-        <h1 id="login-title">나의 기록을 잇는<br />로그인</h1>
-        <p className="supporting">원하는 로그인 방식과 동의 항목을 선택해 로그인 이후 화면을 체험해 보세요.</p>
+    <main className="screen-content form-content signal-atlas-login-screen" aria-labelledby="login-title">
+      <header className="form-hero signal-login-hero">
+        <p className="section-kicker signal-atlas-overline">로그인</p>
+        <h1 id="login-title">기록을 이어가려면<br />로그인해 주세요</h1>
+        <p className="supporting">무료 요약은 가입 전에도 볼 수 있어요.</p>
       </header>
 
-      <aside className="privacy-panel" id="login-disclosure">
-        <strong>화면 체험 전용</strong>
+      <aside className="privacy-panel signal-login-disclosure" id="login-disclosure">
+        <strong>로그인 체험 전용</strong>
         <p>실제 계정이나 세션을 만들지 않습니다. 소셜 서비스에 연결하지 않으며 입력값을 저장하거나 외부로 전송하지 않습니다.</p>
       </aside>
 
-      <form className="birth-fields" onSubmit={submit} aria-describedby="login-disclosure">
-        <fieldset>
-          <legend>소셜 로그인 제공자</legend>
-          <div className="topic-list">
+      <section data-slop-allow="nested-cards" className="signal-login-benefits" aria-label="로그인 후 이용할 수 있는 기능">
+        <div className="signal-login-benefit-row">
+          <span className="signal-login-benefit-icon" aria-hidden="true">✓</span>
+          <span><strong>기기 기록 이관</strong><small>기존 기록을 계정으로 옮겨요.</small></span>
+        </div>
+        <div className="signal-login-benefit-row">
+          <span className="signal-login-benefit-icon" aria-hidden="true">▣</span>
+          <span><strong>구매 리포트 보관</strong><small>구매한 리포트를 보관함에 저장해요.</small></span>
+        </div>
+      </section>
+
+      <form className="birth-fields signal-login-form" onSubmit={submit} aria-describedby="login-disclosure">
+        <fieldset className="signal-login-provider-fieldset">
+          <legend>로그인 방법 선택</legend>
+          <div className="signal-login-provider-list topic-list">
             {PROVIDERS.map((item) => (
-              <label className={`topic-card${provider === item ? " selected" : ""}`} key={item}>
+              <label className={`topic-card signal-login-provider${provider === item ? " selected" : ""}`} key={item}>
                 <input
                   className="selection-radio"
                   type="radio"
@@ -110,29 +122,31 @@ export function LoginPrototypeScreen() {
                   checked={provider === item}
                   onChange={() => setProvider(item)}
                 />
-                <span className="topic-number" aria-hidden="true">{item.slice(0, 1)}</span>
-                <span><strong>{item}</strong><small>{item} 계정 연결 화면 체험</small></span>
+                <span className="signal-login-provider-icon" aria-hidden="true">{item === "이메일" ? "✉" : item === "Google" ? "G" : "●"}</span>
+                <span><strong>{item}로 로그인</strong><small>{item === "이메일" ? "이메일 주소로 로그인 체험" : `${item} 계정 연결 없이 선택만 체험`}</small></span>
                 <span className="row-marker" aria-hidden="true">{provider === item ? "선택" : "○"}</span>
               </label>
             ))}
           </div>
         </fieldset>
 
-        <label className="field-group" htmlFor="prototype-email">
-          <span className="field-label">이메일</span>
-          <input
-            id="prototype-email"
-            name="email"
-            type="email"
-            autoComplete="email"
-            placeholder="name@example.com"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            required
-          />
-        </label>
+        {provider === "이메일" && (
+          <label className="field-group signal-login-email-field" htmlFor="prototype-email">
+            <span className="field-label">이메일</span>
+            <input
+              id="prototype-email"
+              name="email"
+              type="email"
+              autoComplete="email"
+              placeholder="name@example.com"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              required
+            />
+          </label>
+        )}
 
-        <fieldset>
+        <fieldset className="signal-login-consent-fieldset">
           <legend>약관 동의</legend>
           <label className="check-card">
             <input type="checkbox" checked={serviceConsent} onChange={(event) => setServiceConsent(event.target.checked)} required />
@@ -146,9 +160,14 @@ export function LoginPrototypeScreen() {
             <input type="checkbox" checked={marketingConsent} onChange={(event) => setMarketingConsent(event.target.checked)} />
             <span>[선택] 새로운 해석과 소식 안내를 받습니다</span>
           </label>
+          <nav className="signal-login-legal-links" aria-label="약관 및 개인정보 안내">
+            <Link href="/settings/terms">이용약관</Link>
+            <Link href="/settings/privacy">개인정보 처리방침</Link>
+          </nav>
+          <p className="signal-login-legal-note">가입하면 위 약관에 동의해요. 기록은 언제든 삭제할 수 있어요.</p>
         </fieldset>
 
-        <button className="primary-button form-submit" type="submit">로그인 이후 화면 보기</button>
+        <button className="primary-button signal-primary-cta form-submit" type="submit">로그인 이후 화면 보기</button>
         <p className="action-note">선택 동의 여부와 관계없이 프로토타입을 체험할 수 있어요.</p>
       </form>
     </main>
@@ -180,22 +199,22 @@ export function NotificationCenterScreen() {
   }
 
   return (
-    <main className="screen-content settings-content" aria-labelledby="notifications-title">
-      <header>
-        <p className="section-kicker">소식과 기록</p>
+    <main className="screen-content settings-content signal-atlas-notifications-screen" aria-labelledby="notifications-title">
+      <header className="signal-notifications-header">
+        <p className="section-kicker signal-atlas-overline">소식과 기록</p>
         <h1 id="notifications-title">알림 센터</h1>
         <p className="supporting" aria-live="polite">읽지 않은 알림 {unreadCount}개 · 이 화면에서만 상태가 바뀝니다.</p>
       </header>
 
-      <aside className="privacy-panel">
+      <aside className="privacy-panel signal-notifications-disclosure">
         <strong>알림 체험 전용</strong>
         <p>실제 푸시나 이메일은 발송되지 않습니다. 읽음 상태와 수신 선호는 현재 화면에만 반영되며 저장되거나 외부로 전송되지 않아요.</p>
       </aside>
 
-      <section className="settings-section" aria-labelledby="notification-list-heading">
+      <section className="settings-section signal-notification-list-section" aria-labelledby="notification-list-heading">
         <div>
           <h2 id="notification-list-heading">받은 알림</h2>
-          <div className="segmented-control notification-tabs" role="tablist" aria-label="알림 보기 범위">
+          <div className="segmented-control notification-tabs signal-notification-tabs" role="tablist" aria-label="알림 보기 범위">
             <button id="all-notifications-tab" className={tab === "all" ? "selected" : ""} type="button" role="tab" aria-controls="notification-panel" aria-selected={tab === "all"} onClick={() => setTab("all")}>전체 {notifications.length}</button>
             <button id="unread-notifications-tab" className={tab === "unread" ? "selected" : ""} type="button" role="tab" aria-controls="notification-panel" aria-selected={tab === "unread"} onClick={() => setTab("unread")}>읽지 않음 {unreadCount}</button>
           </div>
@@ -203,9 +222,9 @@ export function NotificationCenterScreen() {
 
         {unreadCount > 0 && <button className="secondary-button" type="button" onClick={markAllRead}>모두 읽음으로 표시</button>}
 
-        <div id="notification-panel" className="library-list" role="tabpanel" aria-labelledby={`${tab}-notifications-tab`} aria-live="polite">
+        <div id="notification-panel" className="library-list signal-notification-list" role="tabpanel" aria-labelledby={`${tab}-notifications-tab`} aria-live="polite">
           {visibleNotifications.map((notification) => (
-            <article className={notification.read ? "notification-read-item" : ""} key={notification.id}>
+            <article className={`signal-notification-row${notification.read ? " notification-read-item" : ""}`} key={notification.id}>
               <div>
                 <small>{notification.kind} · {notification.read ? "읽음" : "새 알림"}</small>
                 <h2>{notification.title}</h2>
@@ -225,7 +244,7 @@ export function NotificationCenterScreen() {
         </div>
       </section>
 
-      <section className="settings-section" aria-labelledby="notification-preferences-heading">
+      <section className="settings-section signal-notification-preferences" aria-labelledby="notification-preferences-heading">
         <h2 id="notification-preferences-heading">알림 선호</h2>
         <p>아래 선택은 발송 신청이 아닌 화면 체험용 설정입니다.</p>
         <label className="setting-toggle"><span><strong>오늘의 흐름</strong><small>매일의 흐름 소식</small></span><input type="checkbox" checked={preferences.flow} onChange={(event) => updatePreference("flow", event.target.checked)} /></label>

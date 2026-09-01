@@ -2,8 +2,8 @@ import { expect, test } from "@playwright/test";
 
 test("completes the local-only login prototype", async ({ page }) => {
   await page.goto("/login");
-  await page.getByRole("radio", { name: /Google/ }).check();
-  await page.getByLabel("이메일").fill("reader@example.com");
+  await page.getByRole("radio", { name: /이메일로 로그인/ }).check();
+  await page.getByRole("textbox", { name: "이메일" }).fill("reader@example.com");
   await page.getByRole("checkbox", { name: /서비스 이용약관/ }).check();
   await page.getByRole("checkbox", { name: /개인정보 안내/ }).check();
   await page.getByRole("button", { name: "로그인 이후 화면 보기" }).click();

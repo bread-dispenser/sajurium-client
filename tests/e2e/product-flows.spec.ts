@@ -231,7 +231,7 @@ test("recovers a corrupt transaction record before reading settings stores", asy
   await expect(page.getByRole("heading", { name: "저장 복구 기록을 확인해야 해요" })).toBeVisible();
   await expect(page.locator(".data-inventory")).toHaveCount(0);
   await page.getByRole("button", { name: "손상 데이터 초기화" }).click();
-  await expect(page.getByRole("heading", { name: /이 기기에 저장된/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "설정과 데이터" })).toBeVisible();
   expect(await page.evaluate(() => ({
     journal: localStorage.getItem("sajurium-storage-transaction"),
     draft: sessionStorage.getItem("sajurium-birth-draft"),

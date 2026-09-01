@@ -20,6 +20,8 @@ import { commerceStore, consultationStore, createTransactionStep, libraryStore, 
 import { useHydrated } from "@/hooks/use-hydrated";
 import { CorruptState, EmptyState, LoadingState } from "./page-state";
 
+const RESTRICTED_CONSULTATION_MESSAGE = "사망·질병 진단·임신·재판 결과·투자 수익·도박·타인의 속마음·외도처럼 확정을 요구하는 질문에는 확정적인 답을 제공하지 않아요. 안전한 질문으로 바꿔 주세요.";
+
 function getConsultationData(): ConsultationData | null {
   const inspection = consultationStore.inspect();
   if (inspection.status === "ok") return inspection.value;
@@ -78,34 +80,51 @@ export function ConsultationHomeScreen() {
   const sessions = [...data.sessions].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 
   return (
-    <main className="screen-content consultation-home" aria-labelledby="consult-title">
-      <p className="section-kicker">고민 상담</p>
-      <h1 id="consult-title">지금의 고민을<br />정리해보세요</h1>
-      <p className="supporting">실제 AI 상담이나 사주 계산 없이 미리 준비한 예시 답변과 기기 저장만 사용합니다.</p>
-      <section className="credit-summary" aria-label="체험용 이용권 상태">
-        <div><small>무료 질문</small><strong>{data.freeUsesRemaining}회</strong></div>
-        <div><small>체험용 이용권</small><strong>{commerce.consultationCredits}회</strong></div>
-        <p>실제 이용권이 아니며 이 브라우저에만 남는 체험 기록이에요.</p>
+    <main className="screen-content consultation-home signal-screen signal-consultation-home" aria-labelledby="consult-title">
+      <div className="signal-hero consultation-hero">
+        <p className="section-kicker signal-kicker">고민 상담</p>
+        <h1 id="consult-title">마음에 걸리는 일을<br />한 문장으로</h1>
+        <p className="supporting">사주 기록을 바탕으로 고민을 함께 풀어요. 첫 상담 1회는 무료예요.</p>
+      </div>
+      <section className="credit-summary signal-panel signal-credit-panel" aria-label="남은 상담 이용권">
+        <div className="signal-credit-item"><small>무료 질문</small><strong>{data.freeUsesRemaining}회</strong></div>
+        <div className="signal-credit-item"><small>상담 이용권</small><strong>{commerce.consultationCredits}회</strong></div>
+        <p><strong>남은 질문 {data.freeUsesRemaining + commerce.consultationCredits}회</strong> · 이 브라우저에 저장돼요.</p>
+        <Link className="text-button signal-action signal-credit-action" href="/products/credits">이용권 확인</Link>
       </section>
-      <Link className="primary-button" href="/consult/new">새 고민 정리하기</Link>
-      <section className="session-section" aria-labelledby="recent-session-title">
+      <section className="session-section signal-section signal-topic-actions" aria-labelledby="consult-topic-title">
+        <h2 id="consult-topic-title">어떤 고민인가요?</h2>
+        <div className="signal-row-list">
+          {TOPICS.map((topic, index) => (
+            <Link className="signal-row signal-topic-row" href={`/consult/new?topic=${topic.id}`} key={topic.id}>
+              <span className="signal-row-index" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
+              <span className="signal-row-copy"><strong>{topic.title}</strong><small>{topic.description}</small></span>
+              <span className="signal-row-arrow" aria-hidden="true">›</span>
+            </Link>
+          ))}
+        </div>
+      </section>
+      <Link className="primary-button signal-action signal-primary-action" href="/consult/new">새 상담 시작하기</Link>
+      <section className="session-section signal-section signal-session-history" aria-labelledby="recent-session-title">
         <h2 id="recent-session-title">최근 상담</h2>
         {sessions.length === 0 ? (
           <EmptyState title="저장된 상담이 없어요" description="첫 질문을 작성하면 이 기기에 상담 내역이 저장됩니다." />
         ) : (
-          <div className="session-list">{sessions.map((session) => <Link href={`/consult/session/${session.id}`} key={session.id}><small>{getTopic(session.context.topic as TopicId).title} · {session.status}</small><strong>{session.title}</strong><span>{session.messages.length}개 메시지 · {session.updatedAt.slice(0, 10)}</span></Link>)}</div>
+          <div className="session-list signal-row-list">{sessions.map((session) => <Link className="signal-row signal-session-row" href={`/consult/session/${session.id}`} key={session.id}><span className="signal-row-copy"><small>{getTopic(session.context.topic as TopicId).title} · {session.status}</small><strong>{session.title}</strong><span>{session.messages.length}개 메시지 · {session.updatedAt.slice(0, 10)}</span></span><span className="signal-row-arrow" aria-hidden="true">›</span></Link>)}</div>
         )}
       </section>
     </main>
   );
 }
 
-export function ConsultationNewScreen({ failFirstResponse }: { failFirstResponse: boolean }) {
+export function ConsultationNewScreen({ failFirstResponse, initialTopic }: { failFirstResponse: boolean; initialTopic?: TopicId }) {
   const hydrated = useHydrated();
   if (!hydrated) return <LoadingState title="작성 중인 질문을 확인하고 있어요" />;
   const data = getConsultationData();
   if (!data) return <CorruptState title="상담 초안을 읽을 수 없어요" description="손상된 초안을 확인 없이 덮어쓰지 않습니다." unavailable={consultationStore.inspect().status === "unavailable"} onReset={consultationStore.remove} />;
-  const initialDraft = data.draft ?? { topic: "career" as TopicId, question: "", situation: "" };
+  const initialDraft = data.draft
+    ? { ...data.draft, topic: initialTopic ?? data.draft.topic }
+    : { topic: initialTopic ?? ("career" as TopicId), question: "", situation: "" };
   return <ConsultationComposer key={JSON.stringify(initialDraft)} initialDraft={initialDraft} failFirstResponse={failFirstResponse} />;
 }
 
@@ -128,6 +147,11 @@ function ConsultationComposer({ initialDraft, failFirstResponse }: { initialDraf
   }
 
   function persistSession() {
+    if (isRestrictedConsultationQuestion(draft.question)) {
+      setPhase("compose");
+      setError(RESTRICTED_CONSULTATION_MESSAGE);
+      return;
+    }
     const current = getConsultationData();
     const commerce = getCommerceData();
     if (!current || !commerce) {
@@ -195,6 +219,11 @@ function ConsultationComposer({ initialDraft, failFirstResponse }: { initialDraf
   }
 
   function generateFixture() {
+    if (isRestrictedConsultationQuestion(draft.question)) {
+      setPhase("compose");
+      setError(RESTRICTED_CONSULTATION_MESSAGE);
+      return;
+    }
     setPhase("loading");
     window.setTimeout(() => {
       if (failNext.current) {
@@ -209,7 +238,7 @@ function ConsultationComposer({ initialDraft, failFirstResponse }: { initialDraf
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!draft.question.trim()) return setError("질문을 입력하거나 추천 질문을 선택해 주세요.");
-    if (restricted) return setError("건강·수명·투자·범죄와 관련된 질문에는 확정적인 답을 제공하지 않아요.");
+    if (restricted) return setError(RESTRICTED_CONSULTATION_MESSAGE);
     generateFixture();
   }
 
@@ -219,28 +248,47 @@ function ConsultationComposer({ initialDraft, failFirstResponse }: { initialDraf
 
   if (phase === "failure") {
     return (
-      <section className="page-state" aria-labelledby="consult-failure-title">
-        <p className="section-kicker">응답 실패</p>
+      <section className="page-state signal-screen signal-state" aria-labelledby="consult-failure-title">
+        <p className="section-kicker signal-kicker">응답 실패</p>
         <h1 id="consult-failure-title">답변을 준비하지 못했어요</h1>
         <p className="supporting">작성한 질문과 상황은 이 기기에 그대로 남아 있어요.</p>
-        <button className="primary-button state-action" type="button" onClick={generateFixture}>다시 시도</button>
-        <button className="text-button" type="button" onClick={() => setPhase("compose")}>질문 수정</button>
+        <button className="primary-button state-action signal-action" type="button" onClick={generateFixture}>다시 시도</button>
+        <button className="text-button signal-action" type="button" onClick={() => setPhase("compose")}>질문 수정</button>
       </section>
     );
   }
 
   return (
-    <form className="screen-content consultation-form" onSubmit={submit} aria-labelledby="consult-form-title">
-      <p className="section-kicker">새 상담</p>
-      <h1 id="consult-form-title">어떤 고민을<br />정리해볼까요?</h1>
-      <fieldset><legend>주제</legend><div className="consult-topic-list">{TOPICS.map((topic) => <button type="button" key={topic.id} className={draft.topic === topic.id ? "selected" : undefined} aria-pressed={draft.topic === topic.id} onClick={() => updateDraft({ topic: topic.id, question: "" })}>{topic.title}</button>)}</div></fieldset>
-      <section className="recommended-questions" aria-labelledby="recommended-title"><h2 id="recommended-title">추천 질문</h2>{RECOMMENDED_QUESTIONS[draft.topic].map((question) => <button type="button" key={question} onClick={() => updateDraft({ question })}>{question}</button>)}</section>
-      <label><span>질문</span><textarea value={draft.question} onChange={(event) => updateDraft({ question: event.target.value })} rows={4} placeholder="궁금한 점을 적어주세요" /></label>
-      <label><span>현재 상황</span><textarea value={draft.situation} onChange={(event) => updateDraft({ situation: event.target.value })} rows={4} placeholder="결정에 영향을 주는 실제 조건을 적어주세요" /></label>
-      {restricted && <aside className="restricted-guidance"><strong>제한되는 질문이에요</strong><p>진단·치료·수명·투자 종목처럼 전문 판단이 필요한 내용은 확정적으로 답하지 않습니다.</p></aside>}
-      {error && <p className="form-error" role="alert">{error}</p>}
-      <button className="primary-button" type="submit">예시 답변 보기</button>
-      <p className="action-note">실제 AI 답변 생성이나 유료 이용권 차감은 없습니다.</p>
+    <form className="screen-content consultation-form signal-screen signal-consultation-form" onSubmit={submit} aria-labelledby="consult-form-title">
+      <div className="signal-hero consultation-form-hero">
+        <p className="section-kicker signal-kicker">새 상담</p>
+        <h1 id="consult-form-title">마음에 걸리는 일을<br />한 문장으로</h1>
+        <p className="supporting">주제를 고르고 지금의 조건을 적어보세요.</p>
+      </div>
+      <fieldset className="signal-panel signal-topic-picker">
+        <legend>어떤 고민인가요?</legend>
+        <div className="consult-topic-list signal-row-list" data-slop-allow="nested-cards">
+          {TOPICS.map((topic, index) => (
+            <button type="button" key={topic.id} className={`signal-row signal-topic-option${draft.topic === topic.id ? " selected signal-selected" : ""}`} aria-pressed={draft.topic === topic.id} onClick={() => updateDraft({ topic: topic.id, question: "" })}>
+              <span className="signal-row-index" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
+              <span className="signal-row-copy"><strong>{topic.title}</strong><small>{topic.description}</small></span>
+              <span className="signal-row-state" aria-hidden="true">{draft.topic === topic.id ? "선택됨" : ""}</span>
+            </button>
+          ))}
+        </div>
+      </fieldset>
+      <section className="recommended-questions signal-section signal-question-actions" aria-labelledby="recommended-title">
+        <h2 id="recommended-title">추천 질문</h2>
+        <div className="signal-row-list">
+          {RECOMMENDED_QUESTIONS[draft.topic].map((question, index) => <button className="signal-row signal-question-row" type="button" key={question} onClick={() => updateDraft({ question })}><span className="signal-row-index" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span><span className="signal-row-copy"><strong>{question}</strong></span><span className="signal-row-arrow" aria-hidden="true">↗</span></button>)}
+        </div>
+      </section>
+      <label className="signal-field" htmlFor="consult-question"><span>질문</span><textarea id="consult-question" value={draft.question} onChange={(event) => updateDraft({ question: event.target.value })} rows={4} placeholder="궁금한 점을 적어주세요" /></label>
+      <label className="signal-field" htmlFor="consult-situation"><span>현재 상황</span><textarea id="consult-situation" value={draft.situation} onChange={(event) => updateDraft({ situation: event.target.value })} rows={4} placeholder="결정에 영향을 주는 조건을 적어주세요" /></label>
+      {restricted && <aside className="restricted-guidance signal-evidence signal-safety-note"><strong>제한되는 질문이에요</strong><p>사망·질병 진단·임신 여부·재판 결과·투자 수익·도박 당첨·타인의 속마음·배우자의 외도처럼 확정이 필요한 내용은 다루지 않아요. 생활 조건을 정리하거나 전문가에게 물을 질문으로 바꿔보세요.</p></aside>}
+      {error && <p className="form-error signal-error" role="alert">{error}</p>}
+      <button className="primary-button signal-action signal-primary-action" type="submit">예시 답변 보기</button>
+      <p className="action-note signal-evidence">실제 AI 답변 생성이나 유료 이용권 차감은 없습니다.</p>
     </form>
   );
 }
@@ -271,7 +319,7 @@ export function ConsultationSessionScreen({ sessionId }: { sessionId: string }) 
     event.preventDefault();
     const question = followUp.trim();
     if (!question) return setError("추가 질문을 입력해 주세요.");
-    if (isRestrictedConsultationQuestion(question)) return setError("전문 판단이 필요한 제한 질문에는 체험용 예시 답변을 추가하지 않아요.");
+    if (isRestrictedConsultationQuestion(question)) return setError(RESTRICTED_CONSULTATION_MESSAGE);
     if (activeCommerce.consultationCredits <= 0) return setError("추가 질문에 사용할 체험용 이용권이 없어요.");
     const now = new Date().toISOString();
     const messageSuffix = crypto.randomUUID().replaceAll("-", "");
@@ -336,16 +384,48 @@ export function ConsultationSessionScreen({ sessionId }: { sessionId: string }) 
   }
 
   return (
-    <main className="screen-content consultation-session" aria-labelledby="session-title">
-      <p className="section-kicker">{getTopic(session.context.topic as TopicId).title} · {session.status} · 고민 상담</p>
-      <h1 id="session-title">{session.title}</h1>
-      <p className="supporting">실제 AI 상담이 아니며 중요한 결정은 현실 조건과 전문가 의견을 함께 확인하세요.</p>
-      <aside className="check-list"><strong>상담 기준 정보</strong><span>프로필 ID · {session.context.profileId}</span><span>차트 스냅샷 ID · {session.context.chartSnapshotId}</span><span>기간 · {session.context.periodKey}</span><span>참조 프로필 ID · {session.context.referencedProfileIds.length ? session.context.referencedProfileIds.join(", ") : "없음"}</span></aside>
-      <form className="follow-up-form" onSubmit={renameSession}><label htmlFor="session-title-edit">상담 제목 바꾸기</label><input id="session-title-edit" value={titleDraft} onChange={(event) => setTitleDraft(event.target.value)} placeholder={session.title} /><button type="submit">제목 저장</button></form>
-      <div className="message-list" aria-label="상담 메시지">{session.messages.map((message) => <article key={message.id} className={message.role}><small>{message.role === "user" ? "나" : "사주리움 · 체험용 예시"} · {message.status}</small>{message.content?.split("\n").map((paragraph) => paragraph && <p key={paragraph}>{paragraph}</p>)}</article>)}</div>
-      <section className="follow-up-suggestions"><h2>이어볼 질문</h2>{RECOMMENDED_QUESTIONS[session.context.topic as TopicId].slice(0, 2).map((question) => <button type="button" key={question} onClick={() => setFollowUp(question)}>{question}</button>)}</section>
-      <form className="follow-up-form" onSubmit={appendFollowUp}><label htmlFor="follow-up">추가 질문</label><textarea id="follow-up" rows={3} value={followUp} onChange={(event) => setFollowUp(event.target.value)} /><p className="action-note">추가 질문은 체험용 이용권 1회를 사용해요 · 남은 {activeCommerce.consultationCredits}회</p>{error && <p className="form-error" role="alert">{error}</p>}<button className="primary-button" type="submit">예시 답변 추가</button></form>
-      {confirmDelete ? <div className="danger-confirm"><p>이 상담과 보관함 링크를 이 기기에서 삭제합니다.</p><button type="button" onClick={deleteSession}>상담 삭제 확정</button><button type="button" onClick={() => setConfirmDelete(false)}>취소</button></div> : <button className="secondary-button" type="button" onClick={() => setConfirmDelete(true)}>이 상담 삭제</button>}
+    <main className="screen-content consultation-session signal-screen signal-consultation-session" aria-labelledby="session-title">
+      <div className="signal-hero consultation-session-hero">
+        <p className="section-kicker signal-kicker">{getTopic(session.context.topic as TopicId).title} · 상담</p>
+        <h1 id="session-title">{session.title}</h1>
+        <p className="supporting">사주 기록을 바탕으로 한 체험용 예시예요. 중요한 결정은 현실 조건과 전문가 의견을 함께 확인하세요.</p>
+      </div>
+      <aside className="check-list signal-evidence" aria-label="상담 결과 기준">
+        <strong>체험용 예시</strong>
+        <p>점수나 확정 답이 아닌, 질문을 정리하는 관점이에요.</p>
+        <details>
+          <summary>결과 기준 보기</summary>
+          <dl className="signal-evidence-list">
+            <div><dt>프로필</dt><dd>{session.context.profileId}</dd></div>
+            <div><dt>차트 기록</dt><dd>{session.context.chartSnapshotId}</dd></div>
+            <div><dt>기간</dt><dd>{session.context.periodKey}</dd></div>
+            <div><dt>참조 프로필</dt><dd>{session.context.referencedProfileIds.length ? session.context.referencedProfileIds.join(", ") : "없음"}</dd></div>
+          </dl>
+        </details>
+      </aside>
+      <form className="follow-up-form signal-panel signal-title-form" onSubmit={renameSession}>
+        <label className="signal-field" htmlFor="session-title-edit">상담 제목 바꾸기</label>
+        <div className="signal-inline-action">
+          <input id="session-title-edit" value={titleDraft} onChange={(event) => setTitleDraft(event.target.value)} placeholder={session.title} />
+          <button className="signal-action" type="submit">제목 저장</button>
+        </div>
+      </form>
+      <section className="message-list signal-chat" aria-labelledby="session-chat-title">
+        <h2 id="session-chat-title">오늘의 대화</h2>
+        {session.messages.map((message) => <article key={message.id} className={`${message.role} signal-chat-message signal-chat-${message.role}`}><small>{message.role === "user" ? "나" : "사주리움 · 체험용 예시"} · {message.status}</small><div className="signal-chat-copy">{message.content?.split("\n").map((paragraph) => paragraph && <p key={paragraph}>{paragraph}</p>)}</div></article>)}
+      </section>
+      <section className="follow-up-suggestions signal-section signal-question-actions" aria-labelledby="follow-up-suggestions-title">
+        <h2 id="follow-up-suggestions-title">이어볼 질문</h2>
+        <div className="signal-row-list">{RECOMMENDED_QUESTIONS[session.context.topic as TopicId].slice(0, 2).map((question, index) => <button className="signal-row signal-question-row" type="button" key={question} onClick={() => setFollowUp(question)}><span className="signal-row-index" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span><span className="signal-row-copy"><strong>{question}</strong></span><span className="signal-row-arrow" aria-hidden="true">↗</span></button>)}</div>
+      </section>
+      <form className="follow-up-form signal-panel signal-follow-up-form" onSubmit={appendFollowUp}>
+        <label className="signal-field" htmlFor="follow-up">추가 질문</label>
+        <textarea id="follow-up" rows={3} value={followUp} onChange={(event) => setFollowUp(event.target.value)} placeholder="이어서 물어보세요" />
+        <p className="action-note signal-evidence">추가 질문 1회 사용 · 남은 상담 이용권 {activeCommerce.consultationCredits}회</p>
+        {error && <p className="form-error signal-error" role="alert">{error}</p>}
+        <button className="primary-button signal-action signal-primary-action" type="submit">예시 답변 추가</button>
+      </form>
+      {confirmDelete ? <div className="danger-confirm signal-danger"><p>이 상담과 보관함 링크를 이 기기에서 삭제합니다.</p><button className="signal-action" type="button" onClick={deleteSession}>상담 삭제 확정</button><button className="signal-action" type="button" onClick={() => setConfirmDelete(false)}>취소</button></div> : <button className="secondary-button signal-action signal-destructive-action" type="button" onClick={() => setConfirmDelete(true)}>이 상담 삭제</button>}
     </main>
   );
 }

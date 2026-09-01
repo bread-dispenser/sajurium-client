@@ -41,9 +41,9 @@ test("honors reduced motion and exposes visible keyboard focus", async ({ page }
 });
 
 test("navigation accessible names include their visible labels", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/home");
-  await expect(page.getByRole("link", { name: /사주리움.*라이프 리딩 플랫폼/ })).toBeVisible();
-  for (const label of ["플랫폼 홈", "내 사주", "고민 상담", "두 사람의 관계", "통합 보관함", "설정과 개인정보"]) {
-    await expect(page.getByRole("navigation", { name: "전체 서비스" }).getByRole("link", { name: new RegExp(label) })).toBeVisible();
+  for (const label of ["홈", "내 사주", "상담", "궁합", "보관함"]) {
+    await expect(page.getByRole("navigation", { name: "주요 메뉴" }).getByRole("link", { name: label, exact: true })).toBeVisible();
   }
 });

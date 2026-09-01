@@ -32,19 +32,19 @@ svg {
 }
 
 :root {
-  --paper: #f3efe6;
-  --surface: #fbf8f1;
-  --surface-strong: #fffdf8;
-  --surface-warm: #ead9d0;
-  --ink: #201e1b;
-  --ink-soft: #4d302a;
-  --stone-700: #5f5a52;
-  --stone-500: #9c968b;
-  --stone-300: #ddd7cb;
-  --vermilion: #a93422;
-  --vermilion-dark: #84281c;
-  --editorial-font: var(--font-editorial), "Noto Serif KR", "Nanum Myeongjo", Georgia, serif;
-  --body-font: Pretendard, "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+  --paper: #f5f7f6;
+  --surface: #ffffff;
+  --surface-strong: #ffffff;
+  --surface-warm: #e9f0ef;
+  --ink: #152a2c;
+  --ink-soft: #44585a;
+  --stone-700: #44585a;
+  --stone-500: #6c7d7e;
+  --stone-300: #c8d4d3;
+  --vermilion: #194d5b;
+  --vermilion-dark: #123b46;
+  --editorial-font: "Gowun Dodum", var(--font-editorial), "Noto Serif KR", serif;
+  --body-font: "IBM Plex Sans KR", Pretendard, "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -52,9 +52,9 @@ svg {
   --space-5: 24px;
   --space-6: 32px;
   --space-7: 40px;
-  --radius-sm: 12px;
-  --radius-md: 16px;
-  --radius-lg: 24px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 8px;
   --radius-pill: 999px;
   --rule: 1px solid var(--stone-300);
 }
@@ -104,6 +104,7 @@ button {
   padding: 0;
 }
 button:not(:disabled) { cursor: pointer; }
+a:focus-visible,
 button:focus-visible,
 input:focus-visible,
 select:focus-visible,
@@ -117,10 +118,7 @@ summary:focus-visible {
   display: flex;
   min-height: 100svh;
   justify-content: center;
-  background:
-    radial-gradient(circle at 15% 8%, rgb(255 255 255 / 58%), transparent 29rem),
-    radial-gradient(circle at 86% 88%, rgb(200 72 50 / 6%), transparent 32rem),
-    var(--paper);
+  background: var(--paper);
 }
 
 .phone-screen {
@@ -130,7 +128,7 @@ summary:focus-visible {
   min-height: 100svh;
   flex-direction: column;
   overflow: hidden;
-  background: var(--surface);
+  background: var(--paper);
 }
 
 .journey-header {
@@ -1362,7 +1360,7 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
   font-size: 12px;
 }
 
-.consultation-form fieldset {
+[class~="consultation-form"] fieldset {
   border-top: 1px solid var(--ink);
   border-bottom: var(--rule);
   padding: var(--space-3) 0;
@@ -1412,7 +1410,7 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
   gap: var(--space-1);
 }
 
-.consultation-form textarea,
+[class~="consultation-form"] textarea,
 .follow-up-form textarea {
   width: 100%;
   border: var(--rule);
@@ -1442,14 +1440,14 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
   gap: var(--space-4);
 }
 
-.message-list article {
+[class~="message-list"] article {
   max-width: 92%;
   border-top: 1px solid var(--ink);
   border-bottom: var(--rule);
   padding: var(--space-3) 0;
 }
 
-.message-list article.user {
+[class~="message-list"] article.user {
   align-self: flex-end;
   border-top-color: var(--vermilion);
 }
@@ -1522,8 +1520,8 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 
 .people-controls input,
 .people-controls select,
-.person-form input:not([type="checkbox"]),
-.person-form select,
+[class~="person-form"] input:not([type="checkbox"]),
+[class~="person-form"] select,
 .compatibility-form select {
   min-width: 0;
   min-height: 52px;
@@ -1813,7 +1811,7 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
   gap: var(--space-3);
 }
 
-.settings-section > h2 {
+[class~="settings-section"] > h2 {
   border-bottom: 1px solid var(--ink);
   padding-bottom: var(--space-2);
 }
@@ -1823,13 +1821,15 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
   font-size: 11px;
 }
 
-.settings-birth-form,
+.settings-inline-editor.signal-settings-editor > [class~="settings-birth-form"],
+.signal-notification-channel > div.signal-notification-quiet-hours,
 .feedback-edit {
   display: grid;
   gap: var(--space-3);
 }
 
-.settings-birth-form > label,
+.settings-inline-editor.signal-settings-editor > [class~="settings-birth-form"] > label,
+.signal-notification-channel > div.signal-notification-quiet-hours > label,
 .feedback-edit > label,
 .feedback-detail-field {
   display: grid;
@@ -1839,7 +1839,8 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
   font-weight: 800;
 }
 
-.settings-birth-form input:not([type="checkbox"]),
+.settings-inline-editor.signal-settings-editor > [class~="settings-birth-form"] input:not([type="checkbox"]),
+[class~="signal-notification-channel"] > div input:not([type="checkbox"]),
 .feedback-edit input,
 .feedback-edit textarea,
 .feedback-detail-field select,
@@ -2080,7 +2081,7 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 .compatibility-history > h2,
 .product-inclusions h2,
 .credit-history h2,
-.settings-section > h2 {
+[class~="settings-section"] > h2 {
   border: 0;
   padding: 0;
   font-size: 22px;
@@ -2128,10 +2129,9 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
   transform: translateY(-1px);
 }
 
-.consultation-form fieldset,
+[class~="consultation-form"] fieldset,
 .compatibility-form,
 .follow-up-form,
-.settings-birth-form,
 .feedback-edit {
   min-width: 0;
   border: 0;
@@ -2141,7 +2141,7 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
   padding: var(--space-5);
 }
 
-.consultation-form fieldset {
+[class~="consultation-form"] fieldset {
   margin: 0;
 }
 
@@ -2176,14 +2176,15 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
   box-shadow: inset 3px 0 0 var(--vermilion);
 }
 
-.consultation-form textarea,
+[class~="consultation-form"] textarea,
 .follow-up-form textarea,
 .people-controls input,
 .people-controls select,
-.person-form input:not([type="checkbox"]),
-.person-form select,
+[class~="person-form"] input:not([type="checkbox"]),
+[class~="person-form"] select,
 .compatibility-form select,
-.settings-birth-form input:not([type="checkbox"]),
+.settings-inline-editor.signal-settings-editor > [class~="settings-birth-form"] input:not([type="checkbox"]),
+[class~="signal-notification-channel"] > div input:not([type="checkbox"]),
 .feedback-edit input,
 .feedback-edit textarea,
 .feedback-detail-field select,
@@ -2194,14 +2195,15 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
   box-shadow: inset 0 0 0 1px var(--stone-300);
 }
 
-.consultation-form textarea:focus,
+[class~="consultation-form"] textarea:focus,
 .follow-up-form textarea:focus,
 .people-controls input:focus,
 .people-controls select:focus,
-.person-form input:not([type="checkbox"]):focus,
-.person-form select:focus,
+[class~="person-form"] input:not([type="checkbox"]):focus,
+[class~="person-form"] select:focus,
 .compatibility-form select:focus,
-.settings-birth-form input:not([type="checkbox"]):focus,
+.settings-inline-editor.signal-settings-editor > [class~="settings-birth-form"] input:not([type="checkbox"]):focus,
+[class~="signal-notification-channel"] > div input:not([type="checkbox"]):focus,
 .feedback-edit input:focus,
 .feedback-edit textarea:focus {
   box-shadow: inset 0 0 0 1px var(--vermilion);
@@ -2238,7 +2240,7 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
   gap: var(--space-3);
 }
 
-.message-list article {
+[class~="message-list"] article {
   max-width: min(92%, 600px);
   border: 0;
   border-radius: var(--radius-md) var(--radius-md) var(--radius-md) 4px;
@@ -2246,14 +2248,14 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
   padding: var(--space-4);
 }
 
-.message-list article.user {
+[class~="message-list"] article.user {
   border: 0;
   border-radius: var(--radius-md) var(--radius-md) 4px var(--radius-md);
   background: var(--ink);
   color: var(--surface-strong);
 }
 
-.message-list article.user small {
+[class~="message-list"] article.user small {
   color: #e9aa9c;
 }
 
@@ -2443,10 +2445,6 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 .settings-section {
   gap: var(--space-4);
   padding: var(--space-2) 0;
-}
-
-.settings-section .settings-birth-form {
-  background: var(--surface-strong);
 }
 
 .setting-toggle {
@@ -2732,17 +2730,18 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
     display: flex;
   }
 
-  .consultation-form fieldset,
+  [class~="consultation-form"] fieldset,
   .consultation-form > label,
   .follow-up-form,
   .person-form > label,
   .compatibility-form,
-  .settings-birth-form,
+  .settings-inline-editor.signal-settings-editor > [class~="settings-birth-form"],
+  .signal-notification-channel > div.signal-notification-quiet-hours,
   .feedback-edit {
     max-width: 640px;
   }
 
-  .message-list article {
+  [class~="message-list"] article {
     max-width: 78%;
   }
 
@@ -2771,7 +2770,7 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
     justify-self: start;
   }
 
-  .consultation-form fieldset,
+  [class~="consultation-form"] fieldset,
   .compatibility-form,
   .follow-up-form,
   .feedback-edit {
@@ -3232,6 +3231,1030 @@ details[open] summary::after { content: "−"; }
   .library-controls .show-hidden { grid-column: 1; }
   .library-list article { grid-template-columns: minmax(0, 1fr); }
   .library-item-actions { flex-direction: row; justify-content: flex-start; }
+}
+
+/* Signal Atlas — approved product system */
+.signal-screen,
+.signal-atlas-home-screen,
+.signal-atlas-flow-screen,
+.signal-atlas-library-screen,
+.signal-atlas-login-screen,
+.signal-atlas-commerce-list,
+.signal-atlas-commerce-detail,
+.signal-atlas-checkout,
+.signal-atlas-payment-status,
+.signal-atlas-credits,
+.signal-atlas-settings-screen {
+  color: var(--ink);
+  background: var(--paper);
+}
+
+.signal-screen h1,
+.signal-screen h2,
+.signal-atlas-home-screen h1,
+.signal-atlas-home-screen h2,
+.signal-atlas-flow-screen h1,
+.signal-atlas-flow-screen h2,
+.signal-atlas-login-screen h1,
+.signal-atlas-commerce-list h1,
+.signal-atlas-commerce-detail h1,
+.signal-atlas-settings-screen h1 {
+  font-family: var(--editorial-font);
+  font-weight: 500;
+  letter-spacing: -.035em;
+  line-height: 1.28;
+}
+
+.signal-kicker,
+.signal-atlas-overline,
+.section-kicker {
+  color: var(--vermilion);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .08em;
+}
+
+.signal-card,
+.signal-panel,
+.signal-login-benefits,
+.signal-commerce-note,
+.signal-settings-profile,
+.signal-settings-editor,
+.signal-atlas-today-signal,
+.signal-atlas-month-focus,
+.signal-atlas-key-date-group,
+.signal-atlas-action-suggestion {
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: none;
+}
+
+.primary-button,
+.signal-primary-action,
+.signal-primary-cta {
+  min-height: 52px;
+  border-radius: var(--radius-sm);
+  background: var(--vermilion);
+  color: #fff;
+  font-weight: 700;
+}
+
+.secondary-button,
+.signal-secondary-action,
+.signal-action:not(.signal-primary-action):not(.primary-button) {
+  border-color: var(--stone-700);
+  border-radius: var(--radius-sm);
+  background: transparent;
+}
+
+.signal-landing {
+  min-height: 100svh;
+  background: var(--paper);
+}
+
+.signal-landing-content {
+  gap: 20px;
+  padding: 20px 20px max(24px, env(safe-area-inset-bottom));
+}
+
+.signal-situation h1 {
+  max-width: 12ch;
+  font-size: clamp(30px, 8vw, 36px);
+}
+
+.signal-example-card {
+  display: grid;
+  gap: 16px;
+  padding: 24px;
+}
+
+.signal-landing .signal-hero {
+  min-height: 0;
+}
+
+.signal-landing .signal-example-card {
+  min-height: 0;
+}
+
+.signal-landing .signal-example-card::after {
+  display: none;
+}
+
+.signal-card-context,
+.signal-atlas-signal-context,
+.signal-atlas-date-context,
+.signal-atlas-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.signal-card-signal {
+  font-family: var(--editorial-font);
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.signal-card-evidence {
+  padding-top: 14px;
+  border-top: 1px solid var(--stone-300);
+  color: var(--stone-700);
+}
+
+.signal-next-action,
+.signal-login-form {
+  display: grid;
+  gap: 10px;
+}
+
+.signal-reassurance {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+.signal-reassurance-icon {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--vermilion);
+  border-radius: 50%;
+}
+
+.signal-safety-note {
+  color: var(--stone-700);
+  font-size: 13px;
+}
+
+.signal-atlas-frame {
+  position: relative;
+  background: var(--paper);
+}
+
+.signal-atlas-auth-frame {
+  padding-bottom: 0;
+}
+
+.signal-atlas-content {
+  min-width: 0;
+}
+
+.app-header {
+  min-height: 64px;
+  align-items: center;
+  padding: calc(12px + env(safe-area-inset-top)) 20px 8px;
+  border: 0;
+  background: var(--paper);
+}
+
+.signal-atlas-wordmark {
+  font-family: var(--body-font);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.signal-atlas-wordmark > span {
+  font-size: 14px;
+}
+
+.signal-atlas-mobile-navigation {
+  width: 100%;
+  border-radius: 0;
+  background: rgb(255 255 255 / 96%);
+  backdrop-filter: none;
+}
+
+.signal-atlas-mobile-navigation a {
+  min-height: 64px;
+  color: var(--stone-700);
+  font-size: 12px;
+}
+
+.signal-atlas-mobile-navigation a.active {
+  color: var(--vermilion);
+  font-weight: 700;
+}
+
+.signal-atlas-mobile-navigation a.active::before {
+  top: 0;
+  width: 30px;
+  height: 3px;
+  border-radius: 0;
+  background: var(--vermilion);
+}
+
+.signal-atlas-home-screen {
+  gap: 16px;
+  padding-top: 16px;
+  padding-bottom: calc(92px + env(safe-area-inset-bottom));
+}
+
+.signal-atlas-home-header {
+  display: none;
+}
+
+.signal-atlas-home-lead,
+.signal-atlas-question-lead {
+  display: grid;
+  gap: 8px;
+}
+
+.signal-atlas-date-context {
+  color: var(--stone-700);
+  font-size: 13px;
+}
+
+.signal-atlas-question-lead h1 {
+  max-width: 13ch;
+  font-size: 26px;
+}
+
+.signal-atlas-question-lead p {
+  color: var(--stone-700);
+}
+
+.signal-atlas-disclaimer {
+  display: none;
+}
+
+.signal-atlas-today-signal {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+}
+
+.signal-atlas-today-signal h2 {
+  font-size: 22px;
+}
+
+.signal-atlas-signal-evidence {
+  padding-top: 14px;
+  border-top: 1px solid var(--stone-300);
+  color: var(--ink-soft);
+}
+
+.signal-atlas-evidence-link,
+.signal-atlas-consultation-cta a {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  border-radius: var(--radius-md);
+  background: var(--surface-warm);
+  color: var(--vermilion);
+  font-weight: 700;
+}
+
+.signal-atlas-month-timeline,
+.signal-atlas-continue-reading,
+.signal-atlas-consultation-cta {
+  border: 0;
+  background: transparent;
+}
+
+.signal-atlas-month-timeline .signal-atlas-section-heading {
+  min-height: 0;
+}
+
+.signal-atlas-month-timeline .signal-atlas-section-link {
+  display: inline-flex;
+  width: auto;
+  min-height: 0;
+  padding: 0;
+}
+
+.signal-atlas-timeline-list {
+  display: grid;
+  gap: 0;
+}
+
+.signal-atlas-timeline-list .signal-atlas-timeline-row {
+  display: grid;
+  min-height: 56px;
+  grid-template-columns: 4px 1fr;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 0;
+}
+
+.signal-atlas-timeline-row p {
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.signal-atlas-timeline-row.current {
+  background: var(--surface-warm);
+}
+
+.signal-atlas-timeline-marker {
+  width: 4px;
+  background: var(--stone-300);
+}
+
+.signal-atlas-timeline-row.current .signal-atlas-timeline-marker {
+  background: var(--vermilion);
+}
+
+.signal-atlas-continue-reading {
+  padding-top: 16px;
+  border-top: 1px solid var(--stone-300);
+}
+
+.signal-atlas-continue-reading .signal-atlas-continue-reading-link,
+.signal-atlas-consultation-cta a {
+  display: flex;
+  justify-content: space-between;
+}
+
+.signal-atlas-continue-reading .signal-atlas-continue-reading-link {
+  width: 100%;
+  min-height: 56px;
+  grid-template-columns: none;
+  padding: 8px 0;
+}
+
+.signal-atlas-continue-reading .signal-atlas-continue-reading-link > span {
+  width: auto;
+}
+
+.signal-atlas-flow-screen {
+  gap: 24px;
+  padding-bottom: calc(156px + env(safe-area-inset-bottom));
+}
+
+.signal-atlas-flow-lead {
+  display: grid;
+  gap: 14px;
+}
+
+.signal-atlas-month-meter-list {
+  display: grid;
+  gap: 18px;
+}
+
+.signal-atlas-intensity-rows {
+  display: grid;
+  gap: 16px;
+}
+
+.signal-atlas-intensity-row {
+  display: grid;
+  gap: 8px;
+}
+
+.signal-atlas-intensity-label strong {
+  font-size: 14px;
+}
+
+.signal-atlas-intensity-track {
+  height: 4px;
+  overflow: hidden;
+  background: var(--stone-300);
+}
+
+.signal-atlas-intensity-track span {
+  display: block;
+  height: 100%;
+  background: var(--ink-soft);
+}
+
+.signal-atlas-intensity-row.current .signal-atlas-intensity-track span {
+  background: var(--vermilion);
+}
+
+.signal-atlas-month-meter {
+  display: grid;
+  gap: 8px;
+}
+
+.signal-atlas-month-meter-track {
+  height: 4px;
+  overflow: hidden;
+  background: var(--stone-300);
+}
+
+.signal-atlas-month-meter-fill {
+  height: 100%;
+  background: var(--ink-soft);
+}
+
+.signal-atlas-month-meter.current .signal-atlas-month-meter-fill {
+  background: var(--vermilion);
+}
+
+.signal-atlas-month-picker {
+  position: relative;
+  display: grid;
+  min-width: 150px;
+  place-items: center;
+  font-weight: 700;
+}
+
+.signal-atlas-month-picker input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.signal-atlas-month-focus,
+.signal-atlas-period-focus,
+.signal-atlas-key-dates,
+.signal-atlas-key-date-group,
+.signal-atlas-action-suggestion {
+  padding: 20px;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.signal-atlas-key-date-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.signal-atlas-period-focus {
+  display: grid;
+  gap: 8px;
+  background: var(--surface-warm);
+}
+
+.signal-atlas-period-focus h2 {
+  font-size: 21px;
+}
+
+.signal-atlas-key-dates {
+  display: grid;
+  gap: 12px;
+  background: var(--surface-warm);
+}
+
+.signal-atlas-date-chips {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.signal-atlas-date-chip {
+  display: grid;
+  gap: 3px;
+  padding: 10px;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  text-align: center;
+}
+
+.signal-atlas-date-chip small {
+  color: var(--stone-700);
+}
+
+.signal-atlas-key-date {
+  padding: 10px;
+  border-radius: var(--radius-md);
+  background: var(--paper);
+  text-align: center;
+}
+
+.signal-login-benefits {
+  overflow: hidden;
+}
+
+.signal-login-benefit-row {
+  display: grid;
+  min-height: 96px;
+  grid-template-columns: 28px 1fr;
+  gap: 12px;
+  align-items: center;
+  padding: 18px;
+  border-bottom: 1px solid var(--stone-300);
+}
+
+.signal-login-benefit-row:last-child {
+  border-bottom: 0;
+}
+
+.signal-login-benefit-row span:last-child {
+  display: grid;
+  gap: 4px;
+}
+
+.signal-login-benefit-row small {
+  color: var(--stone-700);
+}
+
+.signal-login-provider-fieldset,
+.signal-login-consent-fieldset {
+  border: 0;
+}
+
+.signal-login-provider-list {
+  gap: 8px;
+}
+
+.signal-login-provider {
+  min-height: 54px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.signal-login-provider.selected {
+  border-color: var(--vermilion);
+  background: var(--surface-warm);
+}
+
+.signal-atlas-login-screen > .section-kicker {
+  display: none;
+}
+
+.signal-login-legal-links {
+  display: flex;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.signal-atlas-flow-switch {
+  display: grid;
+  min-height: 48px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 16px;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.signal-atlas-flow-switch a {
+  display: grid;
+  min-height: 48px;
+  place-items: center;
+  border: 0;
+  border-right: 1px solid var(--stone-300);
+  border-radius: 0;
+  background: transparent;
+}
+
+.signal-atlas-flow-switch a:last-child {
+  border-right: 0;
+}
+
+.signal-atlas-flow-switch a.active {
+  background: var(--surface-warm);
+  color: var(--vermilion);
+  font-weight: 700;
+}
+
+.signal-atlas-frame .signal-atlas-route-link.active {
+  background: var(--surface-warm);
+  color: var(--vermilion);
+  font-weight: 700;
+}
+
+.signal-atlas-shell .primary-button::after,
+.signal-atlas-shell .signal-primary-action::after,
+.signal-atlas-shell .signal-primary-cta::after {
+  display: none;
+}
+
+.signal-panel,
+.signal-commerce-group,
+.signal-settings-group,
+.signal-section {
+  border-radius: var(--radius-md);
+}
+
+.signal-row-list,
+.signal-settings-row-list,
+.signal-commerce-price-list {
+  display: grid;
+}
+
+.signal-row,
+.signal-settings-row,
+.signal-commerce-price-list > * {
+  display: grid;
+  min-height: 68px;
+  align-items: center;
+  border-bottom: 1px solid var(--stone-300);
+  border-radius: 0;
+  background: transparent;
+}
+
+.signal-row-copy {
+  display: grid;
+  gap: 3px;
+}
+
+.signal-pair-summary {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.signal-pair-person {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  column-gap: 8px;
+  align-items: center;
+}
+
+.signal-pair-person .signal-avatar {
+  grid-row: 1 / -1;
+}
+
+.signal-pair-person strong,
+.signal-pair-person small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.signal-consultation-home .signal-topic-row,
+.signal-consultation-form .signal-topic-option,
+.signal-consultation-session .signal-question-row {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-width: 0;
+  gap: 8px 12px;
+}
+
+.signal-consultation-home .signal-topic-row .signal-row-copy,
+.signal-consultation-form .signal-topic-option .signal-row-copy,
+.signal-consultation-session .signal-question-row .signal-row-copy,
+.signal-consultation-home .signal-topic-row .signal-row-copy > *,
+.signal-consultation-form .signal-topic-option .signal-row-copy > *,
+.signal-consultation-session .signal-question-row .signal-row-copy > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.signal-row-arrow,
+.signal-settings-row-marker {
+  color: var(--stone-700);
+  font-size: 20px;
+}
+
+.signal-credit-panel,
+.signal-limit-summary {
+  padding: 20px;
+  background: var(--surface-warm);
+}
+
+.signal-primary-action {
+  width: 100%;
+}
+
+.signal-settings-profile,
+.signal-settings-editor,
+.signal-commerce-note {
+  padding: 20px;
+}
+
+.settings-inline-editor.signal-settings-editor > [class~="settings-birth-form"],
+.signal-notification-channel > div.signal-notification-quiet-hours {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+
+.signal-settings-row-list .signal-settings-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.signal-settings-row span:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.signal-settings-row small,
+.signal-local-storage-note,
+.signal-commerce-note p {
+  color: var(--stone-700);
+}
+
+/* Cycle 4: keep required safety copy visible while matching the approved compact previews. */
+.signal-brand-header {
+  justify-content: flex-start;
+}
+
+.signal-landing-content {
+  gap: 16px;
+}
+
+.signal-landing .signal-situation h1 {
+  max-width: none;
+  font-size: clamp(30px, 8vw, 34px);
+}
+
+.signal-landing .landing-copy.signal-safety-note {
+  display: block;
+  grid-template-columns: none;
+  gap: 4px;
+  border-top: 1px solid var(--stone-300);
+  border-radius: 0;
+  background: transparent;
+  padding: 12px 0 0;
+}
+
+.signal-landing .landing-copy.signal-safety-note::before {
+  display: none;
+}
+
+.signal-landing .landing-copy.signal-safety-note strong,
+.signal-landing .landing-copy.signal-safety-note p {
+  display: block;
+  grid-column: auto;
+  margin: 0;
+}
+
+.signal-birth-form {
+  gap: 12px;
+  padding-top: 20px;
+}
+
+.signal-birth-form .form-hero {
+  margin-bottom: 0;
+}
+
+.signal-birth-form .form-hero h1 {
+  font-size: clamp(30px, 8vw, 36px);
+  line-height: 1.18;
+}
+
+.signal-birth-form .form-hero .supporting {
+  margin-top: 8px;
+}
+
+.signal-birth-form .birth-fields {
+  gap: 12px;
+  padding-top: 14px;
+}
+
+.signal-birth-form .signal-datetime {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.signal-birth-form .signal-datetime .field-group,
+.signal-birth-form .signal-datetime input {
+  min-width: 0;
+}
+
+.signal-birth-form .signal-datetime input {
+  padding-right: 8px;
+  padding-left: 8px;
+}
+
+.signal-birth-form .signal-time-unknown,
+.signal-birth-form .birth-additional-fields summary {
+  min-height: 44px;
+}
+
+.signal-birth-form .signal-privacy-note {
+  gap: 2px;
+}
+
+.signal-birth-form .signal-privacy-note,
+.signal-birth-form .signal-privacy-note p {
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.signal-atlas-home-screen {
+  gap: 12px;
+}
+
+.signal-atlas-question-lead {
+  gap: 4px;
+}
+
+.signal-atlas-question-lead h1 {
+  max-width: none;
+  font-size: 24px;
+  line-height: 1.25;
+}
+
+.signal-atlas-question-lead p {
+  font-size: 13px;
+}
+
+.signal-atlas-disclaimer {
+  display: block;
+  color: var(--stone-700);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.signal-atlas-today-signal {
+  gap: 6px;
+  padding: 14px;
+}
+
+.signal-atlas-today-signal h2 {
+  font-size: 20px;
+  line-height: 1.3;
+}
+
+.signal-atlas-signal-evidence {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  padding-top: 8px;
+  line-height: 1.4;
+}
+
+.signal-atlas-evidence-link {
+  min-height: 40px;
+  margin-top: 0;
+}
+
+.signal-atlas-timeline-list .signal-atlas-timeline-row {
+  min-height: 52px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.signal-atlas-timeline-row p {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: normal;
+}
+
+.signal-atlas-continue-reading {
+  padding-top: 10px;
+}
+
+.signal-atlas-continue-reading .signal-atlas-continue-reading-link {
+  min-height: 48px;
+}
+
+.signal-atlas-continue-reading .signal-atlas-continue-reading-link > span:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.signal-atlas-flow-screen {
+  gap: 16px;
+}
+
+.signal-atlas-month-navigation button {
+  min-height: 44px;
+}
+
+.signal-atlas-month-picker {
+  min-width: 120px;
+}
+
+.signal-atlas-month-lead {
+  gap: 8px;
+}
+
+.signal-atlas-month-lead h1 {
+  max-width: none;
+  font-size: 26px;
+  line-height: 1.2;
+}
+
+.signal-atlas-month-lead .supporting {
+  font-size: 13px;
+}
+
+.signal-atlas-intensity-rows {
+  gap: 10px;
+}
+
+.signal-atlas-intensity-row {
+  gap: 5px;
+}
+
+.signal-atlas-period-focus,
+.signal-atlas-key-dates,
+.signal-atlas-action-suggestion {
+  padding: 14px;
+}
+
+.signal-atlas-period-focus {
+  gap: 6px;
+}
+
+.signal-atlas-period-focus h2 {
+  font-size: 18px;
+  line-height: 1.3;
+}
+
+.signal-atlas-period-focus p:not(.section-kicker),
+.signal-atlas-action-suggestion p:not(.section-kicker) {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.signal-atlas-key-dates {
+  gap: 8px;
+}
+
+.signal-atlas-date-chips {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.signal-atlas-date-chip {
+  min-width: 0;
+  padding: 8px 4px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.signal-atlas-date-chip small {
+  font-size: 11px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.signal-atlas-date-chip time {
+  white-space: nowrap;
+}
+
+@media (min-width: 768px) {
+  .signal-atlas-frame.phone-screen {
+    display: grid;
+    width: min(100%, 960px);
+    max-width: 960px;
+    min-height: calc(100svh - 64px);
+    grid-template-columns: 210px minmax(0, 1fr);
+    border: 1px solid var(--stone-300);
+  }
+
+  .signal-atlas-frame .app-header {
+    grid-column: 1 / -1;
+  }
+
+  .signal-atlas-frame .signal-atlas-route-navigation {
+    display: flex;
+    position: sticky;
+    top: 76px;
+    grid-column: 1;
+    grid-row: 2;
+    width: auto;
+    height: fit-content;
+    margin: 0;
+    overflow: visible;
+    clip: auto;
+    white-space: normal;
+    max-height: calc(100svh - 108px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .signal-atlas-auth-frame.phone-screen {
+    display: flex;
+    width: min(100%, 430px);
+    max-width: 430px;
+  }
+
+  .signal-atlas-auth-frame .signal-atlas-content {
+    display: block;
+  }
+
+  .signal-atlas-frame .signal-atlas-content {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .signal-atlas-mobile-navigation {
+    display: none;
+  }
+
+  .signal-atlas-home-header {
+    display: flex;
+  }
+}
+
+@media (min-width: 1100px) {
+  .signal-atlas-frame.phone-screen {
+    width: min(100%, 1120px);
+    max-width: 1120px;
+    grid-template-columns: 250px minmax(0, 1fr);
+  }
+
+  .signal-atlas-auth-frame.phone-screen {
+    display: flex;
+    width: min(100%, 430px);
+    max-width: 430px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

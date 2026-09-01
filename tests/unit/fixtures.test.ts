@@ -30,7 +30,17 @@ describe("fixture repository", () => {
   });
 
   it("classifies restricted consultation topics", () => {
-    expect(isRestrictedConsultationQuestion("암 진단과 수명을 알려줘")).toBe(true);
+    const restrictedQuestions = [
+      "사망 시기를 알려줘",
+      "암 진단과 수명을 알려줘",
+      "임신 여부를 확정해줘",
+      "범죄 재판 결과를 확정해줘",
+      "주식 투자 수익을 보장해줘",
+      "이번 주 로또 당첨 결과를 알려줘",
+      "상대방의 속마음을 알려줘",
+      "배우자가 외도하는지 알려줘",
+    ];
+    restrictedQuestions.forEach((question) => expect(isRestrictedConsultationQuestion(question)).toBe(true));
     expect(isRestrictedConsultationQuestion("이직 조건을 정리하고 싶어요")).toBe(false);
   });
 });

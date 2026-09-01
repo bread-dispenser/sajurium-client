@@ -7,7 +7,7 @@ import type { FormEvent } from "react";
 import { CorruptState, LoadingState } from "./page-state";
 import type { BirthInfo, FeedbackData, FeedbackId, FeedbackReason, TopicId } from "@/lib/domain";
 import type { CalendarKind, FeedbackProvenance, FeedbackTarget, OwnerRelationship, TopicId as ProfileTopicId } from "@/lib/contracts";
-import { hasValidLeapMonthSemantics, maskBirthDate, maskBirthTime, maskBirthplace } from "@/lib/contracts";
+import { hasValidLeapMonthSemantics, maskBirthDate, maskBirthTime, maskBirthplace, parseBirthDate } from "@/lib/contracts";
 import { useHydrated } from "@/hooks/use-hydrated";
 import {
   BASIC_REPORT,
@@ -30,14 +30,14 @@ import {
   saveReportAndClearBirthDraft,
 } from "@/lib/storage";
 
-function PublicHeader({ step, backHref }: { step?: string; backHref?: string }) {
+function PublicHeader({ step, backHref, title }: { step?: string; backHref?: string; title?: string }) {
   return (
-    <header className="journey-header">
+    <header className={`journey-header signal-header ${title ? "signal-form-header" : "signal-brand-header"}`}>
       {backHref && (
-        <Link className="back-button" href={backHref} aria-label="이전 화면으로 돌아가기">‹</Link>
+        <Link className="back-button signal-back-button" href={backHref} aria-label="이전 화면으로 돌아가기">‹</Link>
       )}
-      <Link className="wordmark" href="/" aria-label="사주리움 시작 화면">사주리움</Link>
-      {step && <span className="step-indicator" aria-label={`${step} 단계`}>{step}</span>}
+      <Link className={`wordmark ${title ? "signal-header-title" : "signal-brand"}`} href="/" aria-label={title ?? "사주리움 시작 화면"}>{title ?? "사주리움"}</Link>
+      {step && <span className="step-indicator signal-step-indicator" aria-label={`${step} 단계`}>{step}</span>}
     </header>
   );
 }
@@ -67,23 +67,6 @@ function localDateValue(date = new Date()) {
   return localTime.toISOString().slice(0, 10);
 }
 
-function parseBirthDate(value: string) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match) return null;
-  const [, yearText, monthText, dayText] = match;
-  const year = Number(yearText);
-  const month = Number(monthText);
-  const day = Number(dayText);
-  const date = new Date(year, month - 1, day);
-  if (
-    year < 1900 ||
-    date.getFullYear() !== year ||
-    date.getMonth() !== month - 1 ||
-    date.getDate() !== day
-  ) return null;
-  return date;
-}
-
 export function LandingScreen({ initialCalculationFailure }: { initialCalculationFailure: boolean }) {
   const router = useRouter();
   const hydrated = useHydrated();
@@ -95,41 +78,38 @@ export function LandingScreen({ initialCalculationFailure }: { initialCalculatio
   const birthHref = initialCalculationFailure ? "/birth?calculation=fail" : "/birth";
 
   return (
-    <section className="phone-screen landing-screen" aria-labelledby="landing-title">
+    <section className="phone-screen landing-screen signal-screen signal-landing" aria-labelledby="landing-title">
       <PublicHeader />
-      <div className="screen-content landing-content">
-        <div className="landing-hero">
-          <div className="landing-heading">
-            <p className="eyebrow">오늘의 흐름</p>
-            <h1 id="landing-title">오늘, 어떤 흐름을<br />마주하고 있나요?</h1>
-            <p className="lead">답을 정해주는 대신, 잠시 멈춰 지금의 마음과 선택을 돌아보는 시간을 건네요.</p>
+      <div className="screen-content landing-content signal-landing-content">
+        <header className="landing-hero signal-hero signal-situation">
+          <p className="eyebrow signal-kicker">오늘의 흐름</p>
+          <h1 id="landing-title">지금의 흐름을 살펴보세요</h1>
+          <p className="lead signal-hero-description">생년월일만 입력하면 오늘의 한 문장부터 보여드려요.</p>
+        </header>
+        <article className="landing-preview signal-card signal-example-card" aria-label="오늘의 한 문장 예시">
+          <div className="signal-card-context">
+            <span>오늘의 한 문장</span>
+            <small>예시 · 관계</small>
           </div>
-          <div className="sajurium-orbit" aria-hidden="true">
-            <span />
-            <span />
-            <span />
-            <i />
-          </div>
-        </div>
-        <article className="landing-preview" aria-label="체험용 결과 예시">
-          <div>
-            <span>오늘의 한 문장 · 예시</span>
-            <small>8월 25일</small>
-          </div>
-          <strong>서두르기보다<br />방향을 고르는 날</strong>
-          <p>빠른 결론보다 내가 지키고 싶은 조건을 먼저 살펴보세요.</p>
-          <ul aria-label="예시 주제">
-            <li>관계</li>
-            <li>선택</li>
-            <li>회복</li>
-          </ul>
+          <strong className="signal-card-signal">서두르기보다 방향을 고르는 날</strong>
+          <p className="signal-card-evidence">빠른 결정보다, 지키고 싶은 조건부터 살펴보세요.</p>
         </article>
-        <div className="landing-actions">
-          <button className="primary-button" type="button" onClick={() => router.push(birthHref)}>내 흐름 살펴보기</button>
-          {hasSavedReport && <button className="secondary-button" type="button" onClick={() => router.push("/report")}>이 기기에 저장한 결과 이어보기</button>}
-          <p className="action-note">약 2분 · 무료로 예시 결과를 먼저 확인해요</p>
+        <div className="landing-actions signal-next-action">
+          <p className="signal-reassurance" role="note">
+            <span className="signal-reassurance-icon" aria-hidden="true" />
+            가입 없이 무료 요약까지
+          </p>
+          <button
+            className="primary-button signal-primary-action"
+            type="button"
+            aria-label="생년월일 입력하기 · 내 흐름 살펴보기"
+            onClick={() => router.push(birthHref)}
+          >
+            생년월일 입력하기
+          </button>
+          {hasSavedReport && <button className="secondary-button signal-secondary-action" type="button" onClick={() => router.push("/report")}>이 기기에 저장한 결과 이어보기</button>}
         </div>
-        <aside className="landing-copy">
+        <aside className="landing-copy signal-safety-note">
           <strong>운명을 단정하지 않아요</strong>
           <p>이 화면은 실제 사주 계산이 아닌 체험용 예시 콘텐츠를 보여줘요.</p>
         </aside>
@@ -150,6 +130,14 @@ export function BirthScreen({ initialCalculationFailure }: { initialCalculationF
     setFormError("");
   }
 
+  function updateProfileType(profileType: BirthInfo["profileType"]) {
+    updateBirth({
+      profileType,
+      ownerRelationship: profileType === "self" ? "self" : birth.ownerRelationship === "self" ? "partner" : birth.ownerRelationship,
+      thirdPartyConsent: profileType === "self" ? false : birth.thirdPartyConsent,
+    });
+  }
+
   function finishCalculation() {
     window.setTimeout(() => {
       if (failNextCalculation.current) {
@@ -165,10 +153,8 @@ export function BirthScreen({ initialCalculationFailure }: { initialCalculationF
     event.preventDefault();
     const displayName = birth.displayName.trim();
     const selectedDate = parseBirthDate(birth.birthDate);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
     if (!displayName) return setFormError("이름 또는 닉네임을 입력해 주세요.");
-    if (!selectedDate || selectedDate > today) return setFormError("1900년 이후, 오늘보다 늦지 않은 올바른 생년월일을 입력해 주세요.");
+    if (!selectedDate) return setFormError("1900년 이후, 오늘보다 늦지 않은 올바른 생년월일을 입력해 주세요.");
     if (!hasValidLeapMonthSemantics(birth)) return setFormError("양력 날짜에는 윤달을 선택할 수 없어요.");
     if (!birth.birthTimeUnknown && !birth.birthTime) return setFormError("출생 시간을 입력하거나 ‘출생 시간을 몰라요’를 선택해 주세요.");
     if (!birth.birthplace.trim()) return setFormError("출생지를 입력해 주세요.");
@@ -200,20 +186,20 @@ export function BirthScreen({ initialCalculationFailure }: { initialCalculationF
 
   if (phase === "loading") {
     return (
-      <section className="phone-screen onboarding-screen" aria-labelledby="loading-title" aria-live="polite">
-        <PublicHeader step="2 / 3" />
-        <div className="screen-content loading-content">
-          <div className="form-hero"><p className="section-kicker">예시 리포트 준비</p><h1 id="loading-title">{birth.displayName}님이 읽을 화면을<br />차분히 준비하고 있어요</h1></div>
-          <div className="loading-status">
+      <section className="phone-screen onboarding-screen signal-screen signal-calculation" aria-labelledby="loading-title" aria-live="polite">
+        <PublicHeader title="출생 정보" step="2/3" />
+        <div className="screen-content loading-content signal-calculation-content">
+          <header className="form-hero signal-situation"><p className="section-kicker signal-kicker">예시 리포트 준비</p><h1 id="loading-title">{birth.displayName}님이 읽을 화면을<br />차분히 준비하고 있어요</h1></header>
+          <div className="loading-status signal-progress">
             <div className="status-row"><strong>화면 준비</strong><span>2 / 3</span></div>
             <div className="progress-track"><span /></div>
             <ol className="calculation-steps">
               <li className="complete"><span>01</span><p><strong>입력 형식 확인</strong><small>완료</small></p></li>
-              <li className="active"><span>02</span><p><strong>예시 문장 불러오기</strong><small>준비 중</small></p></li>
+              <li className="active" data-slop-allow="nested-cards"><span>02</span><p><strong>예시 문장 불러오기</strong><small>준비 중</small></p></li>
               <li><span>03</span><p><strong>미리보기 화면 구성</strong><small>대기</small></p></li>
             </ol>
           </div>
-          <aside className="tip-card"><strong>체험 안내</strong><p>실제 명식·역법·사주 계산은 하지 않아요. 입력값과 관계없이 같은 예시 문장을 보여드려요.</p></aside>
+          <aside className="tip-card signal-safety-note"><strong>체험 안내</strong><p>실제 명식·역법·사주 계산은 하지 않아요. 입력값과 관계없이 같은 예시 문장을 보여드려요.</p></aside>
         </div>
       </section>
     );
@@ -221,58 +207,144 @@ export function BirthScreen({ initialCalculationFailure }: { initialCalculationF
 
   if (phase === "failure") {
     return (
-      <section className="phone-screen onboarding-screen" aria-labelledby="failure-title">
-        <PublicHeader backHref="/birth" />
-        <div className="screen-content failure-content">
-          <p className="section-kicker">화면 준비를 마치지 못했어요</p>
+      <section className="phone-screen onboarding-screen signal-screen signal-calculation-failure" aria-labelledby="failure-title">
+        <PublicHeader title="출생 정보" backHref="/birth" />
+        <div className="screen-content failure-content signal-failure-content">
+          <p className="section-kicker signal-kicker">화면 준비를 마치지 못했어요</p>
           <div><h1 id="failure-title">결과를 불러오지 못했어요</h1><p>입력하신 정보는 그대로 보관했어요.<br />다시 시도하거나 입력 정보를 확인해 주세요.</p></div>
-          <aside className="check-list"><strong>확인해볼 점</strong><span>· 입력 정보가 올바른지 확인</span><span>· 잠시 후 다시 준비</span></aside>
+          <aside className="check-list signal-evidence"><strong>확인해볼 점</strong><span>· 입력 정보가 올바른지 확인</span><span>· 잠시 후 다시 준비</span></aside>
         </div>
-        <div className="screen-actions double-actions">
-          <button className="primary-button" type="button" onClick={() => { setPhase("loading"); finishCalculation(); }}>다시 준비하기</button>
-          <button className="secondary-button" type="button" onClick={() => setPhase("form")}>입력 정보 확인</button>
+        <div className="screen-actions double-actions signal-next-action">
+          <button className="primary-button signal-primary-action" type="button" onClick={() => { setPhase("loading"); finishCalculation(); }}>다시 준비하기</button>
+          <button className="secondary-button signal-secondary-action" type="button" onClick={() => setPhase("form")}>입력 정보 확인</button>
         </div>
       </section>
     );
   }
 
   return (
-    <section className="phone-screen onboarding-screen" aria-labelledby="birth-title">
-      <PublicHeader step="1 / 3" backHref="/" />
-      <form className="screen-content form-content" onSubmit={submitBirth} noValidate>
-        <div className="form-hero"><p className="section-kicker">출생 정보</p><h1 id="birth-title">당신을 부를 이름과<br />태어난 날을 알려주세요</h1><p className="supporting">입력 정보는 화면 표시와 이 기기의 저장에만 사용해요. 실제 사주 계산에는 사용하지 않아요.</p></div>
-        <div className="birth-fields">
-          <div className="field-group">
+    <section className="phone-screen onboarding-screen signal-screen signal-birth" aria-labelledby="birth-title">
+      <PublicHeader title="출생 정보" step="1/3" backHref="/" />
+      <form className="screen-content form-content signal-birth-form" onSubmit={submitBirth} noValidate>
+        <header className="form-hero signal-situation">
+          <p className="section-kicker signal-kicker">시작하기</p>
+          <h1 id="birth-title">사주리움이 부를<br />이름과 생일</h1>
+          <p className="supporting">이름은 표시용이에요.</p>
+        </header>
+        <section className="birth-fields signal-signals" aria-label="출생 정보 입력">
+          <div className="field-group signal-field">
             <label className="field-label" htmlFor="nickname">이름 또는 닉네임</label>
             <input id="nickname" name="nickname" value={birth.displayName} onChange={(event) => updateBirth({ displayName: event.target.value })} autoComplete="nickname" maxLength={20} aria-describedby={formError ? "birth-error" : undefined} />
           </div>
-          <fieldset><legend className="field-label">달력 기준</legend><div className="segmented-control">
-            {(["solar", "lunar"] as const).map((basis: CalendarKind) => <button key={basis} className={birth.calendar === basis ? "selected" : ""} type="button" aria-pressed={birth.calendar === basis} onClick={() => updateBirth({ calendar: basis, leapMonth: basis === "lunar" ? birth.leapMonth : false })}>{{ solar: "양력", lunar: "음력" }[basis]}</button>)}
-          </div></fieldset>
-          {birth.calendar === "lunar" && <label className="check-card"><input type="checkbox" checked={birth.leapMonth} onChange={(event) => updateBirth({ leapMonth: event.target.checked })} /><span>윤달</span></label>}
-          <div className="field-group">
-            <label className="field-label" htmlFor="birth-date">생년월일</label>
-            <input id="birth-date" name="birthDate" type="date" min="1900-01-01" max={localDateValue()} value={birth.birthDate} onChange={(event) => updateBirth({ birthDate: event.target.value })} />
+          <fieldset className="signal-selector calendar-selector">
+            <legend className="field-label">달력 기준 · 음력 선택 후 윤달 확인</legend>
+            <div className="segmented-control" role="radiogroup" aria-label="달력 기준">
+              {(["solar", "lunar"] as const).map((basis: CalendarKind) => (
+                <button key={basis} className={birth.calendar === basis ? "selected" : ""} type="button" role="radio" aria-checked={birth.calendar === basis} onClick={() => updateBirth({ calendar: basis, leapMonth: basis === "lunar" ? birth.leapMonth : false })}>
+                  {{ solar: "양력", lunar: "음력" }[basis]}
+                </button>
+              ))}
+            </div>
+            {birth.calendar === "lunar" && (
+              <div className="lunar-leap-control signal-conditional-field">
+                <label className="check-card">
+                  <input type="checkbox" checked={birth.leapMonth} onChange={(event) => updateBirth({ leapMonth: event.target.checked })} />
+                  <span>음력 윤달</span>
+                </label>
+                <p className="field-help">태어난 날짜가 윤달이면 선택해 주세요.</p>
+              </div>
+            )}
+          </fieldset>
+          <fieldset className="signal-selector gender-selector">
+            <legend className="field-label">성별 기준</legend>
+            <div className="segmented-control" role="radiogroup" aria-label="성별 기준">
+              {(["female", "male"] as const).map((gender) => (
+                <button key={gender} type="button" role="radio" className={birth.calculationGender === gender ? "selected" : ""} aria-checked={birth.calculationGender === gender} onClick={() => updateBirth({ calculationGender: gender })}>
+                  {gender === "female" ? "여성" : "남성"}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+          <div className="birth-datetime-row signal-datetime">
+            <div className="field-group signal-field">
+              <label className="field-label" htmlFor="birth-date">생년월일</label>
+              <input id="birth-date" name="birthDate" type="date" lang="ko-KR" min="1900-01-01" max={localDateValue()} value={birth.birthDate} onChange={(event) => updateBirth({ birthDate: event.target.value })} />
+            </div>
+            <div className="field-group signal-field">
+              <label className="field-label" htmlFor="birth-time">출생 시간</label>
+              <input id="birth-time" name="birthTime" type="time" lang="ko-KR" value={birth.birthTime ?? ""} disabled={birth.birthTimeUnknown} onChange={(event) => updateBirth({ birthTime: event.target.value || null })} />
+            </div>
           </div>
-          <div className="field-group">
-            <label className="field-label" htmlFor="birth-time">출생 시간</label>
-            <input id="birth-time" name="birthTime" type="time" value={birth.birthTime ?? ""} disabled={birth.birthTimeUnknown} onChange={(event) => updateBirth({ birthTime: event.target.value || null })} />
+          <label className="check-card signal-time-unknown">
+            <input type="checkbox" checked={birth.birthTimeUnknown} onChange={(event) => updateBirth({ birthTimeUnknown: event.target.checked, birthTime: event.target.checked ? null : birth.birthTime })} />
+            <span>출생 시간을 몰라요</span>
+          </label>
+        </section>
+        <details className="birth-additional-fields signal-evidence">
+          <summary>계산에 필요한 추가 정보</summary>
+          <div className="birth-context-fields">
+            <div className="field-group signal-field">
+              <label className="field-label" htmlFor="birthplace">출생지</label>
+              <input id="birthplace" value={birth.birthplace} onChange={(event) => updateBirth({ birthplace: event.target.value })} />
+            </div>
+            <div className="field-group signal-field">
+              <label className="field-label" htmlFor="timezone">시간대</label>
+              <input id="timezone" value={birth.timezone} onChange={(event) => updateBirth({ timezone: event.target.value })} placeholder="Asia/Seoul" />
+            </div>
+            <label className="field-group">
+              <span className="field-label">프로필 유형</span>
+              <select value={birth.profileType} onChange={(event) => updateProfileType(event.target.value as BirthInfo["profileType"])}>
+                <option value="self">본인</option>
+                <option value="other">다른 사람</option>
+              </select>
+            </label>
+            <label className="field-group">
+              <span className="field-label">나와의 관계</span>
+              <select value={birth.ownerRelationship} onChange={(event) => updateBirth({ ownerRelationship: event.target.value as OwnerRelationship })}>
+                <option value="self">본인</option>
+                <option value="partner">연인·배우자</option>
+                <option value="family">가족</option>
+                <option value="friend">친구</option>
+                <option value="coworker">동료</option>
+              </select>
+            </label>
+            <fieldset>
+              <legend className="field-label">관심 주제 (선택)</legend>
+              <div className="signal-interest-options">
+                {(["love", "career", "money", "family"] as ProfileTopicId[]).map((topic) => (
+                  <label className="check-card" key={topic}>
+                    <input type="checkbox" checked={birth.personalization.interests.includes(topic)} onChange={(event) => updateBirth({ personalization: { ...birth.personalization, interests: event.target.checked ? [...birth.personalization.interests, topic] : birth.personalization.interests.filter((item) => item !== topic) } })} />
+                    {{ love: "연애", career: "커리어", money: "재물", family: "가족" }[topic as "love" | "career" | "money" | "family"]}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            <label className="field-group">
+              <span className="field-label">관계 상태 (선택)</span>
+              <input value={birth.personalization.relationshipStatus ?? ""} onChange={(event) => updateBirth({ personalization: { ...birth.personalization, relationshipStatus: event.target.value || null } })} />
+            </label>
+            <label className="field-group">
+              <span className="field-label">직업 상태 (선택)</span>
+              <input value={birth.personalization.occupationStatus ?? ""} onChange={(event) => updateBirth({ personalization: { ...birth.personalization, occupationStatus: event.target.value || null } })} />
+            </label>
+            <label className="field-group">
+              <span className="field-label">주요 고민 (선택)</span>
+              <textarea value={birth.personalization.primaryConcern ?? ""} onChange={(event) => updateBirth({ personalization: { ...birth.personalization, primaryConcern: event.target.value || null } })} maxLength={300} />
+            </label>
+            {birth.profileType === "other" && (
+              <label className="check-card">
+                <input type="checkbox" checked={birth.thirdPartyConsent} onChange={(event) => updateBirth({ thirdPartyConsent: event.target.checked })} />
+                <span>정보 주체의 동의를 확인했어요</span>
+              </label>
+            )}
           </div>
-          <label className="check-card"><input type="checkbox" checked={birth.birthTimeUnknown} onChange={(event) => updateBirth({ birthTimeUnknown: event.target.checked, birthTime: event.target.checked ? null : birth.birthTime })} /><span>출생 시간을 몰라요</span></label>
-          <div className="field-group"><label className="field-label" htmlFor="birthplace">출생지</label><input id="birthplace" value={birth.birthplace} onChange={(event) => updateBirth({ birthplace: event.target.value })} /></div>
-          <div className="field-group"><label className="field-label" htmlFor="timezone">시간대</label><input id="timezone" value={birth.timezone} onChange={(event) => updateBirth({ timezone: event.target.value })} placeholder="Asia/Seoul" /></div>
-          <fieldset><legend className="field-label">계산 성별</legend><div className="segmented-control">{(["female", "male"] as const).map((gender) => <button key={gender} type="button" className={birth.calculationGender === gender ? "selected" : ""} aria-pressed={birth.calculationGender === gender} onClick={() => updateBirth({ calculationGender: gender })}>{gender === "female" ? "여성" : "남성"}</button>)}</div></fieldset>
-          <label>프로필 유형<select value={birth.profileType} onChange={(event) => updateBirth({ profileType: event.target.value as BirthInfo["profileType"] })}><option value="self">본인</option><option value="other">다른 사람</option></select></label>
-          <label>나와의 관계<select value={birth.ownerRelationship} onChange={(event) => updateBirth({ ownerRelationship: event.target.value as OwnerRelationship })}><option value="self">본인</option><option value="partner">연인·배우자</option><option value="family">가족</option><option value="friend">친구</option><option value="coworker">동료</option></select></label>
-          <fieldset><legend className="field-label">관심 주제 (선택)</legend>{(["love", "career", "money", "family"] as ProfileTopicId[]).map((topic) => <label className="check-card" key={topic}><input type="checkbox" checked={birth.personalization.interests.includes(topic)} onChange={(event) => updateBirth({ personalization: { ...birth.personalization, interests: event.target.checked ? [...birth.personalization.interests, topic] : birth.personalization.interests.filter((item) => item !== topic) } })} />{{ love: "연애", career: "커리어", money: "재물", family: "가족" }[topic as "love" | "career" | "money" | "family"]}</label>)}</fieldset>
-          <label>관계 상태 (선택)<input value={birth.personalization.relationshipStatus ?? ""} onChange={(event) => updateBirth({ personalization: { ...birth.personalization, relationshipStatus: event.target.value || null } })} /></label>
-          <label>직업 상태 (선택)<input value={birth.personalization.occupationStatus ?? ""} onChange={(event) => updateBirth({ personalization: { ...birth.personalization, occupationStatus: event.target.value || null } })} /></label>
-          <label>주요 고민 (선택)<textarea value={birth.personalization.primaryConcern ?? ""} onChange={(event) => updateBirth({ personalization: { ...birth.personalization, primaryConcern: event.target.value || null } })} /></label>
-          {birth.profileType === "other" && <label className="check-card"><input type="checkbox" checked={birth.thirdPartyConsent} onChange={(event) => updateBirth({ thirdPartyConsent: event.target.checked })} /><span>정보 주체의 동의를 확인했어요</span></label>}
-        </div>
-        <aside className="privacy-panel"><strong>정보는 이 기기에만 머물러요</strong><p>출생 시간 미상 여부는 화면 형식과 이 기기 저장값에만 반영되며 정해진 예시 문장은 달라지지 않아요.</p></aside>
-        {formError && <p className="form-error" id="birth-error" role="alert">{formError}</p>}
-        <button className="primary-button form-submit" type="submit">다음</button>
+        </details>
+        <aside className="privacy-panel signal-privacy-note" id="birth-privacy-note">
+          <strong>입력 정보는 기기에 저장돼요.</strong>
+          <p>가입 없이 무료 요약을 확인해요. 실제 사주 계산이나 외부 전송은 하지 않아요.</p>
+        </aside>
+        {formError && <p className="form-error signal-form-error" id="birth-error" role="alert">{formError}</p>}
+        <button className="primary-button form-submit signal-next-action signal-primary-action" type="submit">다음</button>
       </form>
     </section>
   );
@@ -286,41 +358,68 @@ export function ReportScreen() {
   const birth = birthState.birth;
 
   return (
-    <section className="report-page" aria-labelledby="report-title">
-      <div className="screen-content report-content">
-        <div className="editorial-hero"><p className="section-kicker">무료 사주 요약</p><h1 id="report-title">{birth.displayName}님의 사주 요약</h1><p className="supporting">{maskBirthDate(birth.birthDate)} · {maskBirthTime(birth.birthTime, birth.birthTimeUnknown)} · {maskBirthplace(birth.birthplace)}</p></div>
-        {birth.birthTimeUnknown && <p className="accuracy-note">출생 시간 미상 상태만 화면 형식에 반영하며 정해진 예시 문장은 달라지지 않아요.</p>}
-        <article className="insight-card current"><small>지금의 흐름</small><strong>{BASIC_REPORT.currentFlow}</strong></article>
-        <h2>핵심 성향</h2>
-        <div className="insight-list">{BASIC_REPORT.insights.map((insight) => <article className="insight-card" key={insight.id}><div><strong>{insight.title}</strong><p>{insight.description}</p></div></article>)}</div>
-        <h2>주의할 패턴</h2>
-        <aside className="check-list"><strong>{BASIC_REPORT.caution}</strong><span>{BASIC_REPORT.suggestion}</span></aside>
-        <h2>상세 리포트</h2>
-        <div className="report-sections">
-          {REPORT_SECTIONS.map((section) => section.access === "free" ? (
-            <article className="report-section" id={section.id} key={section.id}>
-              <p className="section-kicker">무료 영역</p>
-              <h3>{section.title}</h3>
-              <strong>{section.summary}</strong>
-              <ul>{section.details.map((detail) => <li key={detail}>{detail}</li>)}</ul>
-              <details><summary>해석 근거 보기</summary><p>{section.evidence} 실제 계산 결과가 아닙니다.</p></details>
-            </article>
-          ) : (
-            <article className="report-section locked-report-section" key={section.id}>
-              <p className="section-kicker">잠긴 미리보기</p>
-              <h3>{section.title}</h3>
-              <strong>{section.summary}</strong>
-              <p>{section.evidence}</p>
-              <button type="button" disabled aria-disabled="true">실제 상품·결제 연결 전에는 열 수 없어요</button>
-            </article>
-          ))}
-        </div>
-        <nav className="report-actions" aria-label="리포트 관련 기능">
-          <Link className="secondary-button" href="/flow/today">오늘의 흐름</Link>
-          <Link className="secondary-button" href="/flow/month">이번 달 흐름</Link>
-          <button className="secondary-button" type="button" onClick={() => window.print()}>인쇄 · PDF 저장</button>
+    <section className="report-page signal-screen signal-report" aria-labelledby="report-title">
+      <div className="screen-content report-content signal-report-content">
+        <header className="editorial-hero signal-situation">
+          <p className="section-kicker signal-kicker">무료 요약 · {birth.displayName}님</p>
+          <h1 id="report-title">지금은 기준을<br />다시 세울 때</h1>
+          <p className="supporting">{maskBirthDate(birth.birthDate)} · {maskBirthTime(birth.birthTime, birth.birthTimeUnknown)} · {maskBirthplace(birth.birthplace)}</p>
+        </header>
+        {birth.birthTimeUnknown && <p className="accuracy-note signal-safety-note">출생 시간 미상 상태만 화면 형식에 반영하며 정해진 예시 문장은 달라지지 않아요.</p>}
+        <article className="insight-card current signal-card signal-signal" aria-labelledby="current-flow-title">
+          <small id="current-flow-title">오늘의 흐름</small>
+          <strong>{BASIC_REPORT.currentFlow}</strong>
+        </article>
+        <section className="report-signals signal-signals" aria-labelledby="signals-title">
+          <h2 id="signals-title">핵심 성향</h2>
+          <ol className="insight-list signal-list">
+            {BASIC_REPORT.insights.map((insight, index) => (
+              <li className="insight-card signal-list-item" key={insight.id}>
+                <span className="signal-index" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
+                <div>
+                  <strong>{insight.title}</strong>
+                  <p>{insight.description}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+          <aside className="check-list signal-caution">
+            <strong>{BASIC_REPORT.caution}</strong>
+            <span>{BASIC_REPORT.suggestion}</span>
+          </aside>
+        </section>
+        <section className="report-evidence signal-evidence" aria-labelledby="evidence-title">
+          <header className="report-evidence-header">
+            <p className="section-kicker signal-kicker">해석 근거</p>
+            <h2 id="evidence-title">왜 이런 해석인가요?</h2>
+            <p>입력 정보와 고정된 예시 문장을 연결해 보여드려요.</p>
+          </header>
+          <div className="report-sections signal-evidence-list">
+            {REPORT_SECTIONS.map((section) => section.access === "free" ? (
+              <article className="report-section signal-evidence-item" id={section.id} key={section.id}>
+                <p className="section-kicker">무료 요약</p>
+                <h3>{section.title}</h3>
+                <strong>{section.summary}</strong>
+                <ul>{section.details.map((detail) => <li key={detail}>{detail}</li>)}</ul>
+                <details><summary>해석 근거 보기</summary><p>{section.evidence} 실제 계산 결과가 아닙니다.</p></details>
+              </article>
+            ) : (
+              <article className="report-section locked-report-section signal-locked-item" key={section.id}>
+                <p className="section-kicker">잠긴 미리보기</p>
+                <h3>{section.title}</h3>
+                <strong>{section.summary}</strong>
+                <p>{section.evidence}</p>
+                <button type="button" disabled aria-disabled="true">실제 상품·결제 연결 전에는 열 수 없어요</button>
+              </article>
+            ))}
+          </div>
+        </section>
+        <nav className="report-actions report-next-action signal-next-action" aria-label="리포트 관련 기능">
+          <Link className="secondary-button signal-secondary-action" href="/flow/today">오늘의 흐름</Link>
+          <Link className="secondary-button signal-secondary-action" href="/flow/month">이번 달 흐름</Link>
+          <button className="secondary-button signal-secondary-action" type="button" onClick={() => window.print()}>인쇄 · PDF 저장</button>
         </nav>
-        <Link className="primary-button" href="/report/topics">관심 주제로 더 보기</Link>
+        <Link className="primary-button signal-primary-action" href="/report/topics" aria-label="관심 주제 고르기 · 관심 주제로 더 보기">관심 주제 고르기</Link>
       </div>
     </section>
   );
@@ -337,12 +436,32 @@ export function TopicsScreen() {
   const activeTopic = selectedTopic ?? storedTopic ?? "love";
 
   return (
-    <section className="screen-content topics-content" aria-labelledby="topics-title">
-      <div className="editorial-hero"><p className="section-kicker">관심 주제</p><h1 id="topics-title">지금 가장 궁금한 주제는<br />무엇인가요?</h1><p className="supporting">선택한 주제에 맞춰 정해진 체험용 예시를 보여드려요.</p></div>
-      <div className="topic-list" role="radiogroup" aria-label="관심 주제">
-        {TOPICS.map((topic, index) => <label key={topic.id} className={`topic-card ${activeTopic === topic.id ? "selected" : ""}`}><input className="selection-radio" type="radio" name="topic" value={topic.id} checked={activeTopic === topic.id} onChange={() => setSelectedTopic(topic.id)} /><span className="topic-number">{String(index + 1).padStart(2, "0")}</span><span><strong>{topic.title}</strong><small>{topic.description}</small></span><span className="row-marker" aria-hidden="true">{activeTopic === topic.id ? "✓" : "→"}</span></label>)}
+    <section className="screen-content topics-content signal-screen signal-topics" aria-labelledby="topics-title">
+      <header className="editorial-hero signal-situation">
+        <p className="section-kicker signal-kicker">관심 주제</p>
+        <h1 id="topics-title">지금 가장 궁금한<br />주제 하나</h1>
+        <p className="supporting">고민 하나를 고르면 그 시선으로 흐름과 미리보기를 읽어드려요.</p>
+      </header>
+      <section className="topic-signals signal-signals" aria-labelledby="topic-list-title">
+        <h2 id="topic-list-title" className="sr-only">관심 주제 목록</h2>
+        <div className="topic-list signal-list" role="radiogroup" aria-label="관심 주제">
+          {TOPICS.map((topic, index) => (
+            <label key={topic.id} className={`topic-card signal-list-item ${activeTopic === topic.id ? "selected" : ""}`}>
+              <input className="selection-radio" type="radio" name="topic" value={topic.id} checked={activeTopic === topic.id} onChange={() => setSelectedTopic(topic.id)} />
+              <span className="topic-number signal-index" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
+              <span className="topic-copy"><strong>{topic.title}</strong><small>{topic.description}</small></span>
+              <span className="row-marker signal-row-marker" aria-hidden="true">{activeTopic === topic.id ? "✓" : "→"}</span>
+            </label>
+          ))}
+        </div>
+      </section>
+      <aside className="topic-evidence signal-evidence" role="note">
+        <span className="topic-evidence-marker" aria-hidden="true" />
+        <p>주제는 언제든 바꿀 수 있어요.</p>
+      </aside>
+      <div className="topic-next-action signal-next-action">
+        <button className="primary-button signal-primary-action" type="button" onClick={() => router.push(`/report/topics/${activeTopic}`)}>{getTopic(activeTopic).title} 내용 보기</button>
       </div>
-      <button className="primary-button" type="button" onClick={() => router.push(`/report/topics/${activeTopic}`)}>{getTopic(activeTopic).title} 내용 보기</button>
     </section>
   );
 }
@@ -352,15 +471,42 @@ export function TopicPreviewScreen({ topicId }: { topicId: TopicId }) {
   const preview = getTopicPreview(topicId);
   const reportId = `rpt_fixture_${topicId}`;
   return (
-    <section className="screen-content preview-content" aria-labelledby="preview-title">
-      <p className="vermilion-eyebrow">{topic.title} · 체험용 예시</p>
-      <h1 id="preview-title">{preview.headline.split("\n").map((line, index) => <span key={line}>{index > 0 && <br />}{line}</span>)}</h1>
-      <p className="lead">{preview.introduction}</p>
-      <article className="reading-section"><small>이 주제의 강점</small><strong>{preview.strength}</strong></article>
-      <article className="reading-section emphasis"><small>점검할 부분</small><strong>{preview.caution}</strong></article>
-      <div className="text-section"><h2>지금의 흐름</h2><p>{preview.flow}</p></div>
-      <details><summary>왜 이런 결과인가요?</summary><p>현재 내용은 화면 체험을 위한 고정 예시이며 실제 사주 계산 결과가 아니에요. 입력 정보에 따라 문장이 달라지지 않으며, 사주는 선택을 대신하지 않습니다.</p></details>
-      <Link className="primary-button" href={`/report/feedback?targetType=report&reportId=${reportId}&topic=${topicId}`}>이 해석 저장하기</Link>
+    <section className="screen-content preview-content signal-screen signal-topic-preview" aria-labelledby="preview-title">
+      <header className="topic-preview-situation signal-situation">
+        <p className="section-kicker signal-kicker">{topic.title}</p>
+        <h1 id="preview-title">{preview.headline.split("\n").map((line, index) => <span key={line}>{index > 0 && <br />}{line}</span>)}</h1>
+        <p className="lead">{preview.introduction}</p>
+      </header>
+      <div className="topic-availability signal-evidence" aria-label="제공 범위">
+        <span>무료 요약</span>
+        <span aria-hidden="true">·</span>
+        <span>잠긴 미리보기</span>
+      </div>
+      <section className="topic-preview-signals signal-signals" aria-labelledby="topic-signals-title">
+        <h2 id="topic-signals-title" className="sr-only">주제 신호</h2>
+        <article className="reading-section signal-signal">
+          <small>이 주제의 강점</small>
+          <strong>{preview.strength}</strong>
+        </article>
+        <article className="reading-section emphasis signal-signal">
+          <small>점검할 부분</small>
+          <strong>{preview.caution}</strong>
+        </article>
+        <article className="text-section signal-signal">
+          <h3>지금의 흐름</h3>
+          <p>{preview.flow}</p>
+        </article>
+      </section>
+      <section className="topic-preview-evidence signal-evidence" aria-labelledby="topic-evidence-title">
+        <h2 id="topic-evidence-title">왜 이런 결과인가요?</h2>
+        <details>
+          <summary>고정 예시의 범위 보기</summary>
+          <p>현재 내용은 화면 체험을 위한 고정 예시이며 실제 사주 계산 결과가 아니에요. 입력 정보에 따라 문장이 달라지지 않으며, 사주는 선택을 대신하지 않습니다.</p>
+        </details>
+      </section>
+      <div className="topic-preview-next-action signal-next-action">
+        <Link className="primary-button signal-primary-action" href={`/report/feedback?targetType=report&reportId=${reportId}&topic=${topicId}`}>이 해석 저장하기</Link>
+      </div>
     </section>
   );
 }

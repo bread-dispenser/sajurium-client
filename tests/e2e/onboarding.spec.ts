@@ -45,7 +45,7 @@ test("supports keyboard-only entry into the birth flow", async ({ page }) => {
   for (let index = 0; index < 12; index += 1) {
     await page.keyboard.press("Tab");
     const label = await page.evaluate(() => document.activeElement?.textContent?.trim());
-    if (label === "내 흐름 살펴보기") break;
+    if (label === "생년월일 입력하기") break;
   }
   await expect(page.getByRole("button", { name: "내 흐름 살펴보기" })).toBeFocused();
   await page.keyboard.press("Enter");
