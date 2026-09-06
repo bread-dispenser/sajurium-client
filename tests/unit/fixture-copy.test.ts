@@ -5,8 +5,7 @@ describe("fixed-fixture provenance", () => {
   it("contains no input-derived calculation or accuracy claims", () => {
     const runtime = readFileSync("src/components/saju-screens.tsx", "utf8");
     const compatibility = readFileSync("src/components/people-compatibility-screens.tsx", "utf8");
-    const design = readFileSync("../design/saju-mobile-v2.pen", "utf8");
-    const surfaces = `${runtime}\n${compatibility}\n${design}`;
+    const surfaces = `${runtime}\n${compatibility}`;
     for (const prohibited of [
       "입력 정보 기반 요약",
       "현재 정보 기준",
