@@ -8,10 +8,16 @@ const viewports = [
 ];
 
 for (const viewport of viewports) {
-  test(`${viewport.name} has no horizontal overflow and matches the visual baseline`, async ({ page }) => {
+  test(`${viewport.name} has no horizontal overflow`, async ({ page }) => {
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await page.goto("/products");
     await expect(page.locator("html")).toHaveJSProperty("scrollWidth", viewport.width);
+  });
+
+  test(`${viewport.name} matches the macOS visual baseline`, async ({ page }) => {
+    test.skip(process.platform !== "darwin", "The committed visual baselines are captured on macOS.");
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await page.goto("/products");
     await expect(page.locator(".app-frame")).toHaveScreenshot(`products-${viewport.name}.png`);
   });
 }
