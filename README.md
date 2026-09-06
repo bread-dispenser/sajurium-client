@@ -29,12 +29,12 @@ bunx bun@1.3.14 run test:quality
 
 ## 배포
 
-GitHub Actions variable `VERCEL_ENABLED`가 `true`이고 `main`의 품질 검사가 통과하면 Vercel에 공개 프로토타입을 배포한 뒤, 배포된 HTML에서 사주리움 표식을 확인합니다. 배포를 켜기 전 저장소에 다음 GitHub Actions secrets를 등록해야 합니다.
+GitHub Actions variable `VERCEL_ENABLED`가 `true`이고 `main`의 품질 검사가 통과하면 Vercel에 공개 프로토타입을 배포한 뒤, `PRODUCTION_URL`에 등록한 공개 alias의 HTML에서 사주리움 표식을 확인합니다. 배포를 켜기 전 저장소에 다음 GitHub Actions secrets를 등록해야 합니다.
 
 - `VERCEL_ORG_ID`
 - `VERCEL_PROJECT_ID`
 - `VERCEL_TOKEN`
 
-`VERCEL_ENABLED`를 설정하지 않으면 품질 검사만 실행되고 배포 job은 건너뜁니다.
+GitHub Actions variable에는 `VERCEL_ENABLED=true`와 공개 production alias를 담은 `PRODUCTION_URL`을 등록합니다. `VERCEL_ENABLED`를 설정하지 않으면 품질 검사만 실행되고 배포 job은 건너뜁니다.
 
 이 저장소는 공개되어 있지만 현재 오픈소스 라이선스를 제공하지 않습니다.

@@ -39,10 +39,10 @@ jobs:
         with:
           bun-version: 1.3.14
       - name: Deploy public prototype
-        id: deploy
+        run: bunx vercel@54.18.1 deploy --prod --yes --token="$VERCEL_TOKEN"
+      - name: Smoke public production alias
+        env:
+          PRODUCTION_URL: ${{ vars.PRODUCTION_URL }}
         run: |
-          deployment_url="$(bunx vercel@54.18.1 deploy --prod --yes --token="$VERCEL_TOKEN")"
-          echo "url=$deployment_url" >> "$GITHUB_OUTPUT"
-      - name: Smoke deployed prototype
-        run: |
-          curl --fail --silent --show-error --retry 5 --retry-delay 2 "${{ steps.deploy.outputs.url }}" | grep --quiet "사주리움"
+          test -n "$PRODUCTION_URL"
+          curl --fail --silent --show-error --retry 5 --retry-delay 2 "$PRODUCTION_URL" | grep --quiet "사주리움"
