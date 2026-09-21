@@ -12,6 +12,6 @@ type FeedbackPageProps = {
 
 export default async function FeedbackPage({ searchParams }: FeedbackPageProps) {
   const { targetType, reportId, topic } = await searchParams;
-  if (targetType !== "report" || typeof reportId !== "string" || !isTopicId(topic) || reportId !== `rpt_fixture_${topic}`) notFound();
+  if (targetType !== "report" || typeof reportId !== "string" || !isTopicId(topic) || (!/^\d+$/.test(reportId) && reportId !== `rpt_fixture_${topic}`)) notFound();
   return <FeedbackScreen target={{ type: "report", reportId }} topicId={topic} />;
 }

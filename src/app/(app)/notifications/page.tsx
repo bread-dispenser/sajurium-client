@@ -1,5 +1,5 @@
-import { NotificationCenterScreen } from "@/components/account-notification-screens";
+import { LiveNotificationScreen } from "@/components/account-notification-screens";
 
 export default function NotificationsPage() {
-  return <NotificationCenterScreen />;
+  return <LiveNotificationScreen />;
 }

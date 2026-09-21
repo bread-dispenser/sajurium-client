@@ -1,5 +1,5 @@
-import { FlowScreen } from "@/components/core-screens";
+import { LiveFlowScreen } from "@/components/core-screens";
 
 export default function MonthFlowPage() {
-  return <FlowScreen mode="month" />;
+  return <LiveFlowScreen mode="month" />;
 }

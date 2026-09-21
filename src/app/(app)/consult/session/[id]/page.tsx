@@ -1,4 +1,5 @@
-import { ConsultationSessionScreen } from "@/components/consultation-screens";
+import { LiveConsultationSessionScreen } from "@/components/consultation-screens";
+import { notFound } from "next/navigation";
 
 type ConsultationSessionPageProps = {
   params: Promise<{ id: string }>;
@@ -6,5 +7,6 @@ type ConsultationSessionPageProps = {
 
 export default async function ConsultationSessionPage({ params }: ConsultationSessionPageProps) {
   const { id } = await params;
-  return <ConsultationSessionScreen sessionId={id} />;
+  if (!/^\d+$/.test(id)) notFound();
+  return <LiveConsultationSessionScreen sessionId={id} />;
 }

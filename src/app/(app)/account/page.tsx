@@ -1,5 +1,5 @@
-import { AccountPrototypeScreen } from "@/components/account-profile-prototype";
+import { LiveAccountScreen } from "@/components/account-notification-screens";
 
 export default function AccountPage() {
-  return <AccountPrototypeScreen />;
+  return <LiveAccountScreen />;
 }

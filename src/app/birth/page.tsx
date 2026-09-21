@@ -6,5 +6,5 @@ type BirthPageProps = {
 
 export default async function BirthPage({ searchParams }: BirthPageProps) {
   const { calculation } = await searchParams;
-  return <main className="app-shell"><BirthScreen initialCalculationFailure={calculation === "fail"} /></main>;
+  return <main className="app-shell p0-shell"><BirthScreen initialCalculationFailure={calculation === "fail"} /></main>;
 }
