@@ -21,7 +21,7 @@ import { compatibilityStore, createTransactionStep, libraryStore, peopleStore, r
 import { useHydrated } from "@/hooks/use-hydrated";
 import { CorruptState, EmptyState, LoadingState } from "./page-state";
 import styles from "./saas-core-rollout.module.css";
-import { createCompatibility, createProfile, deleteProfile, listProfiles, type ServerProfile } from "@/lib/api/service";
+import { createCompatibility, createProfile, deleteProfile, formatApiRequestError, listProfiles, type ServerProfile } from "@/lib/api/service";
 
 const RELATIONSHIP_LABELS: Record<PersonRelationship, string> = {
   self: "본인",
@@ -203,7 +203,7 @@ function PersonForm({ existing }: { existing?: PersonProfile }) {
       await createProfile(normalized);
       router.push("/people");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "서버에 인물을 저장하지 못했어요.");
+      setError(formatApiRequestError(reason, "서버에 인물을 저장하지 못했어요."));
     }
   }
 
@@ -400,7 +400,7 @@ export function CompatibilityResultScreen({ resultId }: { resultId: string }) {
 export function LivePeopleScreen() {
   const [profiles, setProfiles] = useState<ServerProfile[] | null>(null);
   const [error, setError] = useState("");
-  useEffect(() => { void listProfiles().then(setProfiles).catch(() => setError("프로필을 불러오지 못했어요.")); }, []);
+  useEffect(() => { void listProfiles().then(setProfiles).catch((reason) => setError(formatApiRequestError(reason, "프로필을 불러오지 못했어요."))); }, []);
   if (!profiles && !error) return <LoadingState title="서버 프로필을 불러오고 있어요" />;
   if (error) return <CorruptState title="사람 보관함 서버에 연결할 수 없어요" description={error} unavailable onReset={() => { window.location.reload(); return true; }} />;
   return <main className={`screen-content people-content signal-screen signal-people ${styles.scope}`} aria-labelledby="people-title">
@@ -414,7 +414,7 @@ export function LivePeopleScreen() {
 export function LiveCompatibilityScreen() {
   const [profiles, setProfiles] = useState<ServerProfile[] | null>(null);
   const [left, setLeft] = useState(""); const [right, setRight] = useState(""); const [result, setResult] = useState<{ summary: string; limited: boolean } | null>(null); const [error, setError] = useState("");
-  useEffect(() => { void listProfiles().then((items) => { setProfiles(items); setLeft(items[0]?.id ?? ""); setRight(items[1]?.id ?? ""); }).catch(() => setError("프로필을 불러오지 못했어요.")); }, []);
+  useEffect(() => { void listProfiles().then((items) => { setProfiles(items); setLeft(items[0]?.id ?? ""); setRight(items[1]?.id ?? ""); }).catch((reason) => setError(formatApiRequestError(reason, "프로필을 불러오지 못했어요."))); }, []);
   if (!profiles && !error) return <LoadingState title="궁합 대상을 불러오고 있어요" />;
-  return <main className={`screen-content compatibility-content signal-screen signal-compatibility ${styles.scope}`} aria-labelledby="compatibility-title"><div className="signal-hero compatibility-hero"><p className="section-kicker signal-kicker">두 사람의 관계</p><h1 id="compatibility-title">서버 명식으로 궁합 보기</h1><p className="supporting">두 프로필의 최신 계산 스냅샷을 고정해 결과를 만듭니다.</p></div>{profiles && profiles.length < 2 ? <EmptyState title="두 사람 이상 필요해요" description="사람 보관함에서 프로필을 추가하세요." action={{ href: "/people/new", label: "인물 추가" }} /> : <form className="compatibility-form signal-panel signal-compatibility-form" onSubmit={(event) => { event.preventDefault(); if (!left || !right || left === right) return setError("서로 다른 두 사람을 선택해 주세요."); void createCompatibility(left, right, "couple").then((value) => { setResult({ summary: value.summary, limited: value.limitedByUnknownTime }); setError(""); }).catch((reason) => setError(reason instanceof Error ? reason.message : "궁합을 만들지 못했어요.")); }}><label className="signal-field">첫 번째 사람<select value={left} onChange={(event) => setLeft(event.target.value)}>{profiles?.map((item) => <option key={item.id} value={item.id}>{item.nickname}</option>)}</select></label><label className="signal-field">두 번째 사람<select value={right} onChange={(event) => setRight(event.target.value)}>{profiles?.map((item) => <option key={item.id} value={item.id}>{item.nickname}</option>)}</select></label><button className="primary-button signal-action signal-primary-action" type="submit">실제 궁합 계산하기</button></form>}{result && <section className="signal-panel"><h2>관계 요약</h2><p>{result.summary}</p>{result.limited && <p className="accuracy-note">출생 시간 미상으로 시주 기반 범위는 제외했어요.</p>}</section>}{error && <p className="form-error signal-error" role="alert">{error}</p>}</main>;
+  return <main className={`screen-content compatibility-content signal-screen signal-compatibility ${styles.scope}`} aria-labelledby="compatibility-title"><div className="signal-hero compatibility-hero"><p className="section-kicker signal-kicker">두 사람의 관계</p><h1 id="compatibility-title">서버 명식으로 궁합 보기</h1><p className="supporting">두 프로필의 최신 계산 스냅샷을 고정해 결과를 만듭니다.</p></div>{profiles && profiles.length < 2 ? <EmptyState title="두 사람 이상 필요해요" description="사람 보관함에서 프로필을 추가하세요." action={{ href: "/people/new", label: "인물 추가" }} /> : <form className="compatibility-form signal-panel signal-compatibility-form" onSubmit={(event) => { event.preventDefault(); if (!left || !right || left === right) return setError("서로 다른 두 사람을 선택해 주세요."); void createCompatibility(left, right, "couple").then((value) => { setResult({ summary: value.summary, limited: value.limitedByUnknownTime }); setError(""); }).catch((reason) => setError(formatApiRequestError(reason, "궁합을 만들지 못했어요."))); }}><label className="signal-field">첫 번째 사람<select value={left} onChange={(event) => setLeft(event.target.value)}>{profiles?.map((item) => <option key={item.id} value={item.id}>{item.nickname}</option>)}</select></label><label className="signal-field">두 번째 사람<select value={right} onChange={(event) => setRight(event.target.value)}>{profiles?.map((item) => <option key={item.id} value={item.id}>{item.nickname}</option>)}</select></label><button className="primary-button signal-action signal-primary-action" type="submit">실제 궁합 계산하기</button></form>}{result && <section className="signal-panel"><h2>관계 요약</h2><p>{result.summary}</p>{result.limited && <p className="accuracy-note">출생 시간 미상으로 시주 기반 범위는 제외했어요.</p>}</section>}{error && <p className="form-error signal-error" role="alert">{error}</p>}</main>;
 }

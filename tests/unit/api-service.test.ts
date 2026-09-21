@@ -156,7 +156,33 @@ describe("live API journey", () => {
     expect(thrown).toBeInstanceOf(ApiRequestError);
     expect(thrown).toMatchObject({ status: 403, error: { request_id: "req_test" } });
     expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(formatApiRequestError(thrown)).toBe("Could not validate credentials (문의 시 참조 ID: req_test)");
+    // the raw backend message ("Could not validate credentials") is not user-facing copy
+    expect(formatApiRequestError(thrown)).toBe("세션을 준비하지 못했어요. 잠시 후 다시 시도해 주세요. (문의 시 참조 ID: req_test)");
+  });
+
+  it("tells an expired account session to log in and reports the reference id", async () => {
+    window.localStorage.setItem(AUTH_KEY, JSON.stringify({ kind: "account", accessToken: "acct_jwt", anonymousToken: null }));
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () => json({ code: "FORBIDDEN", message: "Could not validate credentials", request_id: "req_acct" }, 403));
+    const { ApiRequestError } = await import("@/lib/api/client");
+    const { formatApiRequestError, isAccountSessionExpired, listProfiles } = await import("@/lib/api/service");
+
+    const thrown = await listProfiles().catch((error: unknown) => error);
+
+    expect(thrown).toBeInstanceOf(ApiRequestError);
+    expect(isAccountSessionExpired(thrown)).toBe(true);
+    expect(formatApiRequestError(thrown)).toBe("로그인 세션이 만료됐어요. 다시 로그인하면 저장된 기록을 이어갈 수 있습니다. (문의 시 참조 ID: req_acct)");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not claim an account expiry for a genuine authorization denial", async () => {
+    window.localStorage.setItem(AUTH_KEY, JSON.stringify({ kind: "account", accessToken: "acct_jwt", anonymousToken: null }));
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => json({ code: "FORBIDDEN", message: "접근 권한이 없습니다.", request_id: "req_deny" }, 403));
+    const { formatApiRequestError, isAccountSessionExpired, listProfiles } = await import("@/lib/api/service");
+
+    const thrown = await listProfiles().catch((error: unknown) => error);
+
+    expect(isAccountSessionExpired(thrown)).toBe(false);
+    expect(formatApiRequestError(thrown)).toBe("접근 권한이 없습니다. (문의 시 참조 ID: req_deny)");
   });
 });
 

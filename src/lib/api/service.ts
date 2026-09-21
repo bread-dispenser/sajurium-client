@@ -275,9 +275,25 @@ async function request<T>(path: string, options: Parameters<typeof apiRequest<T>
   }
 }
 
+/**
+ * True when an account session's token was rejected, i.e. the user must log in again. Screens use
+ * this to show a login affordance instead of a dead end, because an account session cannot be
+ * silently replaced with an anonymous one.
+ */
+export function isAccountSessionExpired(error: unknown): boolean {
+  return isCredentialRejection(error) && readAuthSession()?.kind === "account";
+}
+
 export function formatApiRequestError(error: unknown, fallback = "요청을 처리하지 못했어요. 잠시 후 다시 시도해 주세요."): string {
   if (error instanceof ApiRequestError) {
     const reference = error.error.request_id ? ` (문의 시 참조 ID: ${error.error.request_id})` : "";
+    // The backend answers a rejected token with an English `Could not validate credentials`;
+    // showing that verbatim tells the user nothing actionable, so each case gets its own copy.
+    if (isCredentialRejection(error)) {
+      return readAuthSession()?.kind === "account"
+        ? `로그인 세션이 만료됐어요. 다시 로그인하면 저장된 기록을 이어갈 수 있습니다.${reference}`
+        : `세션을 준비하지 못했어요. 잠시 후 다시 시도해 주세요.${reference}`;
+    }
     return `${error.error.message}${reference}`;
   }
   return error instanceof Error && error.message ? error.message : fallback;

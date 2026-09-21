@@ -8,7 +8,7 @@ import { getDailyFlow, getMonthlyFlow, INITIAL_BIRTH, INITIAL_LIBRARY_ITEMS } fr
 import { useHydrated } from "@/hooks/use-hydrated";
 import { CorruptState, EmptyState, LoadingState } from "./page-state";
 import styles from "./saas-core-rollout.module.css";
-import { deleteLibraryItem, getFlow, listLibrary, type LiveReport } from "@/lib/api/service";
+import { deleteLibraryItem, formatApiRequestError, getFlow, isAccountSessionExpired, listLibrary, type LiveReport } from "@/lib/api/service";
 
 function localDate(date = new Date()) {
   const adjusted = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
@@ -310,18 +310,18 @@ export function LibraryScreen() {
   const [error, setError] = useState("");
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [serverItems, setServerItems] = useState<LibraryItem[] | null>(null);
-  const [serverError, setServerError] = useState(false);
+  const [serverError, setServerError] = useState("");
   useEffect(() => {
     if (!hydrated) return;
     let active = true;
     void listLibrary()
       .then((page) => active && setServerItems(page.items))
-      .catch(() => active && setServerError(true));
+      .catch((reason) => active && setServerError(formatApiRequestError(reason, "서버 보관함을 확인하지 못했어요.")));
     return () => { active = false; };
   }, [hydrated]);
   void raw;
   if (!hydrated || (!serverItems && !serverError)) return <LoadingState title="서버 보관함을 확인하고 있어요" />;
-  if (serverError || !serverItems) return <CorruptState title="보관함 서버에 연결할 수 없어요" description="백엔드 연결 상태를 확인한 뒤 다시 시도해 주세요." unavailable onReset={() => { window.location.reload(); return true; }} />;
+  if (serverError || !serverItems) return <CorruptState title="보관함 서버에 연결할 수 없어요" description={serverError || "백엔드 연결 상태를 확인한 뒤 다시 시도해 주세요."} unavailable onReset={() => { window.location.reload(); return true; }} />;
   const source = serverItems;
   const latestDate = source.reduce((latest, item) => item.createdAt > latest ? item.createdAt : latest, "").slice(0, 10);
   const recentThreshold = latestDate ? new Date(`${latestDate}T00:00:00.000Z`).getTime() - 6 * 86_400_000 : 0;
@@ -408,9 +408,17 @@ export function LibraryScreen() {
 export function LiveFlowScreen({ mode }: { mode: "today" | "month" | "year" }) {
   const [report, setReport] = useState<LiveReport | null>(null);
   const [error, setError] = useState("");
-  useEffect(() => { void getFlow(mode).then(setReport).catch((reason) => setError(reason instanceof Error ? reason.message : "흐름을 불러오지 못했어요.")); }, [mode]);
+  const [needsLogin, setNeedsLogin] = useState(false);
+  useEffect(() => {
+    void getFlow(mode)
+      .then(setReport)
+      .catch((reason) => {
+        setNeedsLogin(isAccountSessionExpired(reason));
+        setError(formatApiRequestError(reason, "흐름을 불러오지 못했어요."));
+      });
+  }, [mode]);
   if (!report && !error) return <LoadingState title="서버 흐름을 계산하고 있어요" />;
-  if (error) return <EmptyState title="흐름을 준비할 수 없어요" description={error} action={{ href: "/birth", label: "출생 정보 입력" }} />;
+  if (error) return <EmptyState title={needsLogin ? "다시 로그인해 주세요" : "흐름을 준비할 수 없어요"} description={error} action={needsLogin ? { href: "/login", label: "로그인" } : { href: "/birth", label: "출생 정보 입력" }} />;
   const title = mode === "today" ? "오늘의 흐름" : mode === "month" ? "이번 달 흐름" : "올해 흐름";
   return <main className={`screen-content flow-content signal-atlas-flow-screen ${styles.scope}`} aria-labelledby="flow-title"><div className="editorial-hero signal-atlas-flow-lead"><p className="section-kicker">{title}</p><h1 id="flow-title">{report?.sections[0]?.content ?? report?.kind}</h1><p className="supporting">서버에 저장된 명식과 기간 기준으로 생성한 결과예요.</p></div><section className="flow-sections" aria-label="흐름 내용">{report?.sections.map((section) => <article className="signal-panel" key={section.section_id}><h2>{section.title}</h2><p>{section.content}</p></article>)}</section><Link className="secondary-button" href="/report">기본 리포트로</Link></main>;
 }
@@ -418,8 +426,16 @@ export function LiveFlowScreen({ mode }: { mode: "today" | "month" | "year" }) {
 export function LiveHomeScreen() {
   const [data, setData] = useState<{ flow: LiveReport; count: number } | null>(null);
   const [error, setError] = useState("");
-  useEffect(() => { void Promise.all([getFlow("today"), listLibrary()]).then(([flow, library]) => setData({ flow, count: library.items.length })).catch((reason) => setError(reason instanceof Error ? reason.message : "홈을 불러오지 못했어요.")); }, []);
+  const [needsLogin, setNeedsLogin] = useState(false);
+  useEffect(() => {
+    void Promise.all([getFlow("today"), listLibrary()])
+      .then(([flow, library]) => setData({ flow, count: library.items.length }))
+      .catch((reason) => {
+        setNeedsLogin(isAccountSessionExpired(reason));
+        setError(formatApiRequestError(reason, "홈을 불러오지 못했어요."));
+      });
+  }, []);
   if (!data && !error) return <LoadingState title="오늘의 흐름을 불러오고 있어요" />;
-  if (error) return <EmptyState title="오늘의 흐름을 준비할 수 없어요" description={error} action={{ href: "/birth", label: "출생 정보 입력" }} />;
+  if (error) return <EmptyState title={needsLogin ? "다시 로그인해 주세요" : "오늘의 흐름을 준비할 수 없어요"} description={error} action={needsLogin ? { href: "/login", label: "로그인" } : { href: "/birth", label: "출생 정보 입력" }} />;
   return <main className={`screen-content home-content platform-home signal-atlas-home-screen ${styles.scope}`} aria-labelledby="home-title"><header className="signal-atlas-home-lead"><p>오늘 · 서버 기록 {data?.count ?? 0}개</p><h1 id="home-title">오늘의 흐름</h1></header><section className="home-summary signal-atlas-today-signal"><p>오늘의 신호</p><h2>{data?.flow.sections[0]?.content}</h2><p className="signal-atlas-signal-evidence">서버에 저장된 명식과 오늘 날짜를 기준으로 생성했습니다.</p><Link className="text-link" href="/flow/today">전체 흐름 보기</Link></section><section className="service-group signal-atlas-consultation-cta"><Link href="/consult/new"><strong>오늘의 고민을 남겨볼까요?</strong><span aria-hidden="true">↗</span></Link></section><Link className="secondary-button" href="/library">서버 보관함 보기</Link></main>;
 }

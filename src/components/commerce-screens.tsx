@@ -11,7 +11,7 @@ import { getProduct, INITIAL_BIRTH, INITIAL_COMMERCE_DATA } from "@/lib/fixtures
 import { useHydrated } from "@/hooks/use-hydrated";
 import styles from "./saas-system-rollout.module.css";
 import { CorruptState, LoadingState } from "./page-state";
-import { createOrder, getCredits, getOrder, getProduct as getServerProduct, listProducts, type LiveOrder } from "@/lib/api/service";
+import { createOrder, formatApiRequestError, getCredits, getOrder, getProduct as getServerProduct, listProducts, type LiveOrder } from "@/lib/api/service";
 import type { ProductView } from "@/lib/contracts";
 
 const CURRENT_PROFILE_ID = "prf_01J62Z7M4Q8Y3T1K9A5C6N2R0X";
@@ -161,7 +161,7 @@ export function ProductDetailScreen({ productId }: { productId: ProductId }) {
 
 export function LiveProductDetailScreen({ productId }: { productId: ProductId }) {
   const [product, setProduct] = useState<ProductView | null>(null); const [error, setError] = useState("");
-  useEffect(() => { void getServerProduct(productId).then(setProduct).catch((reason) => setError(reason instanceof Error ? reason.message : "상품을 불러오지 못했어요.")); }, [productId]);
+  useEffect(() => { void getServerProduct(productId).then(setProduct).catch((reason) => setError(formatApiRequestError(reason, "상품을 불러오지 못했어요."))); }, [productId]);
   if (!product && !error) return <LoadingState title="서버 상품을 불러오고 있어요" />;
   if (error) return <CorruptState title="상품을 불러오지 못했어요" description={error} unavailable onReset={() => { window.location.reload(); return true; }} />;
   return <main className={`screen-content product-detail signal-atlas-commerce-detail ${styles.srScreen}`} aria-labelledby="product-title"><p className="section-kicker">서버 카탈로그</p><h1 id="product-title">{product?.title}</h1><p className="lead">{product?.description}</p><strong className="product-price">{product ? price(product.priceAmount) : ""}</strong><p className="supporting">상품 버전 {product?.version} · {product?.kind === "consultation_credit" ? "상담 이용권" : "리포트"}</p><section><h2>필요한 입력</h2><ul>{product?.requiredInputs.map((item) => <li key={item}>{item}</li>)}</ul></section><section><h2>생성 방식</h2><p>{product?.generationMethod}</p></section><section><h2>환불 정책</h2><p>{product?.refundPolicy}</p></section><Link className="primary-button signal-primary-cta" href={`/checkout/${productId}`}>서버 주문으로</Link></main>;
@@ -181,7 +181,7 @@ export function CheckoutScreen({ productId }: { productId: ProductId }) {
       const created = await createOrder(productId);
       router.push(`/orders/${created.order_id}?productId=${productId}&state=pending&source=server`);
     } catch (error) {
-      setServerError(error instanceof Error ? error.message : "주문을 만들지 못했어요.");
+      setServerError(formatApiRequestError(error, "주문을 만들지 못했어요."));
       setSubmitting(false);
     }
   }

@@ -19,7 +19,7 @@ import { commerceStore, consultationStore, createTransactionStep, libraryStore, 
 import { useHydrated } from "@/hooks/use-hydrated";
 import { CorruptState, EmptyState, LoadingState } from "./page-state";
 import styles from "./saas-core-rollout.module.css";
-import { createConsultation, deleteConsultation, getConsultation, getCredits, listConsultations, sendConsultationMessage, type ApiConsultation } from "@/lib/api/service";
+import { createConsultation, deleteConsultation, formatApiRequestError, getConsultation, getCredits, listConsultations, sendConsultationMessage, type ApiConsultation } from "@/lib/api/service";
 
 const RESTRICTED_CONSULTATION_MESSAGE = "사망·질병 진단·임신·재판 결과·투자 수익·도박·타인의 속마음·외도처럼 확정을 요구하는 질문에는 확정적인 답을 제공하지 않아요. 안전한 질문으로 바꿔 주세요.";
 
@@ -215,7 +215,7 @@ function ConsultationComposer({ initialDraft, failFirstResponse }: { initialDraf
       session = toLocalConsultation(await createConsultation(draft.topic.toUpperCase(), content), draft.topic);
     } catch (requestError) {
       setPhase("failure");
-      setError(requestError instanceof Error ? requestError.message : "상담 서버가 답변을 만들지 못했어요.");
+      setError(formatApiRequestError(requestError, "상담 서버가 답변을 만들지 못했어요."));
       return;
     }
     const nextData: ConsultationData = {
@@ -358,7 +358,7 @@ export function ConsultationSessionScreen({ sessionId }: { sessionId: string }) 
       updated = toLocalConsultation(await sendConsultationMessage(activeSession.id, question), activeSession.context.topic as TopicId);
       balance = (await getCredits()).balance.balance;
     } catch (requestError) {
-      return setError(requestError instanceof Error ? requestError.message : "추가 답변을 만들지 못했어요.");
+      return setError(formatApiRequestError(requestError, "추가 답변을 만들지 못했어요."));
     }
     const nextCommerce: CommerceData = { ...activeCommerce, consultationCredits: balance };
     const nextData: ConsultationData = { ...activeData, sessions: activeData.sessions.map((candidate) => candidate.id === activeSession.id ? updated : candidate) };
@@ -459,7 +459,7 @@ export function LiveConsultationSessionScreen({ sessionId }: { sessionId: string
   const [question, setQuestion] = useState("");
   const [error, setError] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
-  useEffect(() => { void getConsultation(sessionId).then(setSession).catch((reason) => setError(reason instanceof Error ? reason.message : "상담을 불러오지 못했어요.")); }, [sessionId]);
+  useEffect(() => { void getConsultation(sessionId).then(setSession).catch((reason) => setError(formatApiRequestError(reason, "상담을 불러오지 못했어요."))); }, [sessionId]);
   if (!session && !error) return <LoadingState title="서버 상담을 불러오고 있어요" />;
   if (error) return <EmptyState title="상담을 찾을 수 없어요" description={error} action={{ href: "/consult", label: "상담 목록" }} />;
 
@@ -492,7 +492,7 @@ export function LiveConsultationSessionScreen({ sessionId }: { sessionId: string
       <p className="section-kicker">서버 상담</p>
       <h1 id="consult-session-title">{session?.session_title ?? "상담 기록"}</h1>
       <section className="message-list">{session?.messages.map((message) => <article key={message.id} className={message.role}><small>{message.role === "user" ? "나" : "사주리움"}</small><p>{message.content}</p></article>)}</section>
-      <form className="follow-up-form" onSubmit={(event) => { event.preventDefault(); if (!question.trim()) return; void sendConsultationMessage(sessionId, question).then((value) => { setSession(value); setQuestion(""); }).catch((reason) => setError(reason instanceof Error ? reason.message : "답변을 만들지 못했어요.")); }}>
+      <form className="follow-up-form" onSubmit={(event) => { event.preventDefault(); if (!question.trim()) return; void sendConsultationMessage(sessionId, question).then((value) => { setSession(value); setQuestion(""); }).catch((reason) => setError(formatApiRequestError(reason, "답변을 만들지 못했어요."))); }}>
         <label>추가 질문<textarea value={question} onChange={(event) => setQuestion(event.target.value)} /></label>
         <button className="primary-button" type="submit">서버 답변 요청</button>
       </form>

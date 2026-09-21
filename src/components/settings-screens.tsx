@@ -33,7 +33,7 @@ import {
   settingsStore,
 } from "@/lib/storage";
 import { CorruptState, EmptyState, LoadingState } from "./page-state";
-import { requestPrivacyJob } from "@/lib/api/service";
+import { formatApiRequestError, requestPrivacyJob } from "@/lib/api/service";
 
 function getSettings(): SettingsData | null {
   const inspection = settingsStore.inspect();
@@ -389,7 +389,7 @@ export function LivePrivacyScreen() {
   const [pending, setPending] = useState<"exports" | "deletions" | null>(null);
   async function submit(type: "exports" | "deletions") {
     setPending(type); setMessage("");
-    try { const job = await requestPrivacyJob(type); setMessage(`${type === "exports" ? "내보내기" : "삭제"} 요청이 접수됐어요. 작업 ${job.job_id} · ${job.status}`); } catch (error) { setMessage(error instanceof Error ? error.message : "요청을 접수하지 못했어요."); } finally { setPending(null); }
+    try { const job = await requestPrivacyJob(type); setMessage(`${type === "exports" ? "내보내기" : "삭제"} 요청이 접수됐어요. 작업 ${job.job_id} · ${job.status}`); } catch (error) { setMessage(formatApiRequestError(error, "요청을 접수하지 못했어요.")); } finally { setPending(null); }
   }
   return <main className="screen-content information-content" aria-labelledby="privacy-title"><p className="section-kicker">개인정보</p><h1 id="privacy-title">내 데이터 요청</h1><p className="supporting">요청은 서버에 비동기 작업으로 등록됩니다. 결제 기록처럼 법적 보관 대상은 별도 정책을 따릅니다.</p><button className="primary-button" disabled={pending !== null} type="button" onClick={() => { void submit("exports"); }}>{pending === "exports" ? "내보내기 요청 중" : "내 데이터 내보내기"}</button><button className="secondary-button" disabled={pending !== null} type="button" onClick={() => { void submit("deletions"); }}>{pending === "deletions" ? "삭제 요청 중" : "계정 데이터 삭제 요청"}</button>{message && <p className="form-error" role="status">{message}</p>}</main>;
 }

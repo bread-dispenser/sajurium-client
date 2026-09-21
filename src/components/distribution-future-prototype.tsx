@@ -8,7 +8,7 @@ import { INITIAL_SETTINGS_DATA } from "@/lib/fixtures";
 import { settingsStore } from "@/lib/storage";
 import { CorruptState, LoadingState } from "./page-state";
 import styles from "./saas-system-rollout.module.css";
-import { createReportShare, deactivateShareLink, getSharedContent, listShareLinks } from "@/lib/api/service";
+import { createReportShare, deactivateShareLink, formatApiRequestError, getSharedContent, listShareLinks } from "@/lib/api/service";
 
 const panel: CSSProperties = {
   border: "1px solid var(--sr-line)",
@@ -35,15 +35,15 @@ function Disclosure({ children }: { children: ReactNode }) {
 export function LiveShareLinksScreen() {
   const [links, setLinks] = useState<Array<{ id: number; share_url?: string | null; expires_at: string; is_active: boolean }> | null>(null);
   const [error, setError] = useState("");
-  useEffect(() => { void listShareLinks().then(setLinks).catch(() => setError("공유 링크를 불러오지 못했어요.")); }, []);
+  useEffect(() => { void listShareLinks().then(setLinks).catch((reason) => setError(formatApiRequestError(reason, "공유 링크를 불러오지 못했어요."))); }, []);
   if (!links && !error) return <LoadingState title="서버 공유 링크를 불러오고 있어요" />;
-  return <main className={`screen-content share-links-content ${styles.srScreen}`} aria-labelledby="share-links-title"><p className="section-kicker">공유 링크</p><h1 id="share-links-title">공개 범위를 직접 관리해요</h1><p className="supporting">링크 토큰은 서버에 해시로만 저장되며, 공개 결과에는 민감한 출생 정보가 포함되지 않습니다.</p><button className="primary-button" type="button" onClick={() => { void createReportShare().then((link) => setLinks((items) => [link, ...(items ?? [])])).catch((reason) => setError(reason instanceof Error ? reason.message : "리포트를 먼저 생성해 주세요.")); }}>현재 리포트 공유 링크 만들기</button>{error && <p className="form-error" role="alert">{error}</p>}<section className="signal-row-list">{links?.length === 0 ? <p>아직 공유 링크가 없어요.</p> : links?.map((link) => <article className="signal-row" key={link.id}><div className="signal-row-copy"><strong>{link.is_active ? "활성 링크" : "비활성 링크"}</strong><small>만료 {link.expires_at}</small>{link.share_url && <code>{link.share_url}</code>}</div>{link.is_active && <button type="button" onClick={() => { void deactivateShareLink(link.id).then((updated) => setLinks((items) => items?.map((item) => item.id === updated.id ? updated : item) ?? null)).catch(() => setError("링크를 비활성화하지 못했어요.")); }}>비활성화</button>}</article>)}</section></main>;
+  return <main className={`screen-content share-links-content ${styles.srScreen}`} aria-labelledby="share-links-title"><p className="section-kicker">공유 링크</p><h1 id="share-links-title">공개 범위를 직접 관리해요</h1><p className="supporting">링크 토큰은 서버에 해시로만 저장되며, 공개 결과에는 민감한 출생 정보가 포함되지 않습니다.</p><button className="primary-button" type="button" onClick={() => { void createReportShare().then((link) => setLinks((items) => [link, ...(items ?? [])])).catch((reason) => setError(formatApiRequestError(reason, "리포트를 먼저 생성해 주세요."))); }}>현재 리포트 공유 링크 만들기</button>{error && <p className="form-error" role="alert">{error}</p>}<section className="signal-row-list">{links?.length === 0 ? <p>아직 공유 링크가 없어요.</p> : links?.map((link) => <article className="signal-row" key={link.id}><div className="signal-row-copy"><strong>{link.is_active ? "활성 링크" : "비활성 링크"}</strong><small>만료 {link.expires_at}</small>{link.share_url && <code>{link.share_url}</code>}</div>{link.is_active && <button type="button" onClick={() => { void deactivateShareLink(link.id).then((updated) => setLinks((items) => items?.map((item) => item.id === updated.id ? updated : item) ?? null)).catch(() => setError("링크를 비활성화하지 못했어요.")); }}>비활성화</button>}</article>)}</section></main>;
 }
 
 export function LiveSharedResultScreen({ token }: { token: string }) {
   const [content, setContent] = useState<{ title: string; sections: Array<{ title?: string; body?: string }> } | null>(null);
   const [error, setError] = useState("");
-  useEffect(() => { void getSharedContent(token).then((value) => setContent({ title: value.title, sections: value.sections as Array<{ title?: string; body?: string }> })).catch(() => setError("공유 링크가 없거나 만료됐어요.")); }, [token]);
+  useEffect(() => { void getSharedContent(token).then((value) => setContent({ title: value.title, sections: value.sections as Array<{ title?: string; body?: string }> })).catch((reason) => setError(formatApiRequestError(reason, "공유 링크가 없거나 만료됐어요."))); }, [token]);
   if (!content && !error) return <LoadingState title="공유 결과를 불러오고 있어요" />;
   if (error) return <main className={`screen-content ${styles.srShared}`}><h1>공유 결과를 열 수 없어요</h1><p>{error}</p></main>;
   return <main className={`screen-content ${styles.srShared}`} aria-labelledby="shared-title"><p className="section-kicker">공유 결과</p><h1 id="shared-title">{content?.title}</h1>{content?.sections.map((section, index) => <article className="signal-panel" key={index}><h2>{section.title}</h2><p>{section.body}</p></article>)}</main>;

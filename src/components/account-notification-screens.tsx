@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { getNotificationPreferences, loginAccount, logoutAccount, registerAccount, requestAccountDeletion, updateNotificationPreferences, type AnonymousMigrationStatus } from "@/lib/api/service";
+import { formatApiRequestError, getNotificationPreferences, loginAccount, logoutAccount, registerAccount, requestAccountDeletion, type AnonymousMigrationStatus, updateNotificationPreferences } from "@/lib/api/service";
 import { LoadingState } from "./page-state";
 import type { FormEvent } from "react";
 import styles from "./saas-system-rollout.module.css";
@@ -263,7 +263,7 @@ export function NotificationCenterScreen() {
 export function LiveNotificationScreen() {
   const [preferences, setPreferences] = useState<{ topics: Record<string, boolean>; quiet_hours_start: number; quiet_hours_end: number; timezone: string } | null>(null);
   const [error, setError] = useState("");
-  useEffect(() => { void getNotificationPreferences().then(setPreferences).catch(() => setError("알림 설정을 불러오지 못했어요.")); }, []);
+  useEffect(() => { void getNotificationPreferences().then(setPreferences).catch((reason) => setError(formatApiRequestError(reason, "알림 설정을 불러오지 못했어요."))); }, []);
   if (!preferences && !error) return <LoadingState title="서버 알림 설정을 불러오고 있어요" />;
   return (
     <main className={`screen-content settings-content ${styles.srScreen}`} aria-labelledby="notification-title">
@@ -308,7 +308,7 @@ export function LiveLoginScreen() {
     event.preventDefault();
     setMessage("");
     const action = mode === "login" ? loginAccount(email, password) : registerAccount(email, password, name);
-    void action.then((result) => setMessage(MIGRATION_MESSAGES[result.migration])).catch((error) => setMessage(error instanceof Error ? error.message : "인증에 실패했어요."));
+    void action.then((result) => setMessage(MIGRATION_MESSAGES[result.migration])).catch((error) => setMessage(formatApiRequestError(error, "인증에 실패했어요.")));
   }
 
   return <main className={`screen-content login-content ${styles.srScreen}`} aria-labelledby="login-title"><p className="section-kicker">계정</p><h1 id="login-title">{mode === "login" ? "로그인" : "계정 만들기"}</h1><p className="supporting">로그인하면 현재 익명 데이터 이전을 이어갈 수 있습니다.</p><form onSubmit={submit}><label className="signal-field">이메일<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>{mode === "register" && <label className="signal-field">이름<input value={name} onChange={(event) => setName(event.target.value)} /></label>}<label className="signal-field">비밀번호<input type="password" minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} required /></label><button className="primary-button" type="submit">{mode === "login" ? "로그인" : "계정 만들기"}</button></form>{message && <p className="form-error" role="status">{message}</p>}<button className="text-button" type="button" onClick={() => setMode((current) => current === "login" ? "register" : "login")}>{mode === "login" ? "계정 만들기" : "로그인으로"}</button><p className="action-note">소셜 로그인은 제공자 자격증명이 연결되면 이 화면에 추가됩니다.</p></main>;
