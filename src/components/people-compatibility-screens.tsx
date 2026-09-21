@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import type { FormEvent } from "react";
 import type {
   BirthInfo,
@@ -20,6 +20,8 @@ import { INITIAL_BIRTH, INITIAL_LIBRARY_ITEMS, INITIAL_PEOPLE_DATA } from "@/lib
 import { compatibilityStore, createTransactionStep, libraryStore, peopleStore, runStorageTransaction } from "@/lib/storage";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { CorruptState, EmptyState, LoadingState } from "./page-state";
+import styles from "./saas-core-rollout.module.css";
+import { createCompatibility, createProfile, deleteProfile, formatApiRequestError, listProfiles, type ServerProfile } from "@/lib/api/service";
 
 const RELATIONSHIP_LABELS: Record<PersonRelationship, string> = {
   self: "본인",
@@ -52,7 +54,7 @@ function getPeopleData(): PeopleData | null {
   const inspection = peopleStore.inspect();
   if (inspection.status === "ok") return inspection.value;
   if (inspection.status !== "empty") return null;
-  return { ...INITIAL_PEOPLE_DATA, people: [...INITIAL_PEOPLE_DATA.people] };
+  return { ...INITIAL_PEOPLE_DATA, people: [] };
 }
 
 function getCompatibilityData(): CompatibilityData | null {
@@ -115,7 +117,7 @@ export function PeopleScreen() {
   }
 
   return (
-    <main className="screen-content people-content signal-screen signal-people" aria-labelledby="people-title">
+    <main className={`screen-content people-content signal-screen signal-people ${styles.scope}`} aria-labelledby="people-title">
       <div className="signal-hero people-hero">
         <p className="section-kicker signal-kicker">사람 보관함</p>
         <h1 id="people-title">관계를 살펴볼 사람을<br />저장하세요</h1>
@@ -156,14 +158,18 @@ export function PersonFormScreen({ personId }: { personId?: string }) {
   if (!data) return <CorruptState title="사람 데이터를 읽을 수 없어요" description="손상된 인물 정보를 확인 없이 덮어쓰지 않습니다." unavailable={peopleStore.inspect().status === "unavailable"} onReset={peopleStore.remove} />;
   const existing = personId ? data.people.find((person) => person.id === personId) : undefined;
   if (personId && !existing) return <EmptyState title="인물을 찾을 수 없어요" description="삭제됐거나 다른 브라우저에 저장된 인물일 수 있어요." action={{ href: "/people", label: "사람 보관함으로" }} />;
-  return <PersonForm key={personId ?? "new"} data={data} existing={existing} />;
+  return <PersonForm key={personId ?? "new"} existing={existing} />;
 }
 
-function PersonForm({ data, existing }: { data: PeopleData; existing?: PersonProfile }) {
+function PersonForm({ existing }: { existing?: PersonProfile }) {
   const router = useRouter();
   const [profile, setProfile] = useState<BirthInfo>(existing?.profile ?? {
     ...INITIAL_BIRTH,
     displayName: "",
+    birthDate: "",
+    birthTime: null,
+    birthTimeUnknown: true,
+    birthplace: "",
     profileType: "other",
     ownerRelationship: "partner",
     thirdPartyConsent: false,
@@ -175,7 +181,7 @@ function PersonForm({ data, existing }: { data: PeopleData; existing?: PersonPro
     setError("");
   }
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!profile.displayName.trim()) return setError("이름 또는 별칭을 입력해 주세요.");
     if (!parseBirthDate(profile.birthDate)) return setError("1900년 이후, 오늘보다 늦지 않은 올바른 생년월일을 입력해 주세요.");
@@ -183,35 +189,26 @@ function PersonForm({ data, existing }: { data: PeopleData; existing?: PersonPro
     if (!profile.birthTimeUnknown && !profile.birthTime) return setError("출생 시간을 입력하거나 시간 미상을 선택해 주세요.");
     if (!profile.birthplace.trim()) return setError("출생지를 입력해 주세요.");
     if (!profile.timezone.trim()) return setError("시간대를 입력해 주세요.");
-    if (!existing && data.people.length >= data.freeLimit) return setError("체험용 무료 저장 한도에 도달했어요.");
     if (profile.profileType === "other" && !profile.thirdPartyConsent) return setError("상대방의 정보를 저장할 권한이나 동의를 확인해 주세요.");
     if (profile.profileType === "self" && profile.ownerRelationship !== "self") return setError("본인 프로필의 관계는 본인이어야 해요.");
     if (profile.profileType === "other" && profile.ownerRelationship === "self") return setError("다른 사람과의 관계를 선택해 주세요.");
-    const now = new Date().toISOString();
-    const person: PersonProfile = {
-      id: existing?.id ?? `person-${now.replace(/\D/g, "")}`,
-      profile: {
-        ...profile,
-        displayName: profile.displayName.trim(),
-        birthplace: profile.birthplace.trim(),
-        timezone: profile.timezone.trim(),
-        birthTime: profile.birthTimeUnknown ? null : profile.birthTime,
-        personalization: {
-          ...profile.personalization,
-          relationshipStatus: profile.personalization.relationshipStatus?.trim() || null,
-          occupationStatus: profile.personalization.occupationStatus?.trim() || null,
-          primaryConcern: profile.personalization.primaryConcern?.trim() || null,
-        },
-      },
-      createdAt: existing?.createdAt ?? now,
+    if (existing) return setError("기존 프로필 수정은 서버 전환 중입니다. 사람 보관함에서 삭제 후 다시 등록해 주세요.");
+    const normalized: BirthInfo = {
+      ...profile,
+      displayName: profile.displayName.trim(), birthplace: profile.birthplace.trim(), timezone: profile.timezone.trim(),
+      birthTime: profile.birthTimeUnknown ? null : profile.birthTime,
+      personalization: { ...profile.personalization, relationshipStatus: profile.personalization.relationshipStatus?.trim() || null, occupationStatus: profile.personalization.occupationStatus?.trim() || null, primaryConcern: profile.personalization.primaryConcern?.trim() || null },
     };
-    const people = existing ? data.people.map((candidate) => candidate.id === existing.id ? person : candidate) : [...data.people, person];
-    if (!peopleStore.write({ ...data, people })) return setError("이 브라우저에서는 인물을 저장할 수 없어요.");
-    router.push("/people");
+    try {
+      await createProfile(normalized);
+      router.push("/people");
+    } catch (reason) {
+      setError(formatApiRequestError(reason, "서버에 인물을 저장하지 못했어요."));
+    }
   }
 
   return (
-    <form className="screen-content person-form signal-screen signal-person-form" onSubmit={submit} aria-labelledby="person-form-title">
+    <form className={`screen-content person-form signal-screen signal-person-form ${styles.scope}`} onSubmit={submit} aria-labelledby="person-form-title">
       <div className="signal-hero person-form-hero">
         <p className="section-kicker signal-kicker">{existing ? "인물 수정" : "새 인물"}</p>
         <h1 id="person-form-title">이 사람의 출생 정보를<br />입력해 주세요</h1>
@@ -321,7 +318,7 @@ export function CompatibilityHomeScreen() {
   }
 
   return (
-    <main className="screen-content compatibility-content signal-screen signal-compatibility" aria-labelledby="compatibility-title">
+    <main className={`screen-content compatibility-content signal-screen signal-compatibility ${styles.scope}`} aria-labelledby="compatibility-title">
       <div className="signal-hero compatibility-hero">
         <p className="section-kicker signal-kicker">두 사람의 관계</p>
         <h1 id="compatibility-title">두 사람의 시간이<br />만나는 지점</h1>
@@ -365,7 +362,7 @@ export function CompatibilityResultScreen({ resultId }: { resultId: string }) {
   const unknownTime = result.personA.birthTimeUnknown || result.personB.birthTimeUnknown;
 
   return (
-    <main className="screen-content compatibility-result signal-screen signal-compatibility-result" aria-labelledby="compatibility-result-title">
+    <main className={`screen-content compatibility-result signal-screen signal-compatibility-result ${styles.scope}`} aria-labelledby="compatibility-result-title">
       <div className="signal-hero compatibility-result-hero">
         <p className="section-kicker signal-kicker">{COMPATIBILITY_LABELS[result.relationshipType]} · 관계 요약</p>
         <h1 id="compatibility-result-title">{result.personA.displayName}님과<br />{result.personB.displayName}님의 관계</h1>
@@ -398,4 +395,26 @@ export function CompatibilityResultScreen({ resultId }: { resultId: string }) {
       <Link className="secondary-button signal-action" href="/compatibility">다른 두 사람 선택</Link>
     </main>
   );
+}
+
+export function LivePeopleScreen() {
+  const [profiles, setProfiles] = useState<ServerProfile[] | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => { void listProfiles().then(setProfiles).catch((reason) => setError(formatApiRequestError(reason, "프로필을 불러오지 못했어요."))); }, []);
+  if (!profiles && !error) return <LoadingState title="서버 프로필을 불러오고 있어요" />;
+  if (error) return <CorruptState title="사람 보관함 서버에 연결할 수 없어요" description={error} unavailable onReset={() => { window.location.reload(); return true; }} />;
+  return <main className={`screen-content people-content signal-screen signal-people ${styles.scope}`} aria-labelledby="people-title">
+    <div className="signal-hero people-hero"><p className="section-kicker signal-kicker">사람 보관함</p><h1 id="people-title">서버에 저장한 사람</h1><p className="supporting">출생 정보는 권한 있는 세션에서만 저장하고 목록에서는 가려 보여요.</p></div>
+    <Link className="primary-button signal-action signal-primary-action" href="/people/new">새 인물 추가</Link>
+    {profiles?.length === 0 ? <EmptyState title="저장한 사람이 없어요" description="궁합을 보려면 두 사람의 프로필이 필요해요." action={{ href: "/people/new", label: "인물 추가" }} /> : <div className="people-list signal-row-list">{profiles?.map((person) => <article key={person.id} className="signal-row signal-person-row"><div className="signal-row-copy"><small>{person.isSelf ? "본인" : person.relationship ?? "관계 프로필"}</small><h2>{person.nickname}</h2><p>{person.birthDate.slice(0, 4)}년생 · {person.birthLocation ?? "출생지 비공개"}</p></div><button className="signal-action signal-destructive-action" type="button" onClick={() => { void deleteProfile(person.id).then(() => setProfiles((items) => items?.filter((item) => item.id !== person.id) ?? null)).catch(() => setError("삭제하지 못했어요.")); }}>삭제</button></article>)}</div>}
+    <Link className="secondary-button signal-action" href="/compatibility">두 사람 궁합 보기</Link>
+  </main>;
+}
+
+export function LiveCompatibilityScreen() {
+  const [profiles, setProfiles] = useState<ServerProfile[] | null>(null);
+  const [left, setLeft] = useState(""); const [right, setRight] = useState(""); const [result, setResult] = useState<{ summary: string; limited: boolean } | null>(null); const [error, setError] = useState("");
+  useEffect(() => { void listProfiles().then((items) => { setProfiles(items); setLeft(items[0]?.id ?? ""); setRight(items[1]?.id ?? ""); }).catch((reason) => setError(formatApiRequestError(reason, "프로필을 불러오지 못했어요."))); }, []);
+  if (!profiles && !error) return <LoadingState title="궁합 대상을 불러오고 있어요" />;
+  return <main className={`screen-content compatibility-content signal-screen signal-compatibility ${styles.scope}`} aria-labelledby="compatibility-title"><div className="signal-hero compatibility-hero"><p className="section-kicker signal-kicker">두 사람의 관계</p><h1 id="compatibility-title">서버 명식으로 궁합 보기</h1><p className="supporting">두 프로필의 최신 계산 스냅샷을 고정해 결과를 만듭니다.</p></div>{profiles && profiles.length < 2 ? <EmptyState title="두 사람 이상 필요해요" description="사람 보관함에서 프로필을 추가하세요." action={{ href: "/people/new", label: "인물 추가" }} /> : <form className="compatibility-form signal-panel signal-compatibility-form" onSubmit={(event) => { event.preventDefault(); if (!left || !right || left === right) return setError("서로 다른 두 사람을 선택해 주세요."); void createCompatibility(left, right, "couple").then((value) => { setResult({ summary: value.summary, limited: value.limitedByUnknownTime }); setError(""); }).catch((reason) => setError(formatApiRequestError(reason, "궁합을 만들지 못했어요."))); }}><label className="signal-field">첫 번째 사람<select value={left} onChange={(event) => setLeft(event.target.value)}>{profiles?.map((item) => <option key={item.id} value={item.id}>{item.nickname}</option>)}</select></label><label className="signal-field">두 번째 사람<select value={right} onChange={(event) => setRight(event.target.value)}>{profiles?.map((item) => <option key={item.id} value={item.id}>{item.nickname}</option>)}</select></label><button className="primary-button signal-action signal-primary-action" type="submit">실제 궁합 계산하기</button></form>}{result && <section className="signal-panel"><h2>관계 요약</h2><p>{result.summary}</p>{result.limited && <p className="accuracy-note">출생 시간 미상으로 시주 기반 범위는 제외했어요.</p>}</section>}{error && <p className="form-error signal-error" role="alert">{error}</p>}</main>;
 }

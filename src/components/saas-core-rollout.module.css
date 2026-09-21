@@ -1,0 +1,1217 @@
+/* SaaS core rollout scope.
+   Locked direction source: the p0 system on / and /birth (globals.css .p0-*).
+   Strategy: one hashed wrapper class (.scope) applied to every owned screen root.
+   Descendants are targeted with element selectors and [class~="..."] attribute
+   selectors only, so nothing here can collide with the system worker's global
+   stylesheet and no global class name in markup changes. */
+
+.scope.scope {
+  --scc-canvas: #f4f6f8;
+  --scc-surface: #ffffff;
+  --scc-surface-hover: #eceff3;
+  --scc-input-hover: #fafbfc;
+  --scc-ink: #181b21;
+  --scc-muted: #586170;
+  --scc-line: #d9dee7;
+  --scc-control-line: #a1a9b7;
+  --scc-accent: #a22655;
+  --scc-action: #a22655;
+  --scc-action-hover: #891e47;
+  --scc-on-action: #ffffff;
+  --scc-accent-soft: #f8e8ee;
+  --scc-error: #a22655;
+  --scc-error-bg: #f8e8ee;
+  --scc-disabled-bg: #e8ebf0;
+  --scc-disabled-ink: #586170;
+  --scc-radius-control: 8px;
+  --scc-radius-surface: 12px;
+  --scc-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --scc-ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --scc-press: 150ms;
+  --scc-selection: 240ms;
+  --scc-entry: 280ms;
+  --scc-conditional: 220ms;
+  --scc-stagger: 70ms;
+
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+  min-width: 0;
+  color: var(--scc-ink);
+  font-family: var(--font-sans), "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+  font-synthesis: none;
+  line-height: 1.625;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+  animation: scc-enter var(--scc-entry) var(--scc-ease-out) both;
+}
+
+/* Restrained entrance: children rise 8px and fade in, 70ms stagger, capped. */
+.scope > * {
+  animation: scc-child var(--scc-entry) var(--scc-ease-out) both;
+}
+.scope > :nth-child(2) { animation-delay: var(--scc-stagger); }
+.scope > :nth-child(3) { animation-delay: calc(var(--scc-stagger) * 2); }
+.scope > :nth-child(4) { animation-delay: calc(var(--scc-stagger) * 3); }
+.scope > :nth-child(n + 5) { animation-delay: calc(var(--scc-stagger) * 4); }
+
+.scope [class~="form-error"],
+.scope [class~="restricted-guidance"],
+.scope [class~="danger-confirm"] {
+  animation: scc-conditional var(--scc-conditional) var(--scc-ease-out);
+}
+
+/* Typography: software hierarchy on the Noto Sans KR system. */
+.scope.scope :is(h1, h2, h3) {
+  max-width: none;
+  font-family: inherit;
+  color: var(--scc-ink);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.scope.scope h1 { font-size: 1.5rem; line-height: 2.125rem; }
+.scope.scope h2 { font-size: 1.0625rem; line-height: 1.5rem; }
+.scope.scope h3 { font-size: 1rem; line-height: 1.5rem; }
+
+.scope [class~="section-kicker"],
+.scope [class~="signal-kicker"] {
+  margin-bottom: 0;
+  color: var(--scc-accent);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: none;
+}
+
+.scope [class~="supporting"],
+.scope [class~="lead"],
+.scope [class~="field-help"] {
+  margin-top: 6px;
+  color: var(--scc-muted);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.scope [class~="signal-evidence"] {
+  color: var(--scc-muted);
+  font-size: 12px;
+}
+
+.scope.scope time {
+  font-variant-numeric: tabular-nums;
+}
+
+.scope [class~="text-link"] {
+  margin-top: 0;
+  color: var(--scc-accent);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* Buttons: rose primary, quiet outlined secondary. */
+.scope [class~="primary-button"],
+.scope [class~="secondary-button"],
+.scope [class~="signal-primary-action"],
+.scope [class~="signal-secondary-action"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  border: 1px solid transparent;
+  border-radius: var(--scc-radius-control);
+  background: transparent;
+  padding: 12px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0;
+  white-space: normal;
+  box-shadow: none;
+  transform: none;
+  transition:
+    background-color var(--scc-selection) ease,
+    border-color var(--scc-selection) ease,
+    color var(--scc-selection) ease,
+    transform var(--scc-press) var(--scc-ease-out);
+}
+.scope.scope [class~="signal-action"]:not([class~="primary-button"]):not([class~="signal-primary-action"]):not([class~="secondary-button"]):not([class~="signal-secondary-action"]) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  border: 1px solid transparent;
+  border-radius: var(--scc-radius-control);
+  background: transparent;
+  padding: 8px 14px;
+  color: var(--scc-accent);
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: none;
+  transform: none;
+  transition:
+    background-color var(--scc-selection) ease,
+    border-color var(--scc-selection) ease,
+    color var(--scc-selection) ease,
+    transform var(--scc-press) var(--scc-ease-out);
+}
+.scope.scope [class~="primary-button"],
+.scope.scope [class~="signal-primary-action"] {
+  background: var(--scc-action);
+  color: var(--scc-on-action);
+}
+.scope.scope [class~="secondary-button"],
+.scope.scope [class~="signal-secondary-action"] {
+  border-color: var(--scc-control-line);
+  background: transparent;
+  color: var(--scc-ink);
+}
+.scope [class~="primary-button"]::after,
+.scope [class~="signal-primary-action"]::after {
+  display: none;
+}
+.scope [class~="text-button"] {
+  min-height: 44px;
+  color: var(--scc-accent);
+  font-size: 13px;
+  font-weight: 600;
+}
+.scope [class~="disabled-login"],
+.scope button:disabled,
+.scope [class~="primary-button"]:disabled,
+.scope [class~="signal-primary-action"]:disabled {
+  border-color: transparent;
+  background: var(--scc-disabled-bg);
+  color: var(--scc-disabled-ink);
+  cursor: not-allowed;
+  transform: none;
+}
+.scope [class~="secondary-button"]:disabled {
+  border-color: transparent;
+  background: var(--scc-disabled-bg);
+}
+
+/* Surfaces: white with hairline borders; no shadows, no gradients. */
+.scope [class~="signal-panel"],
+.scope [class~="signal-section"],
+.scope [class~="report-section"],
+.scope [class~="reading-section"],
+.scope [class~="prototype-form"],
+.scope [class~="prototype-section"],
+.scope [class~="signal-atlas-period-focus"],
+.scope [class~="signal-atlas-key-dates"],
+.scope [class~="signal-atlas-action-suggestion"],
+.scope [class~="check-list"],
+.scope [class~="selection-summary"],
+.scope [class~="credit-summary"],
+.scope [class~="limit-summary"],
+.scope [class~="compatibility-locked"],
+.scope [class~="locked-report-section"] {
+  border: 1px solid var(--scc-line);
+  border-radius: var(--scc-radius-control);
+  background: var(--scc-surface);
+  box-shadow: none;
+}
+
+/* The one 12px surface family: today's signal. */
+.scope [class~="signal-atlas-today-signal"],
+.scope [class~="insight-card"][class~="current"] {
+  border: 1px solid var(--scc-line);
+  border-radius: var(--scc-radius-surface);
+  background: var(--scc-surface);
+  box-shadow: none;
+}
+
+/* Rows and lists: flat, divided, no card grids. */
+.scope [class~="signal-row"] {
+  min-height: 56px;
+  border-bottom: 1px solid var(--scc-line);
+  border-radius: 0;
+  background: transparent;
+  transition:
+    background-color var(--scc-selection) ease,
+    color var(--scc-selection) ease,
+    transform var(--scc-selection) var(--scc-ease-out);
+}
+.scope [class~="signal-topic-row"] {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.scope [class~="signal-row-copy"] strong {
+  color: var(--scc-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+.scope [class~="signal-row-copy"] small,
+.scope [class~="signal-row-copy"] span {
+  color: var(--scc-muted);
+  font-size: 12px;
+}
+.scope [class~="signal-row-arrow"] {
+  color: var(--scc-muted);
+  font-size: 18px;
+}
+.scope [class~="signal-row-index"],
+.scope [class~="signal-axis-index"] {
+  color: var(--scc-muted);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.scope [class~="signal-row-state"] {
+  color: var(--scc-accent);
+  font-size: 12px;
+  font-weight: 600;
+}
+.scope [class~="signal-avatar"] {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--scc-radius-control);
+  background: var(--scc-accent-soft);
+  color: var(--scc-accent);
+  font-size: 15px;
+  font-weight: 600;
+}
+.scope [class~="signal-pair-mark"] {
+  color: var(--scc-muted);
+}
+
+.scope [class~="people-list"],
+.scope [class~="library-list"],
+.scope [class~="life-event-list"],
+.scope [class~="compatibility-dimensions"],
+.scope [class~="session-list"],
+.scope [class~="compatibility-history"] {
+  display: grid;
+  gap: 0;
+  border: 0;
+}
+.scope [class~="people-list"] article,
+.scope [class~="library-list"] article,
+.scope [class~="life-event-list"] article,
+.scope [class~="compatibility-dimensions"] article,
+.scope [class~="session-list"] a,
+.scope [class~="compatibility-history"] a {
+  min-width: 0;
+  min-height: 64px;
+  border: 0;
+  border-bottom: 1px solid var(--scc-line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 14px 4px;
+  transition:
+    background-color var(--scc-selection) ease,
+    transform var(--scc-selection) var(--scc-ease-out);
+}
+.scope [class~="library-list"] article.hidden-item {
+  opacity: 0.55;
+}
+.scope [class~="people-list"] small,
+.scope [class~="session-list"] small,
+.scope [class~="compatibility-history"] small,
+.scope [class~="compatibility-dimensions"] small,
+.scope [class~="library-list"] small,
+.scope [class~="life-event-list"] small {
+  color: var(--scc-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.scope [class~="library-list"] h2 {
+  margin-top: 4px;
+  font-size: 16px;
+}
+.scope [class~="library-list"] p,
+.scope [class~="library-list"] time,
+.scope [class~="people-list"] p,
+.scope [class~="session-list"] span,
+.scope [class~="compatibility-history"] span,
+.scope [class~="compatibility-dimensions"] p,
+.scope [class~="life-event-list"] p {
+  color: var(--scc-muted);
+  font-size: 12px;
+}
+.scope [class~="library-list"] h2 a {
+  color: var(--scc-ink);
+}
+.scope [class~="people-list"] a,
+.scope [class~="people-list"] button,
+.scope [class~="library-item-actions"] button {
+  min-width: 48px;
+  min-height: 44px;
+  border-radius: var(--scc-radius-control);
+  color: var(--scc-accent);
+  font-size: 13px;
+  font-weight: 600;
+  transition: background-color var(--scc-selection) ease, transform var(--scc-press) var(--scc-ease-out);
+}
+.scope [class~="life-event-list"] time {
+  color: var(--scc-accent);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Forms and controls. */
+.scope.scope input:not([type="checkbox"]):not([type="radio"]),
+.scope.scope select,
+.scope.scope textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  border: 1px solid var(--scc-control-line);
+  border-radius: var(--scc-radius-control);
+  background: var(--scc-surface);
+  color: var(--scc-ink);
+  padding: 10px 12px;
+  transition: border-color 180ms ease, background-color 180ms ease;
+}
+.scope.scope textarea {
+  min-height: 6rem;
+  resize: vertical;
+}
+.scope.scope input:disabled {
+  border-color: transparent;
+  background: var(--scc-disabled-bg);
+  color: var(--scc-disabled-ink);
+  opacity: 1;
+}
+.scope [class~="signal-field"] {
+  display: grid;
+  gap: 6px;
+  color: var(--scc-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+.scope [class~="signal-field"] small {
+  color: var(--scc-muted);
+  font-weight: 400;
+}
+.scope [class~="signal-inline-action"] {
+  display: flex;
+  gap: 8px;
+}
+.scope [class~="signal-inline-action"] input {
+  flex: 1;
+  min-width: 0;
+}
+.scope.scope fieldset legend,
+.scope [class~="signal-fieldset"] legend {
+  color: var(--scc-ink);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 0;
+}
+.scope [class~="consultation-form"] legend {
+  padding: 0;
+}
+
+.scope.scope [class~="segmented-control"] {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr));
+  gap: 0;
+  margin-top: 8px;
+  border: 0;
+  border-bottom: 1px solid var(--scc-control-line);
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  overflow: visible;
+}
+.scope.scope [class~="segmented-control"] button {
+  min-height: 44px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--scc-ink);
+  font-size: 14px;
+  font-weight: 600;
+  transition: background-color var(--scc-selection) ease, color var(--scc-selection) ease;
+}
+.scope.scope [class~="segmented-control"] button[class~="selected"] {
+  background: transparent;
+  box-shadow: inset 0 -2px 0 var(--scc-accent);
+  color: var(--scc-accent);
+}
+.scope [class~="check-card"] {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-radius: var(--scc-radius-control);
+  background: transparent;
+  color: var(--scc-ink);
+  font-size: 14px;
+  font-weight: 400;
+  padding: 6px 4px;
+  transition: background-color var(--scc-selection) ease, transform var(--scc-selection) var(--scc-ease-out);
+}
+.scope [class~="check-card"] input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: var(--scc-accent);
+}
+
+.scope.scope details {
+  border: 0;
+  border-top: 1px solid var(--scc-line);
+  border-radius: 0;
+  background: transparent;
+  padding-inline: 0;
+}
+.scope.scope summary {
+  min-height: 48px;
+  color: var(--scc-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+.scope.scope summary::after {
+  color: var(--scc-accent);
+}
+.scope.scope details p {
+  color: var(--scc-muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+/* State feedback. */
+.scope [class~="form-error"] {
+  border-radius: var(--scc-radius-control);
+  background: var(--scc-error-bg);
+  color: var(--scc-error);
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.scope [class~="restricted-guidance"],
+.scope [class~="accuracy-note"],
+.scope [class~="limit-notice"],
+.scope [class~="privacy-note"] {
+  border: 0;
+  border-radius: var(--scc-radius-control);
+  background: var(--scc-accent-soft);
+  color: var(--scc-ink);
+  padding: 12px 14px;
+}
+.scope [class~="restricted-guidance"] strong {
+  color: var(--scc-accent);
+}
+.scope [class~="restricted-guidance"] p,
+.scope [class~="accuracy-note"],
+.scope [class~="limit-notice"],
+.scope [class~="privacy-note"] {
+  font-size: 13px;
+  line-height: 1.6;
+}
+.scope [class~="danger-confirm"] {
+  border: 0;
+  border-radius: var(--scc-radius-control);
+  background: var(--scc-error-bg);
+  color: var(--scc-ink);
+}
+.scope [class~="danger-confirm"] p {
+  font-size: 13px;
+}
+.scope [class~="danger-confirm"] button {
+  min-height: 44px;
+  border-radius: var(--scc-radius-control);
+  background: var(--scc-action);
+  color: var(--scc-on-action);
+  font-size: 13px;
+  font-weight: 600;
+  padding-inline: 14px;
+}
+.scope [class~="danger-confirm"] button:last-child {
+  border: 1px solid var(--scc-control-line);
+  background: transparent;
+  color: var(--scc-ink);
+}
+.scope [class~="signal-evidence-list"] div {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--scc-line);
+  padding: 8px 0;
+  font-size: 12px;
+}
+.scope [class~="signal-evidence-list"] dt {
+  color: var(--scc-muted);
+}
+.scope [class~="signal-evidence-list"] dd {
+  margin: 0;
+  min-width: 0;
+  color: var(--scc-ink);
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+/* Home. */
+.scope [class~="signal-atlas-home-screen"] {
+  gap: 16px;
+}
+.scope [class~="signal-atlas-date-context"] {
+  color: var(--scc-muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.scope [class~="signal-atlas-question-lead"] h1 {
+  max-width: none;
+}
+.scope [class~="signal-atlas-today-signal"] {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+}
+.scope [class~="signal-atlas-today-signal"] h2 {
+  font-size: 20px;
+  line-height: 1.35;
+}
+.scope [class~="signal-atlas-signal-context"] p {
+  color: var(--scc-accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+.scope [class~="signal-atlas-signal-context"] time {
+  color: var(--scc-muted);
+  font-size: 12px;
+}
+.scope [class~="signal-atlas-signal-evidence"] {
+  border-top: 1px solid var(--scc-line);
+  padding-top: 10px;
+  color: var(--scc-muted);
+  font-size: 13px;
+}
+.scope [class~="signal-atlas-disclaimer"] {
+  display: block;
+  color: var(--scc-muted);
+  font-size: 12px;
+}
+.scope [class~="signal-atlas-evidence-link"],
+.scope [class~="signal-atlas-consultation-cta"] a,
+.scope [class~="signal-atlas-continue-reading-link"] {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--scc-line);
+  border-radius: var(--scc-radius-control);
+  background: var(--scc-surface);
+  color: var(--scc-ink);
+  font-weight: 600;
+  padding: 0 14px;
+  transition: background-color var(--scc-selection) ease, transform var(--scc-selection) var(--scc-ease-out);
+}
+.scope [class~="signal-atlas-continue-reading-link"] small {
+  color: var(--scc-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.scope [class~="signal-atlas-continue-reading-link"] strong {
+  color: var(--scc-ink);
+  font-size: 15px;
+  font-weight: 600;
+}
+.scope [class~="signal-atlas-section-heading"] h2 {
+  font-size: 17px;
+}
+.scope [class~="signal-atlas-timeline-list"] [class~="signal-atlas-timeline-row"] {
+  min-height: 52px;
+  padding: 8px 10px;
+}
+.scope [class~="signal-atlas-timeline-marker"] {
+  background: var(--scc-line);
+}
+.scope [class~="signal-atlas-timeline-row"][class~="timeline-current"] [class~="signal-atlas-timeline-marker"] {
+  background: var(--scc-accent);
+}
+.scope [class~="signal-atlas-timeline-row"] small {
+  color: var(--scc-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.scope [class~="signal-atlas-timeline-row"] p {
+  color: var(--scc-ink);
+  font-size: 13px;
+}
+
+/* Flow screens. */
+.scope [class~="signal-atlas-flow-screen"] {
+  gap: 20px;
+}
+.scope [class~="period-control"] {
+  border: 1px solid var(--scc-line);
+  border-radius: var(--scc-radius-control);
+  background: var(--scc-surface);
+}
+.scope [class~="period-control"] button {
+  min-height: 48px;
+  color: var(--scc-ink);
+  font-size: 18px;
+  transition: background-color var(--scc-selection) ease;
+}
+.scope [class~="period-control"] input {
+  min-height: 48px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.scope [class~="signal-atlas-month-picker"] {
+  color: var(--scc-ink);
+  font-weight: 600;
+}
+.scope [class~="signal-atlas-intensity-track"] {
+  background: var(--scc-line);
+}
+.scope [class~="signal-atlas-intensity-track"] span {
+  background: var(--scc-control-line);
+}
+.scope [class~="signal-atlas-intensity-row"][class~="current"] [class~="signal-atlas-intensity-track"] span {
+  background: var(--scc-accent);
+}
+.scope [class~="signal-atlas-intensity-label"] strong {
+  color: var(--scc-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+.scope [class~="signal-atlas-period-focus"] p:not([class~="section-kicker"]),
+.scope [class~="signal-atlas-action-suggestion"] p:not([class~="section-kicker"]) {
+  color: var(--scc-muted);
+  font-size: 13px;
+}
+.scope [class~="signal-atlas-period-focus"] h2 {
+  font-size: 18px;
+}
+.scope [class~="signal-atlas-date-chips"] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.scope [class~="signal-atlas-date-chip"] {
+  min-width: 0;
+  border: 1px solid var(--scc-line);
+  border-radius: var(--scc-radius-control);
+  background: var(--scc-surface);
+  padding: 10px 8px;
+  font-size: 12px;
+}
+.scope [class~="signal-atlas-date-chip"] small {
+  color: var(--scc-muted);
+}
+.scope.scope [class~="flow-switch"] {
+  border: 1px solid var(--scc-line);
+  border-radius: var(--scc-radius-control);
+  background: var(--scc-surface);
+  overflow: hidden;
+  box-shadow: none;
+}
+.scope [class~="flow-switch"] a {
+  min-height: 48px;
+  border-right: 1px solid var(--scc-line);
+  color: var(--scc-muted);
+  font-size: 13px;
+  font-weight: 600;
+  transition: background-color var(--scc-selection) ease, color var(--scc-selection) ease;
+}
+.scope [class~="flow-switch"] a:last-child {
+  border-right: 0;
+}
+.scope.scope [class~="flow-switch"] a[class~="active"] {
+  border-radius: 0;
+  background: var(--scc-accent-soft);
+  color: var(--scc-accent);
+  font-weight: 700;
+  box-shadow: none;
+}
+
+/* Calendar. */
+.scope [class~="calendar-topic-options"] label {
+  color: var(--scc-ink);
+  font-size: 13px;
+}
+.scope [class~="calendar-topic-options"] input {
+  accent-color: var(--scc-accent);
+}
+.scope [class~="prototype-calendar-grid"] {
+  gap: 6px;
+}
+.scope [class~="prototype-calendar-weekday"] {
+  color: var(--scc-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.scope [class~="prototype-calendar-day"] {
+  min-height: 60px;
+  border: 1px solid var(--scc-line);
+  border-radius: var(--scc-radius-control);
+  background: var(--scc-surface);
+  padding: 7px 2px;
+  transition: background-color var(--scc-selection) ease, border-color var(--scc-selection) ease;
+}
+.scope [class~="prototype-calendar-day"] small {
+  font-size: 11px;
+  font-weight: 600;
+}
+.scope [class~="prototype-calendar-day"][class~="level-0"] small,
+.scope [class~="prototype-calendar-legend"] [class~="level-0"] {
+  color: var(--scc-accent);
+}
+.scope [class~="prototype-calendar-day"][class~="level-1"] small,
+.scope [class~="prototype-calendar-legend"] [class~="level-1"] {
+  color: var(--scc-muted);
+}
+.scope [class~="prototype-calendar-day"][class~="level-2"] small,
+.scope [class~="prototype-calendar-legend"] [class~="level-2"] {
+  color: #39424f;
+}
+.scope.scope [class~="prototype-calendar-day"][class~="selected"] {
+  box-shadow: inset 0 0 0 2px var(--scc-action);
+}
+.scope [class~="prototype-calendar-legend"] span {
+  color: var(--scc-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.scope [class~="prototype-calendar-legend"] [class~="level-0"] {
+  color: var(--scc-accent);
+}
+.scope [class~="insight-card"] dl div {
+  display: grid;
+  gap: 2px;
+  border-bottom: 1px solid var(--scc-line);
+  padding: 8px 0;
+}
+.scope [class~="insight-card"] dt {
+  color: var(--scc-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.scope [class~="insight-card"] dd {
+  margin: 0;
+  color: var(--scc-ink);
+  font-size: 13px;
+}
+.scope [class~="insight-card"][class~="current"] small {
+  color: var(--scc-accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+.scope [class~="insight-card"][class~="current"] strong {
+  color: var(--scc-ink);
+  font-size: 19px;
+  line-height: 1.5;
+}
+.scope [class~="insight-card"] > p {
+  color: var(--scc-muted);
+  font-size: 12px;
+}
+
+/* Long-range reports. */
+.scope [class~="report-sections"] {
+  gap: 12px;
+}
+.scope [class~="report-section"] > strong {
+  color: var(--scc-ink);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.7;
+}
+.scope [class~="report-section"] ul {
+  color: var(--scc-muted);
+  font-size: 13px;
+}
+.scope [class~="locked-report-section"] {
+  color: var(--scc-muted);
+}
+.scope [class~="locked-report-section"] h2,
+.scope [class~="locked-report-section"] h3 {
+  color: var(--scc-ink);
+}
+.scope [class~="locked-report-section"] button {
+  min-height: 48px;
+  border: 1px solid var(--scc-line);
+  border-radius: var(--scc-radius-control);
+  background: var(--scc-disabled-bg);
+  color: var(--scc-disabled-ink);
+}
+.scope [class~="report-section"] button:disabled {
+  background: var(--scc-disabled-bg);
+  color: var(--scc-disabled-ink);
+}
+
+/* Library. */
+.scope [class~="library-controls"] {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+}
+.scope [class~="library-controls"] label {
+  color: var(--scc-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.scope [class~="library-controls"] summary {
+  min-height: 44px;
+  color: var(--scc-accent);
+}
+.scope [class~="signal-atlas-library-results-heading"] span {
+  color: var(--scc-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.scope [class~="library-item-actions"] small {
+  color: var(--scc-muted);
+  font-size: 12px;
+}
+
+/* People and compatibility. */
+.scope [class~="limit-summary"] {
+  min-height: 56px;
+  padding: 12px 16px;
+}
+.scope [class~="limit-summary"] span {
+  color: var(--scc-muted);
+  font-size: 13px;
+}
+.scope [class~="limit-summary"] strong {
+  color: var(--scc-ink);
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.scope [class~="credit-summary"] {
+  gap: 12px;
+  padding: 16px;
+}
+.scope [class~="credit-summary"] small {
+  color: var(--scc-muted);
+  font-size: 12px;
+}
+.scope [class~="credit-summary"] strong {
+  color: var(--scc-ink);
+  font-family: inherit;
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.scope [class~="credit-summary"] p {
+  border-top: 1px solid var(--scc-line);
+  padding: 10px 0 0;
+  color: var(--scc-muted);
+  font-size: 12px;
+}
+.scope [class~="signal-credit-action"] {
+  justify-content: flex-start;
+  padding: 0;
+}
+.scope [class~="consult-topic-list"] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  margin-top: 0;
+}
+.scope.scope [class~="consult-topic-list"] button[class~="selected"] {
+  border-color: transparent;
+  background: var(--scc-accent-soft);
+  color: var(--scc-ink);
+  box-shadow: inset 2px 0 0 var(--scc-accent);
+}
+.scope [class~="compatibility-dimensions"] article {
+  min-height: 72px;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+}
+.scope [class~="compatibility-dimensions"] h3 {
+  font-size: 14px;
+}
+.scope [class~="signal-pair-summary"] {
+  gap: 12px;
+  padding: 14px 16px;
+}
+.scope [class~="signal-pair-person"] strong {
+  color: var(--scc-ink);
+  font-size: 14px;
+}
+.scope [class~="signal-pair-person"] small {
+  color: var(--scc-muted);
+  font-size: 12px;
+}
+.scope [class~="signal-preview-list"] li {
+  border-bottom: 1px solid var(--scc-line);
+  padding: 8px 0;
+  color: var(--scc-muted);
+  font-size: 13px;
+}
+.scope [class~="signal-action-list"] {
+  display: grid;
+  gap: 8px;
+}
+
+/* Consultation session chat. */
+.scope [class~="message-list"] article {
+  max-width: min(92%, 560px);
+  border: 1px solid var(--scc-line);
+  border-radius: var(--scc-radius-control);
+  background: var(--scc-surface);
+  box-shadow: none;
+}
+.scope [class~="message-list"] article[class~="user"] {
+  border-color: transparent;
+  background: var(--scc-accent-soft);
+  color: var(--scc-ink);
+}
+.scope [class~="message-list"] small {
+  color: var(--scc-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.scope [class~="message-list"] article[class~="user"] small {
+  color: var(--scc-accent);
+}
+.scope [class~="message-list"] p {
+  color: inherit;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+/* Report reading surfaces. */
+.scope [class~="report-content"] h2 {
+  margin-top: 0;
+  font-size: 17px;
+}
+.scope [class~="signal-situation"] h1 {
+  max-width: none;
+  font-size: 1.5rem;
+}
+.scope [class~="topic-card"],
+.scope [class~="feedback-card"] {
+  min-height: 64px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 14px 4px;
+  transition: background-color var(--scc-selection) ease, transform var(--scc-selection) var(--scc-ease-out);
+}
+.scope.scope [class~="topic-card"][class~="selected"],
+.scope.scope [class~="feedback-card"][class~="selected"] {
+  background: var(--scc-accent-soft);
+  box-shadow: inset 2px 0 0 var(--scc-accent);
+  color: var(--scc-ink);
+}
+.scope [class~="topic-card"] strong,
+.scope [class~="feedback-card"] strong {
+  color: var(--scc-ink);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+}
+.scope [class~="topic-card"] small,
+.scope [class~="feedback-card"] small {
+  color: var(--scc-muted);
+  font-size: 12px;
+}
+.scope [class~="topic-card"][class~="selected"] .row-marker,
+.scope [class~="topic-number"] {
+  color: var(--scc-accent);
+}
+.scope [class~="topic-number"] {
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.scope [class~="topic-card"]:has([class~="selection-radio"]:focus-visible),
+.scope [class~="feedback-card"]:has([class~="selection-radio"]:focus-visible) {
+  outline: 3px solid rgb(162 38 85 / 28%);
+  outline-offset: 2px;
+}
+.scope [class~="selection-summary"] strong {
+  color: var(--scc-ink);
+  font-size: 14px;
+}
+.scope [class~="reading-section"] small {
+  color: var(--scc-accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+.scope [class~="reading-section"] strong {
+  color: var(--scc-ink);
+  font-family: inherit;
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 1.65;
+}
+.scope [class~="reading-section"][class~="emphasis"] {
+  background: var(--scc-surface);
+}
+.scope [class~="text-section"] p,
+.scope.scope details p {
+  color: var(--scc-muted);
+  font-size: 13px;
+}
+.scope [class~="feedback-detail-field"] {
+  display: grid;
+  gap: 6px;
+  color: var(--scc-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+.scope [class~="feedback-detail-field"] select,
+.scope [class~="feedback-detail-field"] textarea {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--scc-control-line);
+  border-radius: var(--scc-radius-control);
+  background: var(--scc-surface);
+  color: var(--scc-ink);
+  padding: 10px 12px;
+}
+.scope [class~="feedback-detail-field"] textarea {
+  min-height: 6rem;
+}
+.scope [class~="save-content"] [class~="check-list"] span {
+  color: var(--scc-muted);
+  font-size: 13px;
+}
+.scope [class~="action-note"] {
+  color: var(--scc-muted);
+  font-size: 12px;
+}
+
+/* Desktop: one calm column, comfortable measure. */
+@media (min-width: 768px) {
+  .scope.scope {
+    padding-inline: 2rem;
+  }
+  .scope > * {
+    max-width: 760px;
+  }
+  .scope.scope h1 {
+    font-size: 1.75rem;
+    line-height: 2.5rem;
+  }
+  .scope [class~="signal-atlas-date-chips"] {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* Hover is a pointer-device affordance only. */
+@media (hover: hover) and (pointer: fine) {
+  .scope [class~="primary-button"]:hover:not(:active):not(:disabled),
+  .scope [class~="signal-primary-action"]:hover:not(:active):not(:disabled) {
+    background: var(--scc-action-hover);
+    transform: translateY(-2px);
+  }
+  .scope [class~="secondary-button"]:hover:not(:active):not(:disabled),
+  .scope [class~="signal-secondary-action"]:hover:not(:active):not(:disabled) {
+    border-color: var(--scc-ink);
+    background: var(--scc-surface);
+  }
+  .scope a[class~="signal-row"]:hover:not(:active),
+  .scope button[class~="signal-row"]:hover:not(:active),
+  .scope [class~="session-list"] a:hover:not(:active),
+  .scope [class~="compatibility-history"] a:hover:not(:active) {
+    background: var(--scc-surface-hover);
+    transform: translateY(-1px);
+  }
+  .scope [class~="topic-card"]:hover:not(:active),
+  .scope [class~="feedback-card"]:hover:not(:active) {
+    background: var(--scc-surface-hover);
+    transform: translateY(-1px);
+  }
+  .scope [class~="topic-card"][class~="selected"]:hover:not(:active),
+  .scope [class~="feedback-card"][class~="selected"]:hover:not(:active) {
+    background: var(--scc-accent-soft);
+  }
+  .scope [class~="prototype-calendar-day"]:hover:not(:active) {
+    background: var(--scc-input-hover);
+    border-color: var(--scc-control-line);
+  }
+  .scope [class~="signal-atlas-evidence-link"]:hover:not(:active),
+  .scope [class~="signal-atlas-consultation-cta"] a:hover:not(:active),
+  .scope [class~="signal-atlas-continue-reading-link"]:hover:not(:active) {
+    background: var(--scc-surface-hover);
+  }
+  .scope [class~="people-list"] a:hover:not(:active),
+  .scope [class~="people-list"] button:hover:not(:active),
+  .scope [class~="library-item-actions"] button:hover:not(:active) {
+    background: var(--scc-surface-hover);
+  }
+  .scope [class~="check-card"]:hover:not(:active) {
+    background: var(--scc-surface-hover);
+    transform: translateX(3px);
+  }
+  .scope [class~="period-control"] button:hover:not(:active) {
+    background: var(--scc-surface-hover);
+  }
+  .scope [class~="text-link"]:hover {
+    color: var(--scc-action-hover);
+  }
+  .scope.scope summary:hover {
+    color: var(--scc-accent);
+  }
+  .scope.scope input:not([type="checkbox"]):not([type="radio"]):hover:not(:disabled),
+  .scope.scope select:hover:not(:disabled),
+  .scope.scope textarea:hover:not(:disabled) {
+    border-color: var(--scc-ink);
+    background: var(--scc-input-hover);
+  }
+}
+
+/* Press feedback. */
+.scope [class~="primary-button"]:active:not(:disabled),
+.scope [class~="secondary-button"]:active:not(:disabled),
+.scope [class~="signal-primary-action"]:active:not(:disabled),
+.scope [class~="signal-secondary-action"]:active:not(:disabled),
+.scope a[class~="signal-row"]:active,
+.scope button[class~="signal-row"]:active,
+.scope [class~="topic-card"]:active,
+.scope [class~="feedback-card"]:active,
+.scope [class~="prototype-calendar-day"]:active {
+  transform: translateY(1px) scale(0.98);
+}
+
+/* Reduced motion: movement off; state and color feedback remain. */
+@media (prefers-reduced-motion: reduce) {
+  .scope,
+  .scope *,
+  .scope *::before,
+  .scope *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+  .scope [class~="primary-button"]:hover,
+  .scope [class~="signal-primary-action"]:hover,
+  .scope a[class~="signal-row"]:hover,
+  .scope button[class~="signal-row"]:hover,
+  .scope [class~="topic-card"]:hover,
+  .scope [class~="feedback-card"]:hover,
+  .scope [class~="check-card"]:hover,
+  .scope [class~="primary-button"]:active,
+  .scope [class~="secondary-button"]:active,
+  .scope [class~="signal-primary-action"]:active,
+  .scope [class~="signal-secondary-action"]:active,
+  .scope [class~="topic-card"]:active,
+  .scope [class~="feedback-card"]:active {
+    transform: none;
+  }
+}
+
+@keyframes scc-enter {
+  from { transform: translateY(4px); }
+  to { transform: translateY(0); }
+}
+@keyframes scc-child {
+  from {
+    transform: translateY(8px);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@keyframes scc-conditional {
+  from {
+    transform: translateY(-4px);
+  }
+  to {
+    transform: translateY(0);
+  }
+}

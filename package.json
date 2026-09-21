@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "validate:api-origin": "bun scripts/validate-api-origin.ts",
+    "build": "bun run validate:api-origin && next build",
+    "build:integration": "NEXT_PUBLIC_SAJURIUM_API_URL=http://localhost:8000 bun scripts/validate-api-origin.ts --allow-local && NEXT_PUBLIC_SAJURIUM_API_URL=http://localhost:8000 next build",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
@@ -18,10 +20,11 @@
     "test:lighthouse:ci": "start-server-and-test 'bun run start --port 3100' http://localhost:3100 'bun run test:lighthouse'",
     "api:types": "openapi-typescript openapi/sajurium.yaml -o src/lib/api/generated.ts",
     "api:check": "openapi-typescript openapi/sajurium.yaml -o src/lib/api/generated.ts --check",
-    "test:quality": "bun run api:check && bun run lint && bun run typecheck && bun run test:unit && bun run build && bun run test:e2e"
+    "api:check:backend": "bun scripts/check-backend-openapi.ts",
+    "test:quality": "bun run api:check && bun run api:check:backend && bun run lint && bun run typecheck && bun run test:unit && bun run build && bun run test:e2e"
   },
   "dependencies": {
-    "next": "16.3.2",
+    "next": "16.3.5",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
@@ -36,7 +39,7 @@
     "@types/react-dom": "^19",
     "chrome-launcher": "^1.2.1",
     "eslint": "^9",
-    "eslint-config-next": "16.3.2",
+    "eslint-config-next": "16.3.5",
     "jsdom": "^30.0.1",
     "lighthouse": "^13.4.1",
     "openapi-typescript": "^7.13.0",

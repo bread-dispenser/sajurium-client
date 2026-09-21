@@ -8,7 +8,8 @@ export default defineConfig({
   fullyParallel: false,
   forbidOnly: true,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : 2,
+  // Local integration uses the SQLite-backed API; serialize browser files to avoid lock-contention flakes.
+  workers: 1,
   reporter: [["list"], ["json", { outputFile: "test-results/playwright-report.json" }]],
   use: {
     baseURL: "http://localhost:3100",
@@ -29,7 +30,7 @@ export default defineConfig({
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
   ],
   webServer: {
-    command: "bun run build && bun run start --port 3100",
+    command: "bun run build:integration && bun run start --port 3100",
     url: "http://localhost:3100",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

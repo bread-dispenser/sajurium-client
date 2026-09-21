@@ -1,5 +1,5 @@
-import { HomeScreen } from "@/components/core-screens";
+import { LiveHomeScreen } from "@/components/core-screens";
 
 export default function HomePage() {
-  return <HomeScreen />;
+  return <LiveHomeScreen />;
 }

@@ -1,6 +1,13 @@
 import { expect, test } from "@playwright/test";
 import { INITIAL_BIRTH, INITIAL_COMMERCE_DATA, INITIAL_SETTINGS_DATA } from "@/lib/fixtures";
 
+async function submitBirth(page: import("@playwright/test").Page) {
+  await page.getByLabel("이름 또는 닉네임").fill("서연");
+  await page.getByLabel("생년월일").fill("1992-06-18");
+  await page.getByLabel("출생지").fill("서울");
+  await page.getByRole("button", { name: "다음" }).click();
+}
+
 test.beforeEach(async ({ page }) => {
   await page.goto("/");
   await page.evaluate(() => {
@@ -9,49 +16,35 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-test("keeps example journeys local and discloses unavailable real services", async ({ page }) => {
-  const appOrigin = new URL(page.url()).origin;
-  const serviceRequests: string[] = [];
-  page.on("request", (request) => {
-    const url = new URL(request.url());
-    if (url.origin !== appOrigin || url.pathname.startsWith("/api/") || !["GET", "HEAD"].includes(request.method())) {
-      serviceRequests.push(`${request.method()} ${request.url()}`);
-    }
-  });
-
+test("discloses the live-service boundary", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByText("이 화면은 실제 사주 계산이 아닌 체험용 예시 콘텐츠를 보여줘요.")).toBeVisible();
+  await expect(page.getByText(/버전이 기록된 명식 계산/)).toBeVisible();
 
   await page.goto("/consult/new");
-  await expect(page.getByText("실제 AI 답변 생성이나 유료 이용권 차감은 없습니다.")).toBeVisible();
-  await page.getByRole("button", { name: "이직을 고민할 때 어떤 조건을 먼저 봐야 하나요?" }).click();
-  await page.getByRole("button", { name: "예시 답변 보기" }).click();
-  await expect(page).toHaveURL(/\/consult\/session\//);
+  await expect(page.getByText(/성공한 경우에만 서버 이용권이 차감/)).toBeVisible();
 
   await page.goto("/compatibility");
-  await expect(page.getByText("실제 궁합 계산이 아닌 미리 준비한 여러 관점의 예시 결과를 보여줍니다.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "서버 명식으로 궁합 보기" })).toBeVisible();
+  await expect(page.getByText(/두 프로필의 최신 계산 스냅샷/)).toBeVisible();
 
   await page.goto("/checkout/love-report");
-  await expect(page.getByText("· 실제 결제 서비스나 결제 수단에 연결되지 않아요.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "실제 결제 · 이용 불가" })).toBeDisabled();
-  expect(serviceRequests).toEqual([]);
+  await expect(page.getByText(/가격·통화·상품 버전은 서버가 다시 확정/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "서버 주문 만들기" })).toBeEnabled();
 });
 
-test("persists a fixture consultation and follow-up", async ({ page }) => {
-  await page.goto("/orders/ord_demo_consult_5?productId=consult-5&state=success");
-  await page.getByRole("button", { name: "이 상태를 기기에 기록" }).click();
+test("persists a server consultation locally for immediate continuity", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "내 흐름 살펴보기" }).click();
+  await submitBirth(page);
+  await expect(page).toHaveURL(/\/report$/);
   await page.goto("/consult/new");
   await page.getByRole("button", { name: "이직을 고민할 때 어떤 조건을 먼저 봐야 하나요?" }).click();
   await page.getByLabel("현재 상황").fill("업무 역할과 근무 방식이 고민됩니다.");
-  await page.getByRole("button", { name: "예시 답변 보기" }).click();
+  await page.getByRole("button", { name: "상담 답변 보기" }).click();
   await expect(page).toHaveURL(/\/consult\/session\//, { timeout: 5_000 });
   const sessionPath = new URL(page.url()).pathname;
   await expect(page.locator(".message-list article")).toHaveCount(2);
-  await expect(page.getByText("사주리움 · 체험용 예시")).toBeVisible();
-  await page.locator(".follow-up-suggestions button").first().click();
-  await page.getByRole("button", { name: "예시 답변 추가" }).click();
-  await expect(page.locator(".message-list article")).toHaveCount(4);
-  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("sajurium-commerce") ?? "{}").consultationCredits)).toBe(4);
+  await expect(page.getByText(/질문하신/)).toBeVisible();
   await page.getByRole("button", { name: "이 상담 삭제" }).click();
   await page.getByRole("button", { name: "상담 삭제 확정" }).click();
   await expect(page).toHaveURL(/\/consult$/);
@@ -68,55 +61,15 @@ test("blocks restricted consultation questions and restores the draft", async ({
   await expect(page.getByText("제한되는 질문이에요")).toBeVisible();
   await page.reload();
   await expect(page.getByRole("textbox", { name: "질문" })).toHaveValue("암 진단과 수명을 알려줘");
-  await page.getByRole("button", { name: "예시 답변 보기" }).click();
+  await page.getByRole("button", { name: "상담 답변 보기" }).click();
   await expect(page.locator(".form-error[role=alert]")).toContainText("확정적인 답을 제공하지 않아요");
 });
 
-test("creates a local fixture compatibility result", async ({ page }) => {
-  await page.goto("/compatibility");
-  await page.getByRole("button", { name: "예시 관계 요약 보기" }).click();
-  await expect(page).toHaveURL(/\/compatibility\/result\//);
-  await expect(page.locator(".compatibility-dimensions article")).toHaveCount(8);
-  await expect(page.getByText(/출생 시간 미상 상태/)).toBeVisible();
-  await expect(page.getByRole("button", { name: "심층 궁합 · 이용 불가" })).toBeDisabled();
-});
-
-test("enforces the two-person limit and keeps compatibility snapshots after deletion", async ({ page }) => {
-  await page.goto("/compatibility");
-  await page.getByRole("button", { name: "예시 관계 요약 보기" }).click();
-  await expect(page).toHaveURL(/\/compatibility\/result\//);
-  const resultPath = new URL(page.url()).pathname;
-  await page.goto("/people");
-  await expect(page.locator(".limit-summary")).toContainText("2 / 2");
-  await expect(page.getByRole("link", { name: "새 인물 추가" })).toHaveCount(0);
-  await page.locator(".people-list article").filter({ hasText: "민준" }).getByRole("button", { name: "삭제" }).click();
-  await page.locator(".people-list article").filter({ hasText: "민준" }).getByRole("button", { name: "인물 삭제 확정" }).click();
-  await expect(page.getByRole("link", { name: "새 인물 추가" })).toBeVisible();
-  await page.goto(resultPath);
-  await expect(page.locator("#compatibility-result-title")).toContainText("서연");
-  await expect(page.locator("#compatibility-result-title")).toContainText("민준");
-
-  await page.goto("/people/new");
-  await page.getByLabel("이름 또는 별칭").fill("지우");
-  await page.getByRole("button", { name: "인물 저장" }).click();
-  await expect(page.locator(".form-error[role=alert]")).toContainText("권한이나 동의");
-  await page.getByLabel("이 정보를 저장할 권한이나 상대방의 동의를 확인했어요").check();
-  await page.getByRole("button", { name: "인물 저장" }).click();
-  await expect(page).toHaveURL(/\/people$/);
-  await expect(page.locator(".limit-summary")).toContainText("2 / 2");
-});
-
-test("records demo commerce state without enabling real payment", async ({ page }) => {
+test("creates a server order from the server catalog without requiring a chart", async ({ page }) => {
   await page.goto("/checkout/consult-5");
-  await expect(page.getByRole("button", { name: "실제 결제 · 이용 불가" })).toBeDisabled();
-  await page.getByRole("link", { name: "성공 상태 보기" }).click();
-  await page.getByRole("button", { name: "이 상태를 기기에 기록" }).click();
-  await expect(page.getByRole("status")).toContainText("멱등성 주문 ID");
-  await page.getByRole("button", { name: "이 상태를 기기에 기록" }).click();
-  await expect(page.getByRole("status")).toContainText("같은 멱등성 키로 다시 기록하지 않았어요");
-  await page.goto("/products/credits");
-  await expect(page.getByRole("heading").filter({ hasText: "5회" })).toBeVisible();
-  await expect(page.locator(".credit-history article")).toHaveCount(1);
+  await page.getByRole("button", { name: "서버 주문 만들기" }).click();
+  await expect(page).toHaveURL(/\/orders\/\d+.*source=server/);
+  await expect(page.getByRole("heading", { name: "주문이 안전하게 생성됐어요" })).toBeVisible();
 });
 
 test("clears every service-owned local key from settings", async ({ page }) => {
@@ -173,26 +126,11 @@ test("confirms individual settings and feedback deletion", async ({ page }) => {
   await page.getByRole("button", { name: "피드백 삭제 확정" }).click();
   await expect(page.getByRole("heading", { name: "저장된 피드백이 없어요" })).toBeVisible();
 
-  await page.goto("/library");
-  const libraryItem = page.locator(".library-list article").filter({ hasText: "무료 사주 요약" });
-  await libraryItem.getByRole("button", { name: "삭제" }).click();
-  await expect(libraryItem.getByRole("button", { name: "보관함 항목 삭제 확정" })).toBeVisible();
-  await libraryItem.getByRole("button", { name: "취소" }).click();
-  await expect(libraryItem.getByRole("heading", { name: "무료 사주 요약" })).toBeVisible();
-  await libraryItem.getByRole("button", { name: "삭제" }).click();
-  await libraryItem.getByRole("button", { name: "보관함 항목 삭제 확정" }).click();
-  await expect(page.getByRole("heading", { name: "무료 사주 요약" })).toHaveCount(0);
 });
 
 test("surfaces corrupt domain stores before explicit recovery", async ({ page }) => {
   const cases = [
     { key: "sajurium-saju-report", route: "/", title: "저장한 리포트를 읽을 수 없어요" },
-    { key: "sajurium-profile", route: "/home", title: "출생 정보를 읽을 수 없어요" },
-    { key: "sajurium-consultations", route: "/consult", title: "상담 데이터를 읽을 수 없어요" },
-    { key: "sajurium-people", route: "/people", title: "사람 데이터를 읽을 수 없어요" },
-    { key: "sajurium-compatibility", route: "/compatibility", title: "궁합 데이터를 읽을 수 없어요" },
-    { key: "sajurium-library", route: "/library", title: "보관함 데이터를 읽을 수 없어요" },
-    { key: "sajurium-commerce", route: "/products", title: "체험 구매 기록을 읽을 수 없어요" },
     { key: "sajurium-settings", route: "/settings", title: "환경설정을 읽을 수 없어요" },
     { key: "sajurium-feedback-list", route: "/settings/feedback", title: "피드백 데이터를 읽을 수 없어요" },
   ];
@@ -264,6 +202,10 @@ test("shows pending and failure as non-payment example states", async ({ page })
 });
 
 test("rolls back linked consultation writes when library persistence fails", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "내 흐름 살펴보기" }).click();
+  await submitBirth(page);
+  await expect(page).toHaveURL(/\/report$/);
   await page.goto("/consult/new");
   await page.getByRole("button", { name: "이직을 고민할 때 어떤 조건을 먼저 봐야 하나요?" }).click();
   const before = await page.evaluate(() => ({
@@ -282,7 +224,7 @@ test("rolls back linked consultation writes when library persistence fails", asy
       return original.call(this, key, value);
     };
   });
-  await page.getByRole("button", { name: "예시 답변 보기" }).click();
+  await page.getByRole("button", { name: "상담 답변 보기" }).click();
   await expect(page.locator(".form-error[role=alert]")).toContainText("모든 변경을 취소했어요");
   const state = await page.evaluate(() => {
     (window as typeof window & { __restoreSetItem?: () => void }).__restoreSetItem?.();

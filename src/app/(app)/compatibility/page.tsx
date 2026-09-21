@@ -1,5 +1,5 @@
-import { CompatibilityHomeScreen } from "@/components/people-compatibility-screens";
+import { LiveCompatibilityScreen } from "@/components/people-compatibility-screens";
 
 export default function CompatibilityPage() {
-  return <CompatibilityHomeScreen />;
+  return <LiveCompatibilityScreen />;
 }

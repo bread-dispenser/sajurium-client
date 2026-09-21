@@ -1,5 +1,5 @@
-import { FlowScreen } from "@/components/core-screens";
+import { LiveFlowScreen } from "@/components/core-screens";
 
 export default function TodayFlowPage() {
-  return <FlowScreen mode="today" />;
+  return <LiveFlowScreen mode="today" />;
 }
