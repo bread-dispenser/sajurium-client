@@ -104,7 +104,10 @@ jobs:
           bun run test:quality
 
   deploy:
-    if: github.event_name != 'pull_request' && vars.VERCEL_ENABLED == 'true'
+    # `SAJURIUM_API_URL` is not configured on this repository yet, and deploying with an
+    # empty value would bake an unusable API origin into the public build. Until a real
+    # origin exists, a merge to main must not publish anything.
+    if: github.event_name != 'pull_request' && vars.VERCEL_ENABLED == 'true' && vars.SAJURIUM_API_URL != ''
     needs: quality
     runs-on: ubuntu-latest
     env:
