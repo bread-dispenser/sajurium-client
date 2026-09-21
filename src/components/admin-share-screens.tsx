@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import type { CSSProperties } from "react";
+import { useState, useMemo } from "react";
+import styles from "./saas-system-rollout.module.css";
 
 type AdminTab = "users" | "orders" | "reports" | "consultations" | "quality";
 
@@ -50,9 +50,10 @@ const ADMIN_FIXTURES: Record<AdminTab, AdminRow[]> = {
   ],
 };
 
-const panelStyle: CSSProperties = { border: "var(--rule)", borderRadius: "var(--radius-md)", background: "var(--surface-strong)", padding: 16 };
-const fieldStyle: CSSProperties = { width: "100%", minHeight: 46, border: "var(--rule)", borderRadius: 12, background: "var(--surface-strong)", color: "var(--ink)", padding: "0 12px" };
-const mutedStyle: CSSProperties = { color: "var(--stone-700)", fontSize: 12 };
+/* Inline objects resolving design tokens from the rollout module scope. */
+const panelStyle = { border: "1px solid var(--sr-line)", borderRadius: "var(--sr-radius)", background: "var(--sr-surface)", padding: 16 } as const;
+const fieldStyle = { width: "100%", minHeight: 48, border: "1px solid var(--sr-control-line)", borderRadius: "var(--sr-radius)", background: "var(--sr-surface)", color: "var(--sr-ink)", padding: "0 12px" } as const;
+const mutedStyle = { color: "var(--sr-muted)", fontSize: 13 } as const;
 
 export function AdminPrototypeScreen() {
   const [tab, setTab] = useState<AdminTab>("users");
@@ -89,7 +90,7 @@ export function AdminPrototypeScreen() {
   }
 
   return (
-    <main className="screen-content admin-prototype-content" aria-labelledby="admin-prototype-title" style={{ gap: 24 }}>
+    <main className={`screen-content admin-prototype-content ${styles.srScreen}`} aria-labelledby="admin-prototype-title" style={{ gap: 24 }}>
       <header>
         <p className="section-kicker">운영 화면 프로토타입 · 실제 관리자 도구 아님</p>
         <h1 id="admin-prototype-title">사주리움 운영<br />워크스페이스</h1>
@@ -97,7 +98,7 @@ export function AdminPrototypeScreen() {
       </header>
 
       <section aria-label="예시 요약 지표" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10 }}>
-        {[["사용자 예시", "214", "+12 이번 주"], ["주문 예시", "38", "완료 표시 31"], ["검수 대기", "7", "fixture 기준"], ["상담 예시", "16", "진행 표시 4"]].map(([label, value, note]) => <article key={label} style={panelStyle}><small style={mutedStyle}>{label}</small><strong style={{ display: "block", margin: "4px 0", fontFamily: "var(--editorial-font)", fontSize: 27, fontWeight: 400 }}>{value}</strong><span style={{ color: "var(--vermilion)", fontSize: 11 }}>{note}</span></article>)}
+        {[["사용자 예시", "214", "+12 이번 주"], ["주문 예시", "38", "완료 표시 31"], ["검수 대기", "7", "fixture 기준"], ["상담 예시", "16", "진행 표시 4"]].map(([label, value, note]) => <article key={label} style={panelStyle}><small style={mutedStyle}>{label}</small><strong style={{ display: "block", margin: "4px 0", fontFamily: "inherit", fontSize: 22, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{value}</strong><span style={{ color: "var(--sr-muted)", fontSize: 12 }}>{note}</span></article>)}
       </section>
 
       <section aria-labelledby="admin-list-title" style={{ display: "grid", gap: 14 }}>
@@ -105,9 +106,9 @@ export function AdminPrototypeScreen() {
           <p className="section-kicker">탐색과 검토</p>
           <h2 id="admin-list-title">예시 레코드</h2>
         </div>
-        <div role="tablist" aria-label="운영 데이터 종류" style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 4 }}>
-          {ADMIN_TABS.map((item) => <button key={item.id} type="button" role="tab" aria-selected={tab === item.id} onClick={() => selectTab(item.id)} style={{ minWidth: 82, minHeight: 42, border: tab === item.id ? "1px solid var(--vermilion)" : "var(--rule)", borderRadius: 999, background: tab === item.id ? "rgb(169 52 34 / 8%)" : "var(--surface-strong)", color: tab === item.id ? "var(--vermilion-dark)" : "var(--ink)", fontSize: 12, fontWeight: 700 }}>{item.label}</button>)}
-        </div>
+        <nav className={styles.tabList} aria-label="운영 데이터 종류" role="tablist">
+          {ADMIN_TABS.map((item) => <button key={item.id} type="button" role="tab" aria-selected={tab === item.id} onClick={() => selectTab(item.id)} className={`${styles.tabButton}${tab === item.id ? ` ${styles.tabButtonSelected}` : ""}`}>{item.label}</button>)}
+        </nav>
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 2fr) minmax(130px, 1fr)", gap: 8 }}>
           <label><span style={mutedStyle}>검색</span><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ID 또는 제목" style={fieldStyle} /></label>
           <label><span style={mutedStyle}>상태</span><select value={status} onChange={(event) => setStatus(event.target.value)} style={fieldStyle}>{statusOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
@@ -118,21 +119,20 @@ export function AdminPrototypeScreen() {
             {visibleRows.length === 0 ? (
               <div style={panelStyle}><strong>조건에 맞는 예시가 없어요.</strong><p style={mutedStyle}>검색어나 상태 필터를 바꿔 보세요.</p></div>
             ) : visibleRows.map((row) => (
-              <button key={row.id} type="button" onClick={() => { setSelectedId(row.id); setMessage(`${row.id} 상세를 선택했어요.`); }} aria-pressed={selected?.id === row.id} style={{ ...panelStyle, width: "100%", textAlign: "left", boxShadow: selected?.id === row.id ? "inset 3px 0 0 var(--vermilion)" : "none" }}>
-                <small style={{ color: "var(--vermilion)", fontWeight: 800 }}>{row.id}</small>
-                <strong style={{ display: "block", marginTop: 6 }}>{row.title}</strong>
+              <button key={row.id} type="button" onClick={() => { setSelectedId(row.id); setMessage(`${row.id} 상세를 선택했어요.`); }} aria-pressed={selected?.id === row.id} className={`${styles.recordRow}${selected?.id === row.id ? ` ${styles.recordRowSelected}` : ""}`}>
+                <small style={{ color: "var(--sr-accent)", fontWeight: 600 }}>{row.id}</small>
                 <span style={{ ...mutedStyle, display: "block", marginTop: 4 }}>{row.status}</span>
               </button>
             ))}
           </div>
 
-          <aside aria-label="선택한 예시 상세" style={{ ...panelStyle, alignSelf: "start", background: "var(--surface-warm)" }}>
-            {selected ? <><p className="section-kicker">선택 상세 · {selected.id}</p><h2>{selected.title}</h2><p style={{ ...mutedStyle, margin: "6px 0 14px" }}>{selected.subtitle}</p><dl style={{ display: "grid", gap: 8, margin: 0 }}>{selected.details.map((detail) => { const [term, value] = detail.split(" · "); return <div key={detail} style={{ borderTop: "1px solid rgb(32 30 27 / 12%)", paddingTop: 8 }}><dt style={mutedStyle}>{term}</dt><dd style={{ margin: 0, fontWeight: 700 }}>{value}</dd></div>; })}</dl><button className="secondary-button" type="button" onClick={updatePrototypeStatus} style={{ marginTop: 16, background: "var(--surface-strong)" }}>표시 상태만 전환</button></> : <><h2>선택된 예시 없음</h2><p style={mutedStyle}>왼쪽 목록에서 레코드를 선택하세요.</p></>}
+          <aside aria-label="선택한 예시 상세" className={styles.detailPanel}>
+            {selected ? <><p className="section-kicker">선택 상세 · {selected.id}</p><h2>{selected.title}</h2><p style={{ ...mutedStyle, margin: "6px 0 14px" }}>{selected.subtitle}</p><dl className={styles.detailFacts}>{selected.details.map((detail) => { const [term, value] = detail.split(" · "); return <div key={detail} className={styles.factRow}><dt style={mutedStyle}>{term}</dt><dd>{value}</dd></div>; })}</dl><button className="secondary-button" type="button" onClick={updatePrototypeStatus}>표시 상태만 전환</button></> : <><h2>선택된 예시 없음</h2><p style={mutedStyle}>왼쪽 목록에서 레코드를 선택하세요.</p></>}
           </aside>
         </div>
       </section>
 
-      <p role="status" style={{ ...panelStyle, ...mutedStyle, borderColor: "rgb(169 52 34 / 28%)" }}>{message}</p>
+      <p role="status" className={styles.statusNote}>{message}</p>
     </main>
   );
 }
@@ -198,7 +198,7 @@ export function SharePrototypeScreen() {
   ];
 
   return (
-    <main className="screen-content share-prototype-content" aria-labelledby="share-prototype-title" style={{ gap: 24 }}>
+    <main className={`screen-content share-prototype-content ${styles.srScreen}`} aria-labelledby="share-prototype-title" style={{ gap: 24 }}>
       <header>
         <p className="section-kicker">공유 카드 프로토타입 · 로컬 미리보기</p>
         <h1 id="share-prototype-title">보여줄 정보만<br />직접 골라보세요</h1>
@@ -216,21 +216,21 @@ export function SharePrototypeScreen() {
         <div><h2 id="privacy-fields-title">2. 표시 정보</h2><p style={mutedStyle}>체크한 항목만 아래 카드에 나타납니다.</p></div>
         <fieldset style={{ display: "grid", gap: 8 }}>
           <legend className="section-kicker">개인정보 보호 선택</legend>
-          {toggleRows.map(([field, label, note]) => <label key={field} className="setting-toggle" style={{ ...panelStyle, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}><span><strong style={{ display: "block" }}>{label}</strong><small style={mutedStyle}>{note}</small></span><input type="checkbox" checked={fields[field]} onChange={() => toggleField(field)} /></label>)}
+          {toggleRows.map(([field, label, note]) => <label key={field} className="setting-toggle" style={{ ...panelStyle, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}><span><strong style={{ display: "block", fontWeight: 600 }}>{label}</strong><small style={mutedStyle}>{note}</small></span><input type="checkbox" checked={fields[field]} onChange={() => toggleField(field)} /></label>)}
         </fieldset>
       </section>
 
       <section aria-labelledby="preview-title" style={{ display: "grid", gap: 10 }}>
         <div style={{ display: "flex", alignItems: "end", justifyContent: "space-between", gap: 12 }}><div><p className="section-kicker">실시간 카드</p><h2 id="preview-title">3. 미리보기</h2></div><small style={mutedStyle}>{content.label}</small></div>
-        <article style={{ borderRadius: 24, background: "var(--ink)", color: "#fffdf8", padding: "28px 24px", boxShadow: "none" }}>
-          <p style={{ color: "#e9a595", fontSize: 12, fontWeight: 800, letterSpacing: ".12em" }}>SAJURIUM · SHARE PREVIEW</p>
-          {fields.period && <p style={{ marginTop: 22, color: "#ddd7cb", fontSize: 12 }}>{content.eyebrow}</p>}
-          <h3 style={{ marginTop: 6, fontSize: 28, lineHeight: 1.35 }}>{content.title}</h3>
-          {fields.name && <p style={{ marginTop: 16, color: "#ddd7cb", fontSize: 12 }}>해온</p>}
-          {fields.elements && <div style={{ marginTop: 20, borderTop: "1px solid rgb(255 255 255 / 18%)", paddingTop: 14 }}><small style={{ color: "#ddd7cb" }}>오행 균형</small><p style={{ marginTop: 5, letterSpacing: ".04em" }}>목 30 · 화 20 · 토 20 · 금 10 · 수 20</p></div>}
-          {fields.insight && <p style={{ marginTop: 20, fontFamily: "var(--editorial-font)", fontSize: 17, lineHeight: 1.8 }}>{content.insight}</p>}
-          {fields.action && <p style={{ marginTop: 18, borderRadius: 12, background: "rgb(255 255 255 / 9%)", padding: 12, color: "#f3efe6", fontSize: 12 }}>오늘의 메모 · {content.action}</p>}
-          <p style={{ marginTop: 22, color: "#bdb6aa", fontSize: 12 }}>만료 표시 · {expiry} / 사주 해석은 중요한 결정이나 전문 판단을 대신하지 않습니다.</p>
+        <article className={styles.darkCard}>
+          <p className={styles.darkKicker}>SAJURIUM · SHARE PREVIEW</p>
+          {fields.period && <p className={styles.darkEyebrow}>{content.eyebrow}</p>}
+          <h3 className={styles.darkTitle}>{content.title}</h3>
+          {fields.name && <p className={styles.darkMeta}>해온</p>}
+          {fields.elements && <div className={styles.darkSection}><small>오행 균형</small><p>목 30 · 화 20 · 토 20 · 금 10 · 수 20</p></div>}
+          {fields.insight && <p className={styles.darkInsight}>{content.insight}</p>}
+          {fields.action && <p className={styles.darkChip}>오늘의 메모 · {content.action}</p>}
+          <p className={styles.darkMeta}>만료 표시 · {expiry} / 사주 해석은 중요한 결정이나 전문 판단을 대신하지 않습니다.</p>
         </article>
       </section>
 
@@ -245,7 +245,7 @@ export function SharePrototypeScreen() {
         <button className="secondary-button" type="button" onClick={downloadLocally}>이미지 카드 다운로드</button>
       </div>
       <p className="action-note">공개 URL·외부 업로드·서버 저장은 생성되지 않습니다.</p>
-      <p role="status" style={{ ...panelStyle, ...mutedStyle, borderColor: "rgb(169 52 34 / 28%)" }}>{message}</p>
+      <p role="status" className={styles.statusNote}>{message}</p>
     </main>
   );
 }

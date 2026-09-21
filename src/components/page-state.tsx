@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import type { ReactNode } from "react";
+import styles from "./saas-system-rollout.module.css";
 
 type PageStateProps = {
   eyebrow?: string;
@@ -14,7 +15,7 @@ type PageStateProps = {
 
 function PageState({ eyebrow, title, description, children, action }: PageStateProps) {
   return (
-    <section className="page-state" aria-labelledby="page-state-title">
+    <section className={`page-state ${styles.srScreen}`} aria-labelledby="page-state-title">
       {eyebrow && <p className="section-kicker">{eyebrow}</p>}
       <h1 id="page-state-title">{title}</h1>
       <p className="supporting">{description}</p>
@@ -30,14 +31,20 @@ function PageState({ eyebrow, title, description, children, action }: PageStateP
 
 export function LoadingState({ title = "내용을 정리하고 있어요" }: { title?: string }) {
   return (
-    <PageState title={title} description="잠시만 기다려 주세요.">
+    <section className={`page-state ${styles.srScreen}`} aria-labelledby="loading-state-title" aria-busy="true" role="status">
+      <h1 id="loading-state-title">{title}</h1>
+      <p className="supporting">잠시만 기다려 주세요.</p>
       <div className="state-lines" aria-hidden="true"><span /><span /><span /></div>
-    </PageState>
+    </section>
   );
 }
 
 export function EmptyState({ title, description, action }: Omit<PageStateProps, "children">) {
   return <PageState eyebrow="비어 있음" title={title} description={description} action={action} />;
+}
+
+export function UnavailableScreen({ title, description }: { title: string; description: string }) {
+  return <PageState eyebrow="준비 중" title={title} description={description} action={{ href: "/home", label: "홈으로 돌아가기" }} />;
 }
 
 export function CorruptState({ title, description, unavailable = false, onReset }: { title: string; description: string; unavailable?: boolean; onReset: () => boolean }) {

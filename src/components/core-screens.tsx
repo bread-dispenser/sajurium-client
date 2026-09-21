@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import type { LibraryItem, LibraryItemType } from "@/lib/domain";
-import { withAllowedLibraryActions } from "@/lib/contracts";
 import { inspectCurrentBirth, libraryStore, resetBirthSource } from "@/lib/storage";
 import { getDailyFlow, getMonthlyFlow, INITIAL_BIRTH, INITIAL_LIBRARY_ITEMS } from "@/lib/fixtures";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { CorruptState, EmptyState, LoadingState } from "./page-state";
+import styles from "./saas-core-rollout.module.css";
+import { deleteLibraryItem, getFlow, listLibrary, type LiveReport } from "@/lib/api/service";
 
 function localDate(date = new Date()) {
   const adjusted = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
@@ -95,7 +96,7 @@ export function HomeScreen() {
   ];
 
   return (
-    <main className="screen-content home-content platform-home signal-atlas-home-screen" aria-labelledby="home-title">
+    <main className={`screen-content home-content platform-home signal-atlas-home-screen ${styles.scope}`} aria-labelledby="home-title">
       <header className="signal-atlas-home-lead">
         <div className="signal-atlas-date-context" aria-label={`오늘 ${formatKoreanDate(today)}`}>
           <p>오늘 · {formatKoreanDate(today)}</p>
@@ -132,7 +133,7 @@ export function HomeScreen() {
           {monthTimeline.map((item) => {
             const current = item.id === currentPhase;
             return (
-              <article className={`signal-atlas-timeline-row${current ? " current" : ""}`} key={item.id} role="listitem" aria-current={current ? "true" : undefined}>
+              <article className={`signal-atlas-timeline-row${current ? " timeline-current" : ""}`} key={item.id} role="listitem" aria-current={current ? "true" : undefined}>
                 <span className="signal-atlas-timeline-marker" aria-hidden="true" />
                 <div>
                   <small>{item.label}</small>
@@ -177,7 +178,7 @@ export function FlowScreen({ mode }: { mode: "today" | "month" }) {
 
   if (reading.kind === "daily") {
     return (
-      <main className="screen-content flow-content signal-atlas-flow-screen signal-atlas-today-flow" aria-labelledby="flow-title">
+      <main className={`screen-content flow-content signal-atlas-flow-screen signal-atlas-today-flow ${styles.scope}`} aria-labelledby="flow-title">
         <div className="editorial-hero signal-atlas-flow-lead">
           <p className="section-kicker">오늘의 흐름</p>
           <h1 id="flow-title">{reading.headline}</h1>
@@ -227,7 +228,7 @@ export function FlowScreen({ mode }: { mode: "today" | "month" }) {
   ];
 
   return (
-    <main className="screen-content flow-content signal-atlas-flow-screen signal-atlas-month-flow" aria-labelledby="flow-title">
+    <main className={`screen-content flow-content signal-atlas-flow-screen signal-atlas-month-flow ${styles.scope}`} aria-labelledby="flow-title">
       <div className="period-control signal-atlas-month-navigation">
         <button type="button" onClick={previous} aria-label="이전 달">‹</button>
         <label className="signal-atlas-month-picker">
@@ -308,11 +309,20 @@ export function LibraryScreen() {
   const [showHidden, setShowHidden] = useState(false);
   const [error, setError] = useState("");
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
-  const inspection = hydrated ? libraryStore.inspect() : { status: "unavailable" as const };
+  const [serverItems, setServerItems] = useState<LibraryItem[] | null>(null);
+  const [serverError, setServerError] = useState(false);
+  useEffect(() => {
+    if (!hydrated) return;
+    let active = true;
+    void listLibrary()
+      .then((page) => active && setServerItems(page.items))
+      .catch(() => active && setServerError(true));
+    return () => { active = false; };
+  }, [hydrated]);
   void raw;
-  if (!hydrated) return <LoadingState title="보관함을 확인하고 있어요" />;
-  if (inspection.status === "corrupt" || inspection.status === "unavailable") return <CorruptState title="보관함 데이터를 읽을 수 없어요" description="손상된 보관함을 확인 없이 체험용 예시로 바꾸거나 수정하지 않습니다." unavailable={inspection.status === "unavailable"} onReset={libraryStore.remove} />;
-  const source = inspection.status === "ok" ? inspection.value.items : [...INITIAL_LIBRARY_ITEMS];
+  if (!hydrated || (!serverItems && !serverError)) return <LoadingState title="서버 보관함을 확인하고 있어요" />;
+  if (serverError || !serverItems) return <CorruptState title="보관함 서버에 연결할 수 없어요" description="백엔드 연결 상태를 확인한 뒤 다시 시도해 주세요." unavailable onReset={() => { window.location.reload(); return true; }} />;
+  const source = serverItems;
   const latestDate = source.reduce((latest, item) => item.createdAt > latest ? item.createdAt : latest, "").slice(0, 10);
   const recentThreshold = latestDate ? new Date(`${latestDate}T00:00:00.000Z`).getTime() - 6 * 86_400_000 : 0;
   const items = source
@@ -324,32 +334,30 @@ export function LibraryScreen() {
     .filter((item) => `${item.title} ${item.subtitle}`.toLowerCase().includes(query.trim().toLowerCase()))
     .sort((left, right) => sort === "newest" ? right.createdAt.localeCompare(left.createdAt) : left.createdAt.localeCompare(right.createdAt));
 
-  function updateItem(id: string, update: (item: LibraryItem) => LibraryItem) {
-    if (!libraryStore.write({ version: 1, items: source.map((item) => item.id === id ? withAllowedLibraryActions(update(item)) : item) })) setError("보관함 항목을 변경할 수 없어요.");
-  }
-
-  function deleteItem(id: string) {
+  async function deleteItem(id: string) {
     if (source.find((item) => item.id === id)?.purchased) {
       setError("구매한 항목은 삭제할 수 없고 숨기기만 할 수 있어요.");
       setPendingDeleteId(null);
       return;
     }
-    if (!libraryStore.write({ version: 1, items: source.filter((item) => item.id !== id) })) {
-      setError("보관함 항목을 삭제할 수 없어요.");
-      return;
+    try {
+      await deleteLibraryItem(id);
+      setServerItems((current) => current?.filter((item) => item.id !== id) ?? null);
+      setPendingDeleteId(null);
+      setError("");
+    } catch {
+      setError("서버에서 보관함 항목을 삭제할 수 없어요.");
     }
-    setPendingDeleteId(null);
-    setError("");
   }
 
   const activeFilterCount = [type !== "all", dateRange !== "all", profileScope !== "all", topic !== "all", access !== "all", showHidden].filter(Boolean).length;
 
   return (
-    <main className="screen-content library-content signal-atlas-library-screen" aria-labelledby="library-title">
+    <main className={`screen-content library-content signal-atlas-library-screen ${styles.scope}`} aria-labelledby="library-title">
       <header className="editorial-hero signal-atlas-library-lead">
         <p className="section-kicker">보관함</p>
         <h1 id="library-title">저장한 기록</h1>
-        <p className="supporting">다른 기기와 공유되지 않고 이 브라우저에만 저장됩니다.</p>
+        <p className="supporting">익명 세션 또는 로그인 계정에 연결된 서버 기록입니다.</p>
       </header>
       <section className="library-controls signal-atlas-library-controls" aria-label="보관함 검색과 필터">
         <label className="signal-atlas-library-search">
@@ -386,8 +394,7 @@ export function LibraryScreen() {
                 <time dateTime={item.createdAt}>{item.createdAt.slice(0, 10)}</time>
               </div>
               <div className="library-item-actions signal-atlas-library-item-actions">
-                {(item.allowedActions.includes("hide") || item.allowedActions.includes("unhide")) && <button type="button" onClick={() => updateItem(item.id, (current) => ({ ...current, hidden: !current.hidden }))}>{item.hidden ? "보이기" : "숨기기"}</button>}
-                {item.purchased ? <small>구매 리포트는 삭제 대신 숨길 수 있어요.</small> : item.allowedActions.includes("delete") && (pendingDeleteId === item.id ? <div className="danger-confirm library-delete-confirm"><p>{item.title}을 기기에서 삭제할까요?</p><button type="button" onClick={() => deleteItem(item.id)}>보관함 항목 삭제 확정</button><button type="button" onClick={() => setPendingDeleteId(null)}>취소</button></div> : <button type="button" onClick={() => setPendingDeleteId(item.id)}>삭제</button>)}
+                {item.purchased ? <small>구매 리포트는 삭제 대신 숨길 수 있어요.</small> : item.allowedActions.includes("delete") && (pendingDeleteId === item.id ? <div className="danger-confirm library-delete-confirm"><p>{item.title}을 서버에서 삭제할까요?</p><button type="button" onClick={() => { void deleteItem(item.id); }}>보관함 항목 삭제 확정</button><button type="button" onClick={() => setPendingDeleteId(null)}>취소</button></div> : <button type="button" onClick={() => setPendingDeleteId(item.id)}>삭제</button>)}
               </div>
             </article>;
           })}</div>
@@ -396,4 +403,23 @@ export function LibraryScreen() {
       {error && <p className="form-error" role="alert">{error}</p>}
     </main>
   );
+}
+
+export function LiveFlowScreen({ mode }: { mode: "today" | "month" | "year" }) {
+  const [report, setReport] = useState<LiveReport | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => { void getFlow(mode).then(setReport).catch((reason) => setError(reason instanceof Error ? reason.message : "흐름을 불러오지 못했어요.")); }, [mode]);
+  if (!report && !error) return <LoadingState title="서버 흐름을 계산하고 있어요" />;
+  if (error) return <EmptyState title="흐름을 준비할 수 없어요" description={error} action={{ href: "/birth", label: "출생 정보 입력" }} />;
+  const title = mode === "today" ? "오늘의 흐름" : mode === "month" ? "이번 달 흐름" : "올해 흐름";
+  return <main className={`screen-content flow-content signal-atlas-flow-screen ${styles.scope}`} aria-labelledby="flow-title"><div className="editorial-hero signal-atlas-flow-lead"><p className="section-kicker">{title}</p><h1 id="flow-title">{report?.sections[0]?.content ?? report?.kind}</h1><p className="supporting">서버에 저장된 명식과 기간 기준으로 생성한 결과예요.</p></div><section className="flow-sections" aria-label="흐름 내용">{report?.sections.map((section) => <article className="signal-panel" key={section.section_id}><h2>{section.title}</h2><p>{section.content}</p></article>)}</section><Link className="secondary-button" href="/report">기본 리포트로</Link></main>;
+}
+
+export function LiveHomeScreen() {
+  const [data, setData] = useState<{ flow: LiveReport; count: number } | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => { void Promise.all([getFlow("today"), listLibrary()]).then(([flow, library]) => setData({ flow, count: library.items.length })).catch((reason) => setError(reason instanceof Error ? reason.message : "홈을 불러오지 못했어요.")); }, []);
+  if (!data && !error) return <LoadingState title="오늘의 흐름을 불러오고 있어요" />;
+  if (error) return <EmptyState title="오늘의 흐름을 준비할 수 없어요" description={error} action={{ href: "/birth", label: "출생 정보 입력" }} />;
+  return <main className={`screen-content home-content platform-home signal-atlas-home-screen ${styles.scope}`} aria-labelledby="home-title"><header className="signal-atlas-home-lead"><p>오늘 · 서버 기록 {data?.count ?? 0}개</p><h1 id="home-title">오늘의 흐름</h1></header><section className="home-summary signal-atlas-today-signal"><p>오늘의 신호</p><h2>{data?.flow.sections[0]?.content}</h2><p className="signal-atlas-signal-evidence">서버에 저장된 명식과 오늘 날짜를 기준으로 생성했습니다.</p><Link className="text-link" href="/flow/today">전체 흐름 보기</Link></section><section className="service-group signal-atlas-consultation-cta"><Link href="/consult/new"><strong>오늘의 고민을 남겨볼까요?</strong><span aria-hidden="true">↗</span></Link></section><Link className="secondary-button" href="/library">서버 보관함 보기</Link></main>;
 }

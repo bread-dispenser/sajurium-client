@@ -1,8 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { getNotificationPreferences, loginAccount, logoutAccount, registerAccount, requestAccountDeletion, updateNotificationPreferences, type AnonymousMigrationStatus } from "@/lib/api/service";
+import { LoadingState } from "./page-state";
 import type { FormEvent } from "react";
+import styles from "./saas-system-rollout.module.css";
 
 type Provider = "카카오" | "Apple" | "Google" | "이메일";
 type NotificationTab = "all" | "unread";
@@ -61,7 +64,7 @@ export function LoginPrototypeScreen() {
 
   if (account) {
     return (
-      <main className="screen-content settings-content signal-atlas-account-summary" aria-labelledby="account-summary-title">
+      <main className={`screen-content settings-content signal-atlas-account-summary ${styles.srScreen}`} aria-labelledby="account-summary-title">
         <p className="section-kicker signal-atlas-overline">로그인 체험 완료</p>
         <h1 id="account-summary-title">사주리움에<br />돌아오셨네요</h1>
         <p className="supporting" role="status">입력한 내용으로 로그인 이후 화면을 미리 보여드려요.</p>
@@ -85,7 +88,7 @@ export function LoginPrototypeScreen() {
   }
 
   return (
-    <main className="screen-content form-content signal-atlas-login-screen" aria-labelledby="login-title">
+    <main className={`screen-content form-content signal-atlas-login-screen ${styles.srScreen}`} aria-labelledby="login-title">
       <header className="form-hero signal-login-hero">
         <p className="section-kicker signal-atlas-overline">로그인</p>
         <h1 id="login-title">기록을 이어가려면<br />로그인해 주세요</h1>
@@ -199,7 +202,7 @@ export function NotificationCenterScreen() {
   }
 
   return (
-    <main className="screen-content settings-content signal-atlas-notifications-screen" aria-labelledby="notifications-title">
+    <main className={`screen-content settings-content signal-atlas-notifications-screen ${styles.srScreen}`} aria-labelledby="notifications-title">
       <header className="signal-notifications-header">
         <p className="section-kicker signal-atlas-overline">소식과 기록</p>
         <h1 id="notifications-title">알림 센터</h1>
@@ -255,4 +258,63 @@ export function NotificationCenterScreen() {
       </section>
     </main>
   );
+}
+
+export function LiveNotificationScreen() {
+  const [preferences, setPreferences] = useState<{ topics: Record<string, boolean>; quiet_hours_start: number; quiet_hours_end: number; timezone: string } | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => { void getNotificationPreferences().then(setPreferences).catch(() => setError("알림 설정을 불러오지 못했어요.")); }, []);
+  if (!preferences && !error) return <LoadingState title="서버 알림 설정을 불러오고 있어요" />;
+  return (
+    <main className={`screen-content settings-content ${styles.srScreen}`} aria-labelledby="notification-title">
+      <p className="section-kicker">알림 설정</p>
+      <h1 id="notification-title">받고 싶은 소식</h1>
+      {error ? <p className="form-error" role="alert">{error}</p> : <>
+        <p className="supporting">선호도는 서버 계정 또는 익명 세션에 저장됩니다.</p>
+        {Object.entries(preferences?.topics ?? {}).map(([topic, enabled]) => (
+          <label className="setting-toggle" key={topic}>
+            <span><strong>{topic}</strong></span>
+            <input type="checkbox" checked={enabled} onChange={(event) => {
+              if (!preferences) return;
+              const previous = preferences;
+              const topics = { ...preferences.topics, [topic]: event.target.checked };
+              setPreferences({ ...preferences, topics });
+              void updateNotificationPreferences({ topics }).then(setPreferences).catch(() => {
+                setPreferences(previous);
+                setError("저장하지 못했어요.");
+              });
+            }} />
+          </label>
+        ))}
+        <p className="action-note">조용한 시간: {preferences?.quiet_hours_start}:00–{preferences?.quiet_hours_end}:00 · {preferences?.timezone}</p>
+      </>}
+    </main>
+  );
+}
+
+const MIGRATION_MESSAGES: Record<AnonymousMigrationStatus, string> = {
+  migrated: "로그인됐어요. 익명 데이터를 계정으로 옮겼어요.",
+  "already-migrated": "로그인됐어요. 익명 데이터는 이미 계정으로 이전되어 있어요.",
+  unavailable: "로그인됐어요. 익명 데이터가 만료되었거나 존재하지 않아 이전하지 못했어요.",
+  pending: "로그인됐어요. 익명 데이터 이전을 마치지 못해 다음 로그인에서 이어서 시도돼요.",
+  "not-needed": "로그인됐어요. 서버 계정으로 계속 진행할 수 있습니다.",
+};
+
+export function LiveLoginScreen() {
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [name, setName] = useState(""); const [message, setMessage] = useState("");
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage("");
+    const action = mode === "login" ? loginAccount(email, password) : registerAccount(email, password, name);
+    void action.then((result) => setMessage(MIGRATION_MESSAGES[result.migration])).catch((error) => setMessage(error instanceof Error ? error.message : "인증에 실패했어요."));
+  }
+
+  return <main className={`screen-content login-content ${styles.srScreen}`} aria-labelledby="login-title"><p className="section-kicker">계정</p><h1 id="login-title">{mode === "login" ? "로그인" : "계정 만들기"}</h1><p className="supporting">로그인하면 현재 익명 데이터 이전을 이어갈 수 있습니다.</p><form onSubmit={submit}><label className="signal-field">이메일<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>{mode === "register" && <label className="signal-field">이름<input value={name} onChange={(event) => setName(event.target.value)} /></label>}<label className="signal-field">비밀번호<input type="password" minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} required /></label><button className="primary-button" type="submit">{mode === "login" ? "로그인" : "계정 만들기"}</button></form>{message && <p className="form-error" role="status">{message}</p>}<button className="text-button" type="button" onClick={() => setMode((current) => current === "login" ? "register" : "login")}>{mode === "login" ? "계정 만들기" : "로그인으로"}</button><p className="action-note">소셜 로그인은 제공자 자격증명이 연결되면 이 화면에 추가됩니다.</p></main>;
+}
+
+export function LiveAccountScreen() {
+  const [reason, setReason] = useState(""); const [message, setMessage] = useState("");
+  return <main className={`screen-content account-content ${styles.srScreen}`} aria-labelledby="account-title"><p className="section-kicker">계정</p><h1 id="account-title">계정과 데이터</h1><p className="supporting">익명 세션은 로그인 후 서버 계정으로 이전할 수 있습니다. 삭제 요청은 서버 정책에 따라 처리됩니다.</p><button className="secondary-button" type="button" onClick={() => { void logoutAccount().then((result) => setMessage(result === "complete" ? "로그아웃됐어요. 이 기기의 계정 세션을 지웠습니다." : "서버에 연결하지 못했지만 이 기기의 계정 세션은 지웠습니다.")); }}>로그아웃</button><label className="signal-field">삭제 사유 (선택)<textarea value={reason} onChange={(event) => setReason(event.target.value)} /></label><button className="secondary-button" type="button" onClick={() => { void requestAccountDeletion(reason).then((result) => setMessage(`삭제 요청 상태: ${String(result.status ?? "접수됨")}`)).catch((error) => setMessage(error instanceof Error ? error.message : "삭제 요청을 접수하지 못했어요.")); }}>계정 삭제 요청</button>{message && <p className="form-error" role="status">{message}</p>}</main>;
 }

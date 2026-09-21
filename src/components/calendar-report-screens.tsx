@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import styles from "./saas-core-rollout.module.css";
 
 type CalendarTopic = "love" | "conversation" | "contract" | "career" | "interview" | "money" | "rest" | "new-start";
 type FlowLevel = "활용하기 좋은 날" | "무난한 날" | "점검이 필요한 날";
@@ -82,7 +83,7 @@ export function TimingCalendarScreen() {
   }
 
   return (
-    <main className="screen-content flow-content" aria-labelledby="calendar-title">
+    <main className={`screen-content flow-content ${styles.scope}`} aria-labelledby="calendar-title">
       <div className="editorial-hero">
         <p className="section-kicker">시기 캘린더 · 결정형 프로토타입</p>
         <h1 id="calendar-title">날짜별 흐름을<br />달력으로 살펴보세요</h1>
@@ -207,7 +208,7 @@ export function LongRangeReportScreen({ period }: { period: ReportPeriod }) {
   const report = REPORTS[period];
 
   return (
-    <main className="screen-content report-content" aria-labelledby="long-report-title">
+    <main className={`screen-content report-content ${styles.scope}`} aria-labelledby="long-report-title">
       <div className="editorial-hero">
         <p className="section-kicker">{report.kicker} · 결정형 프로토타입</p>
         <h1 id="long-report-title">{report.title}</h1>

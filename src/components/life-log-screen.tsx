@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import styles from "./saas-core-rollout.module.css";
 
 type LifeEvent = {
   id: string;
@@ -39,7 +40,7 @@ export function LifeLogPrototypeScreen() {
   }
 
   return (
-    <main className="screen-content life-log-content" aria-labelledby="life-log-title">
+    <main className={`screen-content life-log-content ${styles.scope}`} aria-labelledby="life-log-title">
       <div className="platform-hero">
         <p className="section-kicker">라이프 로그 · 프로토타입</p>
         <h1 id="life-log-title">실제 사건과 선택을<br />시간순으로 기록하세요</h1>

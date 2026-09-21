@@ -1,39 +1,58 @@
 "use client";
 
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import type { NotificationPreferenceView, ShareLinkView } from "@/lib/contracts";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { INITIAL_SETTINGS_DATA } from "@/lib/fixtures";
 import { settingsStore } from "@/lib/storage";
 import { CorruptState, LoadingState } from "./page-state";
+import styles from "./saas-system-rollout.module.css";
+import { createReportShare, deactivateShareLink, getSharedContent, listShareLinks } from "@/lib/api/service";
 
 const panel: CSSProperties = {
-  border: "var(--rule)",
-  borderRadius: "var(--radius-md)",
-  background: "var(--surface-strong)",
+  border: "1px solid var(--sr-line)",
+  borderRadius: "var(--sr-radius)",
+  background: "var(--sr-surface)",
   padding: 16,
 };
 
-const muted: CSSProperties = { color: "var(--stone-700)", fontSize: 13, lineHeight: 1.65 };
+const muted: CSSProperties = { color: "var(--sr-muted)", fontSize: 13, lineHeight: 1.6 };
 const field: CSSProperties = {
   width: "100%",
-  minHeight: 46,
-  border: "var(--rule)",
-  borderRadius: 12,
-  background: "var(--surface-strong)",
-  color: "var(--ink)",
+  minHeight: 48,
+  border: "1px solid var(--sr-control-line)",
+  borderRadius: "var(--sr-radius)",
+  background: "var(--sr-surface)",
+  color: "var(--sr-ink)",
   padding: "0 12px",
 };
 
 function Disclosure({ children }: { children: ReactNode }) {
-  return <p style={{ ...panel, ...muted, background: "var(--surface-warm)", margin: 0 }}>{children}</p>;
+  return <p className={styles.disclosure}>{children}</p>;
+}
+
+export function LiveShareLinksScreen() {
+  const [links, setLinks] = useState<Array<{ id: number; share_url?: string | null; expires_at: string; is_active: boolean }> | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => { void listShareLinks().then(setLinks).catch(() => setError("공유 링크를 불러오지 못했어요.")); }, []);
+  if (!links && !error) return <LoadingState title="서버 공유 링크를 불러오고 있어요" />;
+  return <main className={`screen-content share-links-content ${styles.srScreen}`} aria-labelledby="share-links-title"><p className="section-kicker">공유 링크</p><h1 id="share-links-title">공개 범위를 직접 관리해요</h1><p className="supporting">링크 토큰은 서버에 해시로만 저장되며, 공개 결과에는 민감한 출생 정보가 포함되지 않습니다.</p><button className="primary-button" type="button" onClick={() => { void createReportShare().then((link) => setLinks((items) => [link, ...(items ?? [])])).catch((reason) => setError(reason instanceof Error ? reason.message : "리포트를 먼저 생성해 주세요.")); }}>현재 리포트 공유 링크 만들기</button>{error && <p className="form-error" role="alert">{error}</p>}<section className="signal-row-list">{links?.length === 0 ? <p>아직 공유 링크가 없어요.</p> : links?.map((link) => <article className="signal-row" key={link.id}><div className="signal-row-copy"><strong>{link.is_active ? "활성 링크" : "비활성 링크"}</strong><small>만료 {link.expires_at}</small>{link.share_url && <code>{link.share_url}</code>}</div>{link.is_active && <button type="button" onClick={() => { void deactivateShareLink(link.id).then((updated) => setLinks((items) => items?.map((item) => item.id === updated.id ? updated : item) ?? null)).catch(() => setError("링크를 비활성화하지 못했어요.")); }}>비활성화</button>}</article>)}</section></main>;
+}
+
+export function LiveSharedResultScreen({ token }: { token: string }) {
+  const [content, setContent] = useState<{ title: string; sections: Array<{ title?: string; body?: string }> } | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => { void getSharedContent(token).then((value) => setContent({ title: value.title, sections: value.sections as Array<{ title?: string; body?: string }> })).catch(() => setError("공유 링크가 없거나 만료됐어요.")); }, [token]);
+  if (!content && !error) return <LoadingState title="공유 결과를 불러오고 있어요" />;
+  if (error) return <main className={`screen-content ${styles.srShared}`}><h1>공유 결과를 열 수 없어요</h1><p>{error}</p></main>;
+  return <main className={`screen-content ${styles.srShared}`} aria-labelledby="shared-title"><p className="section-kicker">공유 결과</p><h1 id="shared-title">{content?.title}</h1>{content?.sections.map((section, index) => <article className="signal-panel" key={index}><h2>{section.title}</h2><p>{section.body}</p></article>)}</main>;
 }
 
 function SwitchRow({ checked, label, note, onChange }: { checked: boolean; label: string; note: string; onChange: () => void }) {
   return (
-    <label data-slop-allow="multiline-row-meta" style={{ ...panel, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14 }}>
-      <span><strong style={{ display: "block" }}>{label}</strong><small className="sr-only">{note}</small></span>
+    <label data-slop-allow="multiline-row-meta" className={styles.toggleRow}>
+      <span><strong>{label}</strong><small className="sr-only">{note}</small></span>
       <input type="checkbox" checked={checked} onChange={onChange} />
     </label>
   );
@@ -68,7 +87,7 @@ export function ShareLinkPrototypeScreen() {
   const state = !link ? "생성 전" : link.status === "disabled" ? "비활성화됨" : link.status === "expired" ? "만료됨" : "열람 가능 예시";
 
   return (
-    <main className="screen-content" aria-labelledby="share-link-title" style={{ gap: 22 }}>
+    <main className={`screen-content ${styles.srScreen}`} aria-labelledby="share-link-title" style={{ gap: 22 }}>
       <header>
         <p className="section-kicker">공유 링크 · 인터랙티브 프로토타입</p>
         <h1 id="share-link-title">필요할 때 만들고,<br />언제든 닫아요</h1>
@@ -83,7 +102,7 @@ export function ShareLinkPrototypeScreen() {
           <strong>포함되는 내용</strong>
           <ul style={{ ...muted, marginBottom: 0, paddingLeft: 20 }}><li>관계의 강점 한 문장</li><li>대화 방식 키워드</li><li>함께 해볼 실천 제안</li></ul>
         </article>
-        <article style={{ ...panel, borderColor: "rgb(169 52 34 / 30%)" }}>
+        <article className={styles.exclusionCard}>
           <strong>민감 정보 자동 제외</strong>
           <p style={{ ...muted, marginBottom: 0 }}>정확한 생년월일·출생 시간·출생지·결제 정보·비공개 상담·상대방 전체 사주 데이터는 선택할 수 없으며 링크에도 넣지 않습니다.</p>
         </article>
@@ -159,7 +178,7 @@ export function NotificationPolicyPrototypeScreen() {
   }
 
   return (
-    <main className="screen-content" aria-labelledby="notification-policy-title" style={{ gap: 22 }}>
+    <main className={`screen-content ${styles.srScreen}`} aria-labelledby="notification-policy-title" style={{ gap: 22 }}>
       <header><p className="section-kicker">알림 정책 · 로컬 설정 프로토타입</p><h1 id="notification-policy-title">필요한 소식만,<br />방해 없이 받아요</h1><p className="supporting">푸시·이메일을 발송하거나 운영체제 권한을 요청하지 않습니다. 아래 선택은 정책 동작을 확인하는 로컬 예시입니다.</p></header>
       <Disclosure>출시 전 필수 우선순위는 결제 완료와 구매 리포트 생성 완료입니다. 오늘의 운세 반복 푸시는 리텐션 검증 전에는 제공하지 않습니다.</Disclosure>
 
@@ -179,20 +198,20 @@ export function NotificationPolicyPrototypeScreen() {
         </div>
         <label><span style={muted}>조용한 시간 기준 시간대</span><select value={preference.quietHours.timezone} onChange={(event) => setPreference((current) => ({ ...current, quietHours: { ...current.quietHours, timezone: event.target.value } }))} style={field}><option value="Asia/Seoul">Asia/Seoul (KST)</option><option value="UTC">UTC</option></select></label>
         <SwitchRow checked={preference.suppressDuplicates} onChange={() => setPreference((current) => ({ ...current, suppressDuplicates: !current.suppressDuplicates }))} label="동일 내용 중복 억제" note={preference.suppressDuplicates ? "같은 내용은 두 번째부터 보류" : "비교 체험용으로 중복 허용 중"} />
-        <p style={{ ...panel, ...muted }}><strong style={{ color: "var(--ink)", display: "block", marginBottom: 4 }}>현재 정책 예시 · {preference.channel}</strong>{preference.quietHours.enabled ? `${preference.quietHours.start}–${preference.quietHours.end} (${preference.quietHours.timezone})에는 알림을 보류하고 이후 한 번만 표시합니다.` : "조용한 시간이 꺼져 있습니다."} {preference.suppressDuplicates ? "같은 본문·같은 대상 ID의 반복 알림은 합칩니다." : "중복 억제가 꺼진 체험 상태입니다."}</p>
+        <p style={{ ...panel, ...muted }}><strong style={{ color: "var(--sr-ink)", display: "block", marginBottom: 4 }}>현재 정책 예시 · {preference.channel}</strong>{preference.quietHours.enabled ? `${preference.quietHours.start}–${preference.quietHours.end} (${preference.quietHours.timezone})에는 알림을 보류하고 이후 한 번만 표시합니다.` : "조용한 시간이 꺼져 있습니다."} {preference.suppressDuplicates ? "같은 본문·같은 대상 ID의 반복 알림은 합칩니다." : "중복 억제가 꺼진 체험 상태입니다."}</p>
       </section>
 
       <section aria-labelledby="deep-link-title" style={{ display: "grid", gap: 10 }}>
         <div><p className="section-kicker">딥링크 미리보기</p><h2 id="deep-link-title">알림을 눌렀을 때</h2></div>
         <label><span style={muted}>미리 볼 알림</span><select value={selected} onChange={(event) => { setSelected(event.target.value as NotificationTopicCode); setPreviewOpened(false); }} style={field}>{notificationTopics.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}</select></label>
         <article style={{ ...panel }}>
-          <small style={{ color: "var(--vermilion)", fontWeight: 800 }}>{topic.classification === "service" ? "서비스" : "마케팅"} · {preference.channel} · {topic.code}</small>
+          <small style={{ color: "var(--sr-accent)", fontWeight: 600 }}>{topic.classification === "service" ? "서비스" : "마케팅"} · {preference.channel} · {topic.code}</small>
           <h3 style={{ margin: "7px 0" }}>{topic.label}</h3><p style={muted}>{topic.note}. 눌러 관련 화면으로 바로 이동하는 흐름을 확인하세요.</p>
           <p style={muted}>대상 리소스 ID · {topic.targetId}</p>
           <button type="button" className="primary-button" disabled={!preference.enabled || !preference.topics[topic.code]} onClick={() => { setPreviewOpened(true); setMessage(`${topic.deepLink} 화면의 로컬 딥링크 도착 미리보기를 열었어요.`); }}>딥링크 도착 미리보기</button>
           {(!preference.enabled || !preference.topics[topic.code]) && <p style={{ ...muted, marginBottom: 0 }}>현재 채널과 이 주제의 알림을 모두 켜야 미리볼 수 있어요.</p>}
         </article>
-        {previewOpened && <article tabIndex={-1} style={{ ...panel, background: "var(--surface-warm)" }}><p className="section-kicker">도착 화면 예시 · {topic.deepLink}</p><h3>{topic.label} 관련 화면</h3><p style={muted}>실제 라우팅 없이 도착 위치와 맥락만 보여줍니다. 읽음 처리나 서버 기록은 없습니다.</p><button className="secondary-button" type="button" onClick={() => setPreviewOpened(false)}>미리보기 닫기</button></article>}
+        {previewOpened && <article tabIndex={-1} style={{ ...panel, background: "var(--sr-surface-hover)" }}><p className="section-kicker">도착 화면 예시 · {topic.deepLink}</p><h3>{topic.label} 관련 화면</h3><p style={muted}>실제 라우팅 없이 도착 위치와 맥락만 보여줍니다. 읽음 처리나 서버 기록은 없습니다.</p><button className="secondary-button" type="button" onClick={() => setPreviewOpened(false)}>미리보기 닫기</button></article>}
       </section>
       <p role="status" style={{ ...panel, ...muted }}>{message}</p>
     </main>
@@ -232,14 +251,14 @@ export function PlatformLabsPrototypeScreen() {
   }
 
   return (
-    <main className="screen-content" aria-labelledby="platform-labs-title" style={{ gap: 22 }}>
+    <main className={`screen-content ${styles.srScreen}`} aria-labelledby="platform-labs-title" style={{ gap: 22 }}>
       <header><p className="section-kicker">플랫폼 랩스 · 장기 확장 체험</p><h1 id="platform-labs-title">먼 미래의 기능을<br />먼저 만져보세요</h1><p className="supporting">아직 제공되지 않는 장기 확장 개념입니다. 모든 입력과 참여 표시는 이 탭의 로컬 상태이며 신청·예약·결제·분석을 실행하지 않습니다.</p></header>
       <nav role="tablist" aria-label="P2 실험 선택" style={{ display: "flex", gap: 7, overflowX: "auto", paddingBottom: 5 }}>
-        {labs.map((item) => <button key={item.id} type="button" role="tab" aria-selected={tab === item.id} onClick={() => setTab(item.id)} style={{ minWidth: 100, minHeight: 42, border: tab === item.id ? "1px solid var(--vermilion)" : "var(--rule)", borderRadius: 999, background: tab === item.id ? "rgb(169 52 34 / 8%)" : "var(--surface-strong)", color: tab === item.id ? "var(--vermilion-dark)" : "var(--ink)", fontWeight: 700 }}>{item.label}</button>)}
+        {labs.map((item) => <button key={item.id} type="button" role="tab" aria-selected={tab === item.id} onClick={() => setTab(item.id)} className={`${styles.tabButton}${tab === item.id ? ` ${styles.tabButtonSelected}` : ""}`}>{item.label}</button>)}
       </nav>
 
       <section role="tabpanel" aria-labelledby="lab-panel-title" style={{ display: "grid", gap: 12 }}>
-        <article style={{ ...panel, background: "var(--ink)", color: "#fffdf8" }}><small style={{ color: "#e9a595", fontWeight: 800 }}>CONCEPT ONLY · 제공 전</small><h2 id="lab-panel-title" style={{ marginTop: 8 }}>{active.title}</h2><p style={{ color: "#ddd7cb", lineHeight: 1.7 }}>{active.description}</p></article>
+        <article className={styles.darkCard}><small className={styles.darkKicker}>CONCEPT ONLY · 제공 전</small><h2 id="lab-panel-title" className={styles.darkTitle}>{active.title}</h2><p className={styles.darkBody}>{active.description}</p></article>
 
         {tab === "verification" && <fieldset style={{ ...panel, display: "grid", gap: 10 }}><legend className="section-kicker">2024년 봄 · 변화가 커진 시기라는 예시</legend>{["맞음", "다름", "모름"].map((value) => <label key={value}><input type="radio" name="past" value={value} checked={past === value} onChange={() => setPast(value)} /> {value}</label>)}<p style={muted}>선택: {past}. 실제 해석 검증이나 개인화 학습은 하지 않습니다.</p></fieldset>}
 
@@ -277,7 +296,7 @@ export function SharedCompatibilityPrototypeScreen({ token, state }: { token: st
     }[displayState];
 
     return (
-      <main data-share-state={displayState} style={{ minHeight: "100vh", background: "var(--surface)", color: "var(--ink)", padding: "clamp(24px, 6vw, 72px) 20px" }}>
+      <main data-share-state={displayState} className={styles.srShared}>
         <div style={{ width: "min(680px, 100%)", margin: "0 auto", display: "grid", gap: 22 }}>
           <header><p className="section-kicker">SAJURIUM · {stateContent.kicker}</p><h1>{stateContent.title}</h1><p className="supporting">{stateContent.body}</p></header>
           <Disclosure>개인정보, 비공개 상담, 계산 근거, 결제·계정 정보는 이 페이지에서 제공하지 않습니다.</Disclosure>
@@ -287,10 +306,10 @@ export function SharedCompatibilityPrototypeScreen({ token, state }: { token: st
   }
 
   return (
-    <main data-share-state="active" style={{ minHeight: "100vh", background: "var(--surface)", color: "var(--ink)", padding: "clamp(24px, 6vw, 72px) 20px" }}>
+    <main data-share-state="active" className={styles.srShared}>
       <div style={{ width: "min(680px, 100%)", margin: "0 auto", display: "grid", gap: 22 }}>
         <header><p className="section-kicker">SAJURIUM · 공유된 관계 요약</p><h1>다름을 이해할수록<br />편안해지는 관계</h1><p className="supporting">고정 fixture로 구성한 읽기 전용 공유 예시입니다. 검색 결과에는 노출되지 않도록 설정되어 있습니다.</p></header>
-        <article style={{ ...panel, background: "var(--ink)", color: "#fffdf8", padding: "28px 24px" }}><small style={{ color: "#e9a595", fontWeight: 800 }}>관계 키워드</small><h2 style={{ marginTop: 9 }}>존중 · 여백 · 솔직한 확인</h2><p style={{ color: "#ddd7cb", lineHeight: 1.8 }}>두 사람은 같은 답을 빠르게 찾기보다 서로의 관점을 충분히 들을 때 신뢰가 깊어지는 관계로 표현됩니다.</p></article>
+        <article className={styles.darkCard}><small className={styles.darkKicker}>관계 키워드</small><h2 className={styles.darkTitle}>존중 · 여백 · 솔직한 확인</h2><p className={styles.darkBody}>두 사람은 같은 답을 빠르게 찾기보다 서로의 관점을 충분히 들을 때 신뢰가 깊어지는 관계로 표현됩니다.</p></article>
         <section aria-labelledby="public-summary-title" style={{ display: "grid", gap: 12 }}><div><p className="section-kicker">공개 요약</p><h2 id="public-summary-title">함께 살펴볼 내용</h2></div><div className="segmented-control" role="tablist" aria-label="관계 요약 종류">{([['strength', '강점'], ['rhythm', '대화 리듬'], ['practice', '실천']] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={detail === id} className={detail === id ? "selected" : ""} onClick={() => setDetail(id)}>{label}</button>)}</div><article role="tabpanel" style={panel}><h3>{content.title}</h3><p style={muted}>{content.body}</p></article></section>
         <Disclosure>이 페이지는 요약만 보여줍니다. 개인을 특정하는 정보, 비공개 상담, 계산 근거, 결제·계정 정보는 제공하지 않으며 편집이나 원문 열람도 할 수 없습니다.</Disclosure>
         <footer style={{ ...muted, textAlign: "center" }}>사주 해석은 관계에 대한 참고 콘텐츠이며 중요한 결정이나 전문적인 판단을 대신하지 않습니다.</footer>

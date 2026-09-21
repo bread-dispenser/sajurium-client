@@ -8,6 +8,7 @@ import type { NotificationPreferenceView } from "@/lib/contracts";
 import type { FeedbackEntry, FeedbackReason, SettingsData } from "@/lib/domain";
 import { INITIAL_BIRTH, INITIAL_SETTINGS_DATA, getTopic } from "@/lib/fixtures";
 import { useHydrated } from "@/hooks/use-hydrated";
+import styles from "./saas-system-rollout.module.css";
 import {
   birthDraftStore,
   clearAllOwnedStorage,
@@ -32,6 +33,7 @@ import {
   settingsStore,
 } from "@/lib/storage";
 import { CorruptState, EmptyState, LoadingState } from "./page-state";
+import { requestPrivacyJob } from "@/lib/api/service";
 
 function getSettings(): SettingsData | null {
   const inspection = settingsStore.inspect();
@@ -172,12 +174,12 @@ export function SettingsScreen() {
   }
 
   return (
-    <main className="screen-content settings-content signal-atlas-settings-screen" aria-labelledby="settings-title">
+    <main className={`screen-content settings-content signal-atlas-settings-screen ${styles.srScreen}`} aria-labelledby="settings-title">
       <header className="signal-settings-header">
         <p className="section-kicker signal-atlas-overline">설정과 데이터</p>
         <h1 id="settings-title">설정과 데이터</h1>
         <p className="supporting">이 기기에 저장된 정보와 알림을 관리해요.</p>
-        <p className="signal-local-storage-note">계정 기능이 없으므로 모든 설정은 현재 브라우저에만 적용됩니다.</p>
+        <p className="signal-local-storage-note">기기 기록과 화면 설정은 이 브라우저에 적용됩니다. 계정·서버 데이터는 각 전용 화면에서 관리할 수 있어요.</p>
       </header>
 
       <section className="settings-profile-summary signal-settings-profile" aria-labelledby="settings-profile-title">
@@ -225,7 +227,7 @@ export function SettingsScreen() {
         <h2 id="settings-notifications-title">알림 설정</h2>
         <p>실제 푸시·이메일 발송은 제공되지 않으며 선호도만 현재 브라우저에 저장됩니다.</p>
         {settings.notifications.map((preference) => (
-          <article className="signal-notification-channel" key={preference.channel}>
+          <article className="signal-notification-channel" key={preference.channel} data-slop-allow="overstuffed-row">
             <h3>{preference.channel === "push" ? "푸시" : "이메일"}</h3>
             <label className="setting-toggle signal-settings-row"><span><strong>채널 사용</strong><small>{preference.channel === "push" ? "운영체제 권한을 요청하지 않음" : "이메일 주소를 수집하지 않음"}</small></span><input type="checkbox" checked={preference.enabled} onChange={(event) => updateNotification(preference.channel, (current) => ({ ...current, enabled: event.target.checked }))} /></label>
             {notificationTopics.map((topic) => <label className="setting-toggle signal-settings-row" key={topic.code}><span><strong>{topic.label} · {topic.classification}</strong><small>topic · {topic.code}</small></span><input type="checkbox" checked={preference.topics[topic.code]} onChange={(event) => updateNotification(preference.channel, (current) => ({ ...current, topics: { ...current.topics, [topic.code]: event.target.checked } }))} /></label>)}
@@ -246,7 +248,7 @@ export function SettingsScreen() {
         <nav className="settings-links signal-settings-row-list" aria-label="개인정보 및 안내">
           <Link className="signal-settings-row" href="/settings/feedback"><span><strong>피드백과 신고 관리</strong><small>이 기기에 저장된 평가와 신고</small></span><span className="signal-settings-row-marker" aria-hidden="true">›</span></Link>
           <Link className="signal-settings-row" href="/settings/about-ai"><span><strong>AI 사용 안내</strong><small>계산과 설명을 구분해요</small></span><span className="signal-settings-row-marker" aria-hidden="true">›</span></Link>
-          <Link className="signal-settings-row" href="/settings/privacy"><span><strong>개인정보 안내</strong><small>브라우저 저장과 삭제 범위</small></span><span className="signal-settings-row-marker" aria-hidden="true">›</span></Link>
+          <Link className="signal-settings-row" href="/settings/privacy"><span><strong>개인정보 안내</strong><small>서버 내보내기·삭제 요청과 기기 저장 범위</small></span><span className="signal-settings-row-marker" aria-hidden="true">›</span></Link>
           <Link className="signal-settings-row" href="/settings/terms"><span><strong>이용약관</strong><small>현재 제공 범위</small></span><span className="signal-settings-row-marker" aria-hidden="true">›</span></Link>
           <Link className="signal-settings-row" href="/settings/safety"><span><strong>콘텐츠 안전 안내</strong><small>공포를 판매하지 않아요</small></span><span className="signal-settings-row-marker" aria-hidden="true">›</span></Link>
         </nav>
@@ -257,7 +259,7 @@ export function SettingsScreen() {
         <p>이 기기의 모든 사주 기록을 지워요.</p>
         <div className="data-inventory signal-data-inventory">
           {inventory.map((item) => (
-            <article className="signal-data-row" key={item.id}>
+            <article className="signal-data-row" key={item.id} data-slop-allow="overstuffed-row">
               <span>{item.label}<small>{item.scope === "session" ? "현재 탭" : "현재 브라우저"}</small></span>
               <strong>{item.status === "unavailable" ? "사용 불가" : item.status === "corrupt" ? "확인 필요" : `${item.count}개`}</strong>
               {pendingClearId === item.id ? (
@@ -267,7 +269,7 @@ export function SettingsScreen() {
                   <button type="button" onClick={() => setPendingClearId(null)}>취소</button>
                 </div>
               ) : (
-                <button type="button" onClick={() => item.status === "unavailable" ? clearInventoryItem(item.id, item.status) : setPendingClearId(item.id)} disabled={item.status === "empty" || (hasUnavailableStorage && item.status !== "unavailable")}>{item.status === "unavailable" ? "다시 확인" : item.status === "corrupt" ? "초기화" : "삭제"}</button>
+                <button className="inventory-action" type="button" onClick={() => item.status === "unavailable" ? clearInventoryItem(item.id, item.status) : setPendingClearId(item.id)} disabled={item.status === "empty" || (hasUnavailableStorage && item.status !== "unavailable")}>{item.status === "unavailable" ? "다시 확인" : item.status === "corrupt" ? "초기화" : "삭제"}</button>
               )}
             </article>
           ))}
@@ -290,9 +292,9 @@ export function SettingsScreen() {
 
       <section className="settings-section signal-settings-group signal-settings-account-deletion" aria-labelledby="account-deletion-title">
         <h2 id="account-deletion-title">계정 기록 삭제</h2>
-        <p>현재 계정 기능과 다른 기기 저장이 없어 실제 계정 삭제는 제공되지 않습니다.</p>
-        <p className="signal-settings-note">이 프로토타입에서는 계정 삭제를 처리하지 않아요. 이 브라우저 기록은 위의 ‘기기 기록 삭제’에서 직접 지울 수 있습니다.</p>
-        <button className="disabled-login" type="button" disabled>계정 삭제 · 이용 불가</button>
+        <p>서버 계정 삭제 요청과 이 브라우저의 기기 기록 삭제는 서로 다른 작업입니다.</p>
+        <p className="signal-settings-note">계정 데이터 삭제는 서버 작업으로 접수하고, 기기 기록은 위에서 별도로 지울 수 있어요.</p>
+        <Link className="secondary-button" href="/account">계정과 데이터 관리</Link>
       </section>
       {message && <p className="settings-message" role="status">{message}</p>}
     </main>
@@ -325,7 +327,7 @@ export function FeedbackManagementScreen() {
 
   if (data.entries.length === 0) return <EmptyState title="저장된 피드백이 없어요" description="리포트 평가와 신고는 이 기기에만 저장됩니다." action={{ href: "/report", label: "리포트 보기" }} />;
   return (
-    <main className="screen-content feedback-management" aria-labelledby="feedback-management-title">
+    <main className={`screen-content feedback-management ${styles.srScreen}`} aria-labelledby="feedback-management-title">
       <p className="section-kicker">이 기기의 피드백</p><h1 id="feedback-management-title">평가와 신고를<br />관리하세요</h1>
       <div className="feedback-history">{data.entries.map((entry) => <article key={entry.id}><small>{feedbackTargetLabel(entry)} · {getTopic(entry.topic).title} · {entry.createdAt.slice(0, 10)}</small><h2>{FEEDBACK_REASON_LABELS[entry.reason]}</h2><p>{entry.comment || "자유 의견 없음"}</p><p>프로필 스냅샷 · {entry.provenance.profileSnapshotId}<br />차트 스냅샷 · {entry.provenance.chartSnapshotIds.join(", ")}<br />모델 · {entry.provenance.modelVersion ?? "고정 예시(모델 없음)"}<br />프롬프트 · {entry.provenance.promptVersion ?? "고정 예시(프롬프트 없음)"}<br />템플릿 · {entry.provenance.templateVersion}</p><div><Link href={`/settings/feedback/${entry.id}`}>수정</Link><button type="button" onClick={() => updateEntry(entry.id, (current) => ({ ...current, reported: !current.reported }))}>{entry.reported ? "신고 취소" : "부적절한 표현 신고"}</button>{pendingDeleteId === entry.id ? <div className="danger-confirm feedback-delete-confirm"><p>이 피드백을 기기에서 삭제할까요?</p><button type="button" onClick={() => deleteEntry(entry.id)}>피드백 삭제 확정</button><button type="button" onClick={() => setPendingDeleteId(null)}>취소</button></div> : <button type="button" onClick={() => setPendingDeleteId(entry.id)}>삭제</button>}</div></article>)}</div>
       {error && <p className="form-error" role="alert">{error}</p>}
@@ -369,15 +371,25 @@ function FeedbackEditForm({ entry, entries }: { entry: FeedbackEntry; entries: F
     const updated = { ...entry, reason, comment: comment.trim() };
     setSaved(feedbackListStore.write({ version: 1, entries: entries.map((candidate) => candidate.id === entry.id ? updated : candidate) }));
   }
-  return <form className="screen-content feedback-edit" onSubmit={submit} aria-labelledby="feedback-edit-title"><p className="section-kicker">피드백 수정</p><h1 id="feedback-edit-title">상세 사유와 의견</h1><p>{feedbackTargetLabel(entry)}<br />프로필 스냅샷 · {entry.provenance.profileSnapshotId}<br />차트 스냅샷 · {entry.provenance.chartSnapshotIds.join(", ")}<br />템플릿 · {entry.provenance.templateVersion}</p><label>상세 사유<select value={reason} onChange={(event) => { setReason(event.target.value as FeedbackReason); setSaved(false); }}>{Object.entries(FEEDBACK_REASON_LABELS).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></label><label>자유 의견<textarea rows={6} value={comment} onChange={(event) => { setComment(event.target.value); setSaved(false); }} /></label><button className="primary-button" type="submit">변경 내용 저장</button>{saved && <p role="status">이 기기에 저장했어요.</p>}<Link className="text-button inline-action" href="/settings/feedback">목록으로</Link></form>;
+  return <form className={`screen-content feedback-edit ${styles.srScreen}`} onSubmit={submit} aria-labelledby="feedback-edit-title"><p className="section-kicker">피드백 수정</p><h1 id="feedback-edit-title">상세 사유와 의견</h1><p>{feedbackTargetLabel(entry)}<br />프로필 스냅샷 · {entry.provenance.profileSnapshotId}<br />차트 스냅샷 · {entry.provenance.chartSnapshotIds.join(", ")}<br />템플릿 · {entry.provenance.templateVersion}</p><label>상세 사유<select value={reason} onChange={(event) => { setReason(event.target.value as FeedbackReason); setSaved(false); }}>{Object.entries(FEEDBACK_REASON_LABELS).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></label><label>자유 의견<textarea rows={6} value={comment} onChange={(event) => { setComment(event.target.value); setSaved(false); }} /></label><button className="primary-button" type="submit">변경 내용 저장</button>{saved && <p role="status">이 기기에 저장했어요.</p>}<Link className="text-button inline-action" href="/settings/feedback">목록으로</Link></form>;
 }
 
 export function InformationScreen({ kind }: { kind: "ai" | "privacy" | "terms" | "safety" }) {
   const content = {
     ai: { kicker: "AI 사용 안내", title: "계산과 설명을 구분합니다", sections: ["현재 답변은 미리 작성된 예시이며 AI가 생성하지 않습니다.", "사주 계산과 결과를 설명하는 과정은 서로 구분합니다.", "결과의 근거와 한계를 함께 알립니다."] },
     privacy: { kicker: "개인정보 안내", title: "현재 데이터는 브라우저에만 저장됩니다", sections: ["이름·출생 정보·상담·궁합은 외부로 전송하지 않습니다.", "브라우저 데이터를 삭제하면 이 기기의 기록도 사라집니다.", "저장 범위와 삭제 방법을 언제나 확인할 수 있게 합니다."] },
-    terms: { kicker: "이용약관", title: "현재 제공 범위를 안내합니다", sections: ["실제 사주 계산·상담·결제·상품 지급을 제공하지 않습니다.", "예시 결과는 중요한 결정이나 전문 판단을 대신하지 않습니다.", "표시된 가격과 상태는 실제 결제로 이어지지 않습니다."] },
+    terms: { kicker: "이용약관", title: "현재 제공 범위를 안내합니다", sections: ["명식 계산·기본 리포트·상담·궁합·계정 데이터는 사주리움 API에서 처리합니다.", "결과와 상담은 중요한 결정이나 전문 판단을 대신하지 않습니다.", "외부 결제 제공자 승인과 유료 상품 지급은 아직 제공하지 않습니다."] },
     safety: { kicker: "콘텐츠 안전", title: "공포를 판매하지 않습니다", sections: ["질병·사망·사고·파산·이혼을 확정적으로 예언하지 않습니다.", "퇴사·투자·치료·결혼 같은 결정을 대신하지 않습니다.", "위기 상황이나 불안을 결제 유도에 사용하지 않습니다."] },
   }[kind];
-  return <main className="screen-content information-content" aria-labelledby="information-title"><p className="section-kicker">{content.kicker}</p><h1 id="information-title">{content.title}</h1><div>{content.sections.map((section, index) => <article key={section}><small>{String(index + 1).padStart(2, "0")}</small><p>{section}</p></article>)}</div><Link className="secondary-button" href="/settings">설정으로</Link></main>;
+  return <main className={`screen-content information-content ${styles.srScreen}`} aria-labelledby="information-title"><p className="section-kicker">{content.kicker}</p><h1 id="information-title">{content.title}</h1><div>{content.sections.map((section, index) => <article key={section}><small>{String(index + 1).padStart(2, "0")}</small><p>{section}</p></article>)}</div><Link className="secondary-button" href="/settings">설정으로</Link></main>;
+}
+
+export function LivePrivacyScreen() {
+  const [message, setMessage] = useState("");
+  const [pending, setPending] = useState<"exports" | "deletions" | null>(null);
+  async function submit(type: "exports" | "deletions") {
+    setPending(type); setMessage("");
+    try { const job = await requestPrivacyJob(type); setMessage(`${type === "exports" ? "내보내기" : "삭제"} 요청이 접수됐어요. 작업 ${job.job_id} · ${job.status}`); } catch (error) { setMessage(error instanceof Error ? error.message : "요청을 접수하지 못했어요."); } finally { setPending(null); }
+  }
+  return <main className="screen-content information-content" aria-labelledby="privacy-title"><p className="section-kicker">개인정보</p><h1 id="privacy-title">내 데이터 요청</h1><p className="supporting">요청은 서버에 비동기 작업으로 등록됩니다. 결제 기록처럼 법적 보관 대상은 별도 정책을 따릅니다.</p><button className="primary-button" disabled={pending !== null} type="button" onClick={() => { void submit("exports"); }}>{pending === "exports" ? "내보내기 요청 중" : "내 데이터 내보내기"}</button><button className="secondary-button" disabled={pending !== null} type="button" onClick={() => { void submit("deletions"); }}>{pending === "deletions" ? "삭제 요청 중" : "계정 데이터 삭제 요청"}</button>{message && <p className="form-error" role="status">{message}</p>}</main>;
 }

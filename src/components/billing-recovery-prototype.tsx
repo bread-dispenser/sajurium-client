@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import styles from "./saas-system-rollout.module.css";
 
 type OrderStatus =
   | "CREATED"
@@ -214,7 +215,7 @@ export function BillingRecoveryPrototype() {
   }
 
   return (
-    <main className="screen-content settings-content" aria-labelledby="billing-title">
+    <main className={`screen-content settings-content ${styles.srScreen}`} aria-labelledby="billing-title">
       <header className="form-hero">
         <p className="section-kicker">결제 · 지급 · 복구 운영 프로토타입</p>
         <h1 id="billing-title">한 번만 지급하고,<br />실패는 분명하게 복구해요</h1>

@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { APP_NAV_GROUPS, APP_PRIMARY_NAV_ITEMS } from "@/lib/fixtures";
 import type { AppNavItem } from "@/lib/domain";
+import styles from "./saas-system-rollout.module.css";
 
 export function AppHeader({ title, backHref }: { title?: string; backHref?: string }) {
   const pathname = usePathname();
@@ -20,7 +21,7 @@ export function AppHeader({ title, backHref }: { title?: string; backHref?: stri
   const shellBackHref = backHref ?? (isFlow ? "/home" : undefined);
 
   return (
-    <header className={`journey-header app-header signal-atlas-header${isHome ? " signal-atlas-home-header" : ""}${isFlow ? " signal-atlas-flow-header" : ""}`}>
+    <header className={`journey-header app-header signal-atlas-header ${styles.shell}${isHome ? " signal-atlas-home-header" : ""}${isFlow ? " signal-atlas-flow-header" : ""}`}>
       {shellBackHref && (
         <Link className="back-button signal-atlas-header-back" href={shellBackHref} aria-label="이전 화면으로 돌아가기">
           ‹
@@ -53,7 +54,7 @@ function MobileNavigation() {
         return (
           <Link
             key={item.href}
-            className={`signal-atlas-mobile-nav-item${active ? " active" : ""}`}
+            className={`signal-atlas-mobile-nav-item ${styles.shell}${active ? " active" : ""}`}
             href={item.href}
             aria-current={active ? "page" : undefined}
             aria-label={label}
@@ -77,7 +78,7 @@ function PlatformNavigation() {
           <h2 id={`nav-${group.label}`}>{group.label}</h2>
           {group.items.map((item) => {
             const active = isActive(pathname, item);
-            return <Link key={item.href} href={item.href} className={`signal-atlas-route-link${active ? " active" : ""}`} aria-current={active ? "page" : undefined}>{item.label}</Link>;
+            return <Link key={item.href} href={item.href} className={`signal-atlas-route-link ${styles.shell}${active ? " active" : ""}`} aria-current={active ? "page" : undefined}>{item.label}</Link>;
           })}
         </section>
       ))}
@@ -90,8 +91,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isLogin = pathname === "/login";
 
   return (
-    <div className={`app-shell signal-atlas-shell${isLogin ? " signal-atlas-auth-shell" : ""}`}>
-      <div className={`phone-screen app-frame signal-atlas-frame${isLogin ? " signal-atlas-auth-frame" : ""}`}>
+    <div className={`app-shell signal-atlas-shell ${styles.shell}${isLogin ? " signal-atlas-auth-shell" : ""}`}>
+      <div className={`phone-screen app-frame signal-atlas-frame ${styles.shell}${isLogin ? " signal-atlas-auth-frame" : ""}`}>
         <AppHeader title={isLogin ? "로그인" : undefined} backHref={isLogin ? "/" : undefined} />
         <div className="app-content signal-atlas-content">{children}</div>
         {!isLogin && <MobileNavigation />}

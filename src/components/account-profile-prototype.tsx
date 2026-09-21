@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import styles from "./saas-system-rollout.module.css";
 import type { FormEvent } from "react";
 import {
   maskBirthDate,
@@ -122,7 +123,7 @@ export function AccountPrototypeScreen() {
   }
 
   return (
-    <main className="screen-content settings-content" aria-labelledby="account-title">
+    <main className={`screen-content settings-content ${styles.srScreen}`} aria-labelledby="account-title">
       <header>
         <p className="section-kicker">계정 여정 · 화면 체험</p>
         <h1 id="account-title">계정과 임시 결과<br />이어보기</h1>
@@ -304,7 +305,7 @@ export function ProfilePrototypeScreen() {
   const latest = snapshots.at(-1);
 
   return (
-    <main className="screen-content settings-content" aria-labelledby="profile-title">
+    <main className={`screen-content settings-content ${styles.srScreen}`} aria-labelledby="profile-title">
       <header>
         <p className="section-kicker">프로필 여정 · 화면 체험</p>
         <h1 id="profile-title">나의 사주 프로필</h1>

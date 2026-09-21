@@ -2,22 +2,23 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState, useSyncExternalStore } from "react";
-import type { FormEvent } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import type { FormEvent, ReactNode } from "react";
 import { CorruptState, LoadingState } from "./page-state";
 import type { BirthInfo, FeedbackData, FeedbackId, FeedbackReason, TopicId } from "@/lib/domain";
 import type { CalendarKind, FeedbackProvenance, FeedbackTarget, OwnerRelationship, TopicId as ProfileTopicId } from "@/lib/contracts";
 import { hasValidLeapMonthSemantics, maskBirthDate, maskBirthTime, maskBirthplace, parseBirthDate } from "@/lib/contracts";
 import { useHydrated } from "@/hooks/use-hydrated";
 import {
-  BASIC_REPORT,
   FEEDBACK_OPTIONS,
   INITIAL_BIRTH,
-  REPORT_SECTIONS,
   TOPICS,
+  getDailyFlow,
   getTopic,
   getTopicPreview,
 } from "@/lib/fixtures";
+import { createBasicReading, formatApiRequestError, getCurrentReport, submitReportFeedback, type LiveReport } from "@/lib/api/service";
+import coreStyles from "./saas-core-rollout.module.css";
 import {
   birthDraftStore,
   createTransactionStep,
@@ -30,14 +31,15 @@ import {
   saveReportAndClearBirthDraft,
 } from "@/lib/storage";
 
-function PublicHeader({ step, backHref, title }: { step?: string; backHref?: string; title?: string }) {
+function PublicHeader({ step, backHref, title, action, p0 = false }: { step?: string; backHref?: string; title?: string; action?: { href: string; label: string }; p0?: boolean }) {
   return (
-    <header className={`journey-header signal-header ${title ? "signal-form-header" : "signal-brand-header"}`}>
+    <header className={p0 ? `p0-header ${title ? "p0-form-header" : ""}` : `journey-header signal-header ${title ? "signal-form-header" : "signal-brand-header"}`}>
       {backHref && (
-        <Link className="back-button signal-back-button" href={backHref} aria-label="이전 화면으로 돌아가기">‹</Link>
+        <Link className={p0 ? "p0-back" : "back-button signal-back-button"} href={backHref} aria-label="이전 화면으로 돌아가기">‹</Link>
       )}
-      <Link className={`wordmark ${title ? "signal-header-title" : "signal-brand"}`} href="/" aria-label={title ?? "사주리움 시작 화면"}>{title ?? "사주리움"}</Link>
-      {step && <span className="step-indicator signal-step-indicator" aria-label={`${step} 단계`}>{step}</span>}
+      <Link className={p0 ? "p0-wordmark" : `wordmark ${title ? "signal-header-title" : "signal-brand"}`} href="/" aria-label={title ?? "사주리움 시작 화면"}>{title ?? "사주리움"}</Link>
+      {step && <span className={p0 ? "p0-step" : "step-indicator signal-step-indicator"} aria-label={`${step} 단계`}>{step}</span>}
+      {action && <Link className="p0-header-action" href={action.href}>{action.label}</Link>}
     </header>
   );
 }
@@ -67,6 +69,54 @@ function localDateValue(date = new Date()) {
   return localTime.toISOString().slice(0, 10);
 }
 
+const PREVIEW_PRIORITY_LABELS = {
+  relationship: "관계",
+  career: "일",
+  money: "재물",
+} as const;
+
+function formatPreviewDate(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  const weekday = ["일", "월", "화", "수", "목", "금", "토"][new Date(year, month - 1, day).getDay()];
+  return `${month}월 ${day}일 ${weekday}요일`;
+}
+
+function TodayPreview({ action }: { action: ReactNode }) {
+  const hydrated = useHydrated();
+  const today = hydrated ? localDateValue() : null;
+  const flow = today ? getDailyFlow(today) : null;
+  return (
+    <section className="today-preview" aria-label="오늘의 흐름 미리보기">
+      <div className="preview-opening">
+        <div className={flow ? "preview-headline p0-ready" : "preview-headline"}>
+          <h1 id="landing-title" className={flow ? undefined : "sr-only"}>{flow?.headline ?? "오늘의 예시를 준비하고 있어요"}</h1>
+          {!flow && <div className="p0-skeleton" aria-hidden="true"><span /><span /><span /></div>}
+        </div>
+        <time className={flow ? "p0-date-ready" : undefined} dateTime={today ?? undefined}>{today ? formatPreviewDate(today) : "날짜 확인 중"}</time>
+        <p className="preview-intro">사주리움에서 오늘 살필 문장을 만나보세요. 실제 사주 계산이 아닌 체험용 예시예요.</p>
+        {action}
+      </div>
+      {flow ? <>
+        <dl className="today-preview-rows p0-reveal p0-reveal-details">
+          <div><dt>우선 영역</dt><dd>{PREVIEW_PRIORITY_LABELS[flow.priorityArea]}</dd></div>
+          <div><dt>주의할 점</dt><dd>{flow.caution}</dd></div>
+        </dl>
+        <section className="preview-question p0-reveal p0-reveal-question"><h2>오늘의 질문</h2><p>{flow.suggestedQuestion}</p></section>
+        <p className="today-preview-note p0-reveal p0-reveal-note">{flow.summary}</p>
+      </> : <div className="p0-skeleton preview-pending" aria-hidden="true"><span /><span /><span /></div>}
+    </section>
+  );
+}
+
+const EMPTY_BIRTH: BirthInfo = {
+  ...INITIAL_BIRTH,
+  displayName: "",
+  birthDate: "",
+  birthTime: null,
+  birthplace: "",
+  birthTimeUnknown: true,
+};
+
 export function LandingScreen({ initialCalculationFailure }: { initialCalculationFailure: boolean }) {
   const router = useRouter();
   const hydrated = useHydrated();
@@ -78,41 +128,19 @@ export function LandingScreen({ initialCalculationFailure }: { initialCalculatio
   const birthHref = initialCalculationFailure ? "/birth?calculation=fail" : "/birth";
 
   return (
-    <section className="phone-screen landing-screen signal-screen signal-landing" aria-labelledby="landing-title">
-      <PublicHeader />
-      <div className="screen-content landing-content signal-landing-content">
-        <header className="landing-hero signal-hero signal-situation">
-          <p className="eyebrow signal-kicker">오늘의 흐름</p>
-          <h1 id="landing-title">지금의 흐름을 살펴보세요</h1>
-          <p className="lead signal-hero-description">생년월일만 입력하면 오늘의 한 문장부터 보여드려요.</p>
-        </header>
-        <article className="landing-preview signal-card signal-example-card" aria-label="오늘의 한 문장 예시">
-          <div className="signal-card-context">
-            <span>오늘의 한 문장</span>
-            <small>예시 · 관계</small>
-          </div>
-          <strong className="signal-card-signal">서두르기보다 방향을 고르는 날</strong>
-          <p className="signal-card-evidence">빠른 결정보다, 지키고 싶은 조건부터 살펴보세요.</p>
-        </article>
-        <div className="landing-actions signal-next-action">
-          <p className="signal-reassurance" role="note">
-            <span className="signal-reassurance-icon" aria-hidden="true" />
-            가입 없이 무료 요약까지
-          </p>
-          <button
-            className="primary-button signal-primary-action"
-            type="button"
-            aria-label="생년월일 입력하기 · 내 흐름 살펴보기"
-            onClick={() => router.push(birthHref)}
-          >
+    <section className="landing-screen p0-scope" aria-labelledby="landing-title">
+      <PublicHeader p0 action={{ href: "/login", label: "로그인" }} />
+      <div className="p0-content landing-content">
+        <TodayPreview action={
+          <button className="primary-button" type="button" aria-label="생년월일 입력하기 · 내 흐름 살펴보기" onClick={() => router.push(birthHref)}>
             생년월일 입력하기
           </button>
-          {hasSavedReport && <button className="secondary-button signal-secondary-action" type="button" onClick={() => router.push("/report")}>이 기기에 저장한 결과 이어보기</button>}
-        </div>
-        <aside className="landing-copy signal-safety-note">
+        } />
+        <aside className="landing-copy">
           <strong>운명을 단정하지 않아요</strong>
-          <p>이 화면은 실제 사주 계산이 아닌 체험용 예시 콘텐츠를 보여줘요.</p>
+          <p>버전이 기록된 명식 계산을 사용하되, 결과는 중요한 선택을 대신하지 않아요.</p>
         </aside>
+        {hasSavedReport && <button className="secondary-button saved-report-action" type="button" onClick={() => router.push("/report")}>이 기기에 저장한 결과 이어보기</button>}
       </div>
     </section>
   );
@@ -120,9 +148,10 @@ export function LandingScreen({ initialCalculationFailure }: { initialCalculatio
 
 export function BirthScreen({ initialCalculationFailure }: { initialCalculationFailure: boolean }) {
   const router = useRouter();
-  const [birth, setBirth] = useState<BirthInfo>(INITIAL_BIRTH);
+  const [birth, setBirth] = useState<BirthInfo>(EMPTY_BIRTH);
   const [phase, setPhase] = useState<"form" | "loading" | "failure">("form");
   const [formError, setFormError] = useState("");
+  const [entryComplete, setEntryComplete] = useState(false);
   const failNextCalculation = useRef(initialCalculationFailure);
 
   function updateBirth(update: Partial<BirthInfo>) {
@@ -138,15 +167,19 @@ export function BirthScreen({ initialCalculationFailure }: { initialCalculationF
     });
   }
 
-  function finishCalculation() {
-    window.setTimeout(() => {
-      if (failNextCalculation.current) {
-        failNextCalculation.current = false;
-        setPhase("failure");
-      } else {
-        router.push("/report");
-      }
-    }, 1200);
+  async function finishCalculation(profile = birth) {
+    if (failNextCalculation.current) {
+      failNextCalculation.current = false;
+      window.setTimeout(() => setPhase("failure"), 500);
+      return;
+    }
+    try {
+      await createBasicReading(profile);
+      router.push("/report");
+    } catch (error) {
+      setFormError(formatApiRequestError(error, "서버에서 결과를 만들지 못했어요."));
+      setPhase("failure");
+    }
   }
 
   function submitBirth(event: FormEvent<HTMLFormElement>) {
@@ -181,25 +214,22 @@ export function BirthScreen({ initialCalculationFailure }: { initialCalculationF
     }
     setBirth(normalized);
     setPhase("loading");
-    finishCalculation();
+    void finishCalculation(normalized);
   }
 
   if (phase === "loading") {
     return (
-      <section className="phone-screen onboarding-screen signal-screen signal-calculation" aria-labelledby="loading-title" aria-live="polite">
-        <PublicHeader title="출생 정보" step="2/3" />
-        <div className="screen-content loading-content signal-calculation-content">
-          <header className="form-hero signal-situation"><p className="section-kicker signal-kicker">예시 리포트 준비</p><h1 id="loading-title">{birth.displayName}님이 읽을 화면을<br />차분히 준비하고 있어요</h1></header>
-          <div className="loading-status signal-progress">
-            <div className="status-row"><strong>화면 준비</strong><span>2 / 3</span></div>
-            <div className="progress-track"><span /></div>
-            <ol className="calculation-steps">
-              <li className="complete"><span>01</span><p><strong>입력 형식 확인</strong><small>완료</small></p></li>
-              <li className="active" data-slop-allow="nested-cards"><span>02</span><p><strong>예시 문장 불러오기</strong><small>준비 중</small></p></li>
-              <li><span>03</span><p><strong>미리보기 화면 구성</strong><small>대기</small></p></li>
-            </ol>
+      <section className="onboarding-screen p0-scope" aria-labelledby="loading-title" aria-live="polite">
+        <PublicHeader p0 title="출생 정보" step="2/3" />
+        <div className="p0-content p0-state-content p0-state-entry" key="loading">
+          <header className="p0-form-title">
+            <h1 id="loading-title">{birth.displayName}님이 읽을 화면을<br />차분히 준비하고 있어요</h1>
+            <p className="supporting">서버에서 명식과 오행 계산, 무료 요약 저장을 진행하고 있어요.</p>
+          </header>
+          <div className="p0-skeleton p0-loading-lines" aria-hidden="true">
+            <span /><span /><span /><span /><span />
           </div>
-          <aside className="tip-card signal-safety-note"><strong>체험 안내</strong><p>실제 명식·역법·사주 계산은 하지 않아요. 입력값과 관계없이 같은 예시 문장을 보여드려요.</p></aside>
+          <aside className="p0-disclosure"><strong>계산 안내</strong><p>입력값은 익명 세션에 저장되고, 같은 입력은 같은 계산 스냅샷으로 재사용돼요.</p></aside>
         </div>
       </section>
     );
@@ -207,36 +237,36 @@ export function BirthScreen({ initialCalculationFailure }: { initialCalculationF
 
   if (phase === "failure") {
     return (
-      <section className="phone-screen onboarding-screen signal-screen signal-calculation-failure" aria-labelledby="failure-title">
-        <PublicHeader title="출생 정보" backHref="/birth" />
-        <div className="screen-content failure-content signal-failure-content">
-          <p className="section-kicker signal-kicker">화면 준비를 마치지 못했어요</p>
+      <section className="onboarding-screen p0-scope" aria-labelledby="failure-title">
+        <PublicHeader p0 title="출생 정보" backHref="/birth" />
+        <div className="p0-content p0-state-content p0-state-entry" key="failure">
           <div><h1 id="failure-title">결과를 불러오지 못했어요</h1><p>입력하신 정보는 그대로 보관했어요.<br />다시 시도하거나 입력 정보를 확인해 주세요.</p></div>
-          <aside className="check-list signal-evidence"><strong>확인해볼 점</strong><span>· 입력 정보가 올바른지 확인</span><span>· 잠시 후 다시 준비</span></aside>
-        </div>
-        <div className="screen-actions double-actions signal-next-action">
-          <button className="primary-button signal-primary-action" type="button" onClick={() => { setPhase("loading"); finishCalculation(); }}>다시 준비하기</button>
-          <button className="secondary-button signal-secondary-action" type="button" onClick={() => setPhase("form")}>입력 정보 확인</button>
+          {formError && <p className="form-error" role="alert">{formError}</p>}
+          <aside><strong>확인해볼 점</strong><ul className="p0-check-list"><li>입력 정보가 올바른지 확인</li><li>잠시 후 다시 준비</li></ul></aside>
+          <div className="p0-state-actions">
+            <button className="primary-button" type="button" onClick={() => { setPhase("loading"); void finishCalculation(); }}>다시 준비하기</button>
+            <button className="secondary-button" type="button" onClick={() => setPhase("form")}>입력 정보 확인</button>
+          </div>
         </div>
       </section>
     );
   }
 
   return (
-    <section className="phone-screen onboarding-screen signal-screen signal-birth" aria-labelledby="birth-title">
-      <PublicHeader title="출생 정보" step="1/3" backHref="/" />
-      <form className="screen-content form-content signal-birth-form" onSubmit={submitBirth} noValidate>
-        <header className="form-hero signal-situation">
-          <p className="section-kicker signal-kicker">시작하기</p>
-          <h1 id="birth-title">사주리움이 부를<br />이름과 생일</h1>
+    <section className="onboarding-screen p0-scope" aria-labelledby="birth-title">
+      <PublicHeader p0 title="출생 정보" step="1/3" backHref="/" />
+      <form className="p0-content p0-birth-form" onSubmit={submitBirth} noValidate>
+        <header className={`p0-form-title${entryComplete ? "" : " p0-birth-entry"}`}>
+          <h1 id="birth-title">이름과 생일을 알려주세요</h1>
           <p className="supporting">이름은 표시용이에요.</p>
         </header>
-        <section className="birth-fields signal-signals" aria-label="출생 정보 입력">
-          <div className="field-group signal-field">
+        <div className="birth-editor">
+        <section className="birth-fields" aria-label="출생 정보 입력">
+          <div className={`field-group${entryComplete ? "" : " p0-birth-entry p0-birth-field-entry"}`} onAnimationEnd={() => setEntryComplete(true)}>
             <label className="field-label" htmlFor="nickname">이름 또는 닉네임</label>
             <input id="nickname" name="nickname" value={birth.displayName} onChange={(event) => updateBirth({ displayName: event.target.value })} autoComplete="nickname" maxLength={20} aria-describedby={formError ? "birth-error" : undefined} />
           </div>
-          <fieldset className="signal-selector calendar-selector">
+          <fieldset className="calendar-selector">
             <legend className="field-label">달력 기준 · 음력 선택 후 윤달 확인</legend>
             <div className="segmented-control" role="radiogroup" aria-label="달력 기준">
               {(["solar", "lunar"] as const).map((basis: CalendarKind) => (
@@ -246,7 +276,7 @@ export function BirthScreen({ initialCalculationFailure }: { initialCalculationF
               ))}
             </div>
             {birth.calendar === "lunar" && (
-              <div className="lunar-leap-control signal-conditional-field">
+              <div className="lunar-leap-control p0-conditional-entry">
                 <label className="check-card">
                   <input type="checkbox" checked={birth.leapMonth} onChange={(event) => updateBirth({ leapMonth: event.target.checked })} />
                   <span>음력 윤달</span>
@@ -255,7 +285,7 @@ export function BirthScreen({ initialCalculationFailure }: { initialCalculationF
               </div>
             )}
           </fieldset>
-          <fieldset className="signal-selector gender-selector">
+          <fieldset className="gender-selector">
             <legend className="field-label">성별 기준</legend>
             <div className="segmented-control" role="radiogroup" aria-label="성별 기준">
               {(["female", "male"] as const).map((gender) => (
@@ -265,28 +295,28 @@ export function BirthScreen({ initialCalculationFailure }: { initialCalculationF
               ))}
             </div>
           </fieldset>
-          <div className="birth-datetime-row signal-datetime">
-            <div className="field-group signal-field">
+          <div className="birth-datetime-row">
+            <div className="field-group">
               <label className="field-label" htmlFor="birth-date">생년월일</label>
               <input id="birth-date" name="birthDate" type="date" lang="ko-KR" min="1900-01-01" max={localDateValue()} value={birth.birthDate} onChange={(event) => updateBirth({ birthDate: event.target.value })} />
             </div>
-            <div className="field-group signal-field">
+            <div className="field-group">
               <label className="field-label" htmlFor="birth-time">출생 시간</label>
               <input id="birth-time" name="birthTime" type="time" lang="ko-KR" value={birth.birthTime ?? ""} disabled={birth.birthTimeUnknown} onChange={(event) => updateBirth({ birthTime: event.target.value || null })} />
             </div>
           </div>
-          <label className="check-card signal-time-unknown">
+          <label className="check-card">
             <input type="checkbox" checked={birth.birthTimeUnknown} onChange={(event) => updateBirth({ birthTimeUnknown: event.target.checked, birthTime: event.target.checked ? null : birth.birthTime })} />
             <span>출생 시간을 몰라요</span>
           </label>
+          <div className="field-group signal-field">
+            <label className="field-label" htmlFor="birthplace">출생지</label>
+            <input id="birthplace" value={birth.birthplace} onChange={(event) => updateBirth({ birthplace: event.target.value })} placeholder="예: 서울" />
+          </div>
         </section>
-        <details className="birth-additional-fields signal-evidence">
+        <details className="birth-additional-fields">
           <summary>계산에 필요한 추가 정보</summary>
           <div className="birth-context-fields">
-            <div className="field-group signal-field">
-              <label className="field-label" htmlFor="birthplace">출생지</label>
-              <input id="birthplace" value={birth.birthplace} onChange={(event) => updateBirth({ birthplace: event.target.value })} />
-            </div>
             <div className="field-group signal-field">
               <label className="field-label" htmlFor="timezone">시간대</label>
               <input id="timezone" value={birth.timezone} onChange={(event) => updateBirth({ timezone: event.target.value })} placeholder="Asia/Seoul" />
@@ -310,7 +340,7 @@ export function BirthScreen({ initialCalculationFailure }: { initialCalculationF
             </label>
             <fieldset>
               <legend className="field-label">관심 주제 (선택)</legend>
-              <div className="signal-interest-options">
+              <div className="p0-interest-options">
                 {(["love", "career", "money", "family"] as ProfileTopicId[]).map((topic) => (
                   <label className="check-card" key={topic}>
                     <input type="checkbox" checked={birth.personalization.interests.includes(topic)} onChange={(event) => updateBirth({ personalization: { ...birth.personalization, interests: event.target.checked ? [...birth.personalization.interests, topic] : birth.personalization.interests.filter((item) => item !== topic) } })} />
@@ -332,7 +362,7 @@ export function BirthScreen({ initialCalculationFailure }: { initialCalculationF
               <textarea value={birth.personalization.primaryConcern ?? ""} onChange={(event) => updateBirth({ personalization: { ...birth.personalization, primaryConcern: event.target.value || null } })} maxLength={300} />
             </label>
             {birth.profileType === "other" && (
-              <label className="check-card">
+              <label className="check-card p0-conditional-entry">
                 <input type="checkbox" checked={birth.thirdPartyConsent} onChange={(event) => updateBirth({ thirdPartyConsent: event.target.checked })} />
                 <span>정보 주체의 동의를 확인했어요</span>
               </label>
@@ -340,76 +370,97 @@ export function BirthScreen({ initialCalculationFailure }: { initialCalculationF
           </div>
         </details>
         <aside className="privacy-panel signal-privacy-note" id="birth-privacy-note">
-          <strong>입력 정보는 기기에 저장돼요.</strong>
-          <p>가입 없이 무료 요약을 확인해요. 실제 사주 계산이나 외부 전송은 하지 않아요.</p>
+          <strong>입력 정보는 익명 세션에 저장돼요.</strong>
+          <p>가입 없이 계산 결과를 다시 확인할 수 있고, 전송은 사주리움 API에만 이뤄져요.</p>
         </aside>
-        {formError && <p className="form-error signal-form-error" id="birth-error" role="alert">{formError}</p>}
-        <button className="primary-button form-submit signal-next-action signal-primary-action" type="submit">다음</button>
+        {formError && <p className="form-error p0-feedback-entry" id="birth-error" role="alert">{formError}</p>}
+        <button className="primary-button form-submit" type="submit">다음</button>
+        </div>
       </form>
     </section>
   );
 }
 
 export function ReportScreen() {
+  const router = useRouter();
   const hydrated = useHydrated();
+  type ApiReport = LiveReport;
+  const [serverReport, setServerReport] = useState<ApiReport | null>(null);
+  const [serverState, setServerState] = useState<"loading" | "ready" | "missing" | "error">("loading");
+  useEffect(() => {
+    if (!hydrated) return;
+    let active = true;
+    void getCurrentReport()
+      .then((report) => {
+        if (!active) return;
+        setServerReport(report);
+        setServerState(report ? "ready" : "missing");
+      })
+      .catch(() => active && setServerState("error"));
+    return () => { active = false; };
+  }, [hydrated]);
   if (!hydrated) return <LoadingState title="저장한 결과를 확인하고 있어요" />;
   const birthState = inspectCurrentBirth(INITIAL_BIRTH);
   if (birthState.status !== "ok") return <CorruptState title="출생 정보를 읽을 수 없어요" description="손상된 출생 정보를 확인 없이 체험용 예시로 바꾸지 않습니다." unavailable={birthState.status === "unavailable"} onReset={() => resetBirthSource(birthState.store)} />;
   const birth = birthState.birth;
+  if (serverState === "loading") return <LoadingState title="서버에 저장된 계산 결과를 불러오고 있어요" />;
+  if (serverState === "missing") return <CorruptState title="계산 결과가 아직 없어요" description="출생 정보를 입력해 실제 계산을 먼저 완료해 주세요." unavailable onReset={() => { router.push("/birth"); return true; }} />;
+  if (serverState === "error" || !serverReport) return <CorruptState title="서버 결과를 불러오지 못했어요" description="백엔드 연결 상태를 확인한 뒤 다시 시도해 주세요." unavailable onReset={() => { window.location.reload(); return true; }} />;
+  const firstSection = serverReport.sections[0];
+  const headline = firstSection?.content ?? "계산 결과를 확인해 보세요.";
 
   return (
-    <section className="report-page signal-screen signal-report" aria-labelledby="report-title">
+    <section className={`report-page signal-screen signal-report ${coreStyles.scope}`} aria-labelledby="report-title">
       <div className="screen-content report-content signal-report-content">
         <header className="editorial-hero signal-situation">
-          <p className="section-kicker signal-kicker">무료 요약 · {birth.displayName}님</p>
-          <h1 id="report-title">지금은 기준을<br />다시 세울 때</h1>
+          <p className="section-kicker signal-kicker">실제 계산 · {birth.displayName}님</p>
+          <h1 id="report-title">{headline}</h1>
           <p className="supporting">{maskBirthDate(birth.birthDate)} · {maskBirthTime(birth.birthTime, birth.birthTimeUnknown)} · {maskBirthplace(birth.birthplace)}</p>
         </header>
-        {birth.birthTimeUnknown && <p className="accuracy-note signal-safety-note">출생 시간 미상 상태만 화면 형식에 반영하며 정해진 예시 문장은 달라지지 않아요.</p>}
+        {birth.birthTimeUnknown && <p className="accuracy-note signal-safety-note">출생 시간에 의존하는 시주와 대운 해석은 결과에서 제외했어요.</p>}
         <article className="insight-card current signal-card signal-signal" aria-labelledby="current-flow-title">
           <small id="current-flow-title">오늘의 흐름</small>
-          <strong>{BASIC_REPORT.currentFlow}</strong>
+          <strong>{headline}</strong>
         </article>
         <section className="report-signals signal-signals" aria-labelledby="signals-title">
           <h2 id="signals-title">핵심 성향</h2>
           <ol className="insight-list signal-list">
-            {BASIC_REPORT.insights.map((insight, index) => (
-              <li className="insight-card signal-list-item" key={insight.id}>
+            {serverReport.sections.map((section, index) => (
+              <li className="insight-card signal-list-item" key={section.section_id}>
                 <span className="signal-index" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
                 <div>
-                  <strong>{insight.title}</strong>
-                  <p>{insight.description}</p>
+                  <strong>{section.title}</strong>
+                  <p>{section.content}</p>
                 </div>
               </li>
             ))}
           </ol>
           <aside className="check-list signal-caution">
-            <strong>{BASIC_REPORT.caution}</strong>
-            <span>{BASIC_REPORT.suggestion}</span>
+            <strong>선택을 대신하지 않는 참고 정보예요.</strong>
+            <span>현재 조건과 실제 경험을 함께 확인해 주세요.</span>
           </aside>
         </section>
         <section className="report-evidence signal-evidence" aria-labelledby="evidence-title">
           <header className="report-evidence-header">
             <p className="section-kicker signal-kicker">해석 근거</p>
             <h2 id="evidence-title">왜 이런 해석인가요?</h2>
-            <p>입력 정보와 고정된 예시 문장을 연결해 보여드려요.</p>
+            <p>버전이 기록된 계산 스냅샷과 해석 근거를 함께 보여드려요.</p>
           </header>
           <div className="report-sections signal-evidence-list">
-            {REPORT_SECTIONS.map((section) => section.access === "free" ? (
-              <article className="report-section signal-evidence-item" id={section.id} key={section.id}>
-                <p className="section-kicker">무료 요약</p>
+            {serverReport.sections.map((section) => section.access !== "LOCKED" ? (
+              <article className="report-section signal-evidence-item" id={section.section_id} key={section.section_id}>
+                <p className="section-kicker">{section.access === "PAID" ? "구매 리포트" : "무료 요약"}</p>
                 <h3>{section.title}</h3>
-                <strong>{section.summary}</strong>
-                <ul>{section.details.map((detail) => <li key={detail}>{detail}</li>)}</ul>
-                <details><summary>해석 근거 보기</summary><p>{section.evidence} 실제 계산 결과가 아닙니다.</p></details>
+                <strong>{section.content}</strong>
+                <details><summary>해석 근거 보기</summary><ul>{section.evidence.map((evidence) => <li key={evidence}>{evidence}</li>)}</ul></details>
               </article>
             ) : (
-              <article className="report-section locked-report-section signal-locked-item" key={section.id}>
+              <article className="report-section locked-report-section signal-locked-item" key={section.section_id}>
                 <p className="section-kicker">잠긴 미리보기</p>
                 <h3>{section.title}</h3>
-                <strong>{section.summary}</strong>
-                <p>{section.evidence}</p>
-                <button type="button" disabled aria-disabled="true">실제 상품·결제 연결 전에는 열 수 없어요</button>
+                <strong>구매 후 서버에서 생성되는 영역이에요.</strong>
+                <p>{section.evidence.join(" · ")}</p>
+                <Link className="secondary-button" href="/products">상품 확인하기</Link>
               </article>
             ))}
           </div>
@@ -436,7 +487,7 @@ export function TopicsScreen() {
   const activeTopic = selectedTopic ?? storedTopic ?? "love";
 
   return (
-    <section className="screen-content topics-content signal-screen signal-topics" aria-labelledby="topics-title">
+    <section className={`screen-content topics-content signal-screen signal-topics ${coreStyles.scope}`} aria-labelledby="topics-title">
       <header className="editorial-hero signal-situation">
         <p className="section-kicker signal-kicker">관심 주제</p>
         <h1 id="topics-title">지금 가장 궁금한<br />주제 하나</h1>
@@ -471,7 +522,7 @@ export function TopicPreviewScreen({ topicId }: { topicId: TopicId }) {
   const preview = getTopicPreview(topicId);
   const reportId = `rpt_fixture_${topicId}`;
   return (
-    <section className="screen-content preview-content signal-screen signal-topic-preview" aria-labelledby="preview-title">
+    <section className={`screen-content preview-content signal-screen signal-topic-preview ${coreStyles.scope}`} aria-labelledby="preview-title">
       <header className="topic-preview-situation signal-situation">
         <p className="section-kicker signal-kicker">{topic.title}</p>
         <h1 id="preview-title">{preview.headline.split("\n").map((line, index) => <span key={line}>{index > 0 && <br />}{line}</span>)}</h1>
@@ -537,10 +588,17 @@ export function FeedbackScreen({ target, topicId }: { target: Extract<FeedbackTa
   const [reported, setReported] = useState(false);
   const [error, setError] = useState("");
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!feedback) return setError("가장 가까운 답변 하나를 선택해 주세요.");
     if (!reason) return setError("상세 사유를 선택해 주세요.");
+    if (/^\d+$/.test(target.reportId)) {
+      try {
+        await submitReportFeedback(target.reportId, feedback, comment.trim() || reason, reported);
+      } catch (requestError) {
+        return setError(requestError instanceof Error ? requestError.message : "서버에 피드백을 저장하지 못했어요.");
+      }
+    }
     const listInspection = feedbackListStore.inspect();
     if (listInspection.status === "corrupt" || listInspection.status === "unavailable") return setError("손상된 피드백 기록을 설정에서 확인해 주세요.");
     const now = new Date().toISOString();
@@ -582,8 +640,8 @@ export function FeedbackScreen({ target, topicId }: { target: Extract<FeedbackTa
   }
 
   return (
-    <form className="screen-content feedback-content" onSubmit={submit} aria-labelledby="feedback-title">
-      <div className="editorial-hero"><p className="section-kicker">해석 평가</p><h1 id="feedback-title">이번 해석은 어떠셨나요?</h1><p className="supporting">응답은 이 기기에만 저장되며 외부로 전송되지 않아요.</p></div>
+    <form className={`screen-content feedback-content ${coreStyles.scope}`} onSubmit={submit} aria-labelledby="feedback-title">
+      <div className="editorial-hero"><p className="section-kicker">해석 평가</p><h1 id="feedback-title">이번 해석은 어떠셨나요?</h1><p className="supporting">평가와 신고는 서버 리포트 품질 기록에 저장됩니다.</p></div>
       <div className="feedback-list" role="radiogroup" aria-label="해석 평가">{FEEDBACK_OPTIONS.map((item) => <label key={item.id} className={`feedback-card ${feedback === item.id ? "selected" : ""}`}><input className="selection-radio" type="radio" name="feedback" value={item.id} checked={feedback === item.id} onChange={() => { setFeedback(item.id); setError(""); }} /><span aria-hidden="true">{item.symbol}</span><span><strong>{item.title}</strong><small>{item.description}</small></span></label>)}</div>
       {feedback && <aside className="selection-summary"><small>선택됨</small><strong>{FEEDBACK_OPTIONS.find((item) => item.id === feedback)?.title}</strong></aside>}
       <label className="feedback-detail-field">상세 사유<select value={reason} onChange={(event) => setReason(event.target.value as FeedbackReason | "")} required><option value="">선택해 주세요</option>{FEEDBACK_REASONS.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}</select></label>
@@ -617,16 +675,16 @@ export function SaveScreen({ topicId, feedback }: { topicId: TopicId; feedback: 
   }
 
   return (
-    <section className="screen-content save-content" aria-labelledby="save-title">
+    <section className={`screen-content save-content ${coreStyles.scope}`} aria-labelledby="save-title">
       <p className="section-kicker">저장 안내</p>
-      <div><h1 id="save-title">{localSaved ? "이 기기에 저장했어요" : "이 기기에 결과를 저장할까요?"}</h1><p>{localSaved ? "같은 브라우저에서 다시 확인할 수 있어요. 브라우저 데이터를 지우면 결과도 삭제됩니다." : "계정 로그인 기능은 아직 준비 중이에요. 지금은 이 브라우저에만 결과를 저장할 수 있어요."}</p></div>
+      <div><h1 id="save-title">{localSaved ? "이 기기에 저장했어요" : "이 기기에 결과를 저장할까요?"}</h1><p>{localSaved ? "같은 브라우저에서 다시 확인할 수 있어요. 브라우저 데이터를 지우면 이 기기 사본은 삭제됩니다." : "서버 계산 결과와 별도로, 이 브라우저에서 빠르게 이어볼 사본을 저장할 수 있어요."}</p></div>
       <aside className="check-list"><strong>기기에 저장하면 좋은 점</strong><span>✓ 무료 사주 요약 보관</span><span>✓ 관심 주제 이어보기</span><span>✓ 입력 정보는 기기 안에만 저장</span></aside>
       {error && <p className="form-error" role="alert">{error}</p>}
       {!localSaved && <button className="primary-button" type="button" onClick={save}>이 기기에 결과 저장</button>}
-      <button className="disabled-login" type="button" disabled>카카오 로그인 · 준비 중</button>
-      <button className="disabled-login" type="button" disabled>다른 방법으로 로그인 · 준비 중</button>
+      <Link className="secondary-button" href="/login">이메일 계정 로그인·가입</Link>
+      <button className="disabled-login" type="button" disabled>소셜 로그인 · 준비 중</button>
       <Link className="text-button inline-action" href="/report" onClick={(event) => { if (!localSaved && !birthDraftStore.remove()) { event.preventDefault(); setError("입력 정보를 지우지 못해 이동을 중단했어요."); } }}>{localSaved ? "저장된 결과 계속 보기" : "저장하지 않고 계속 보기"}</Link>
-      <p className="action-note">계정 로그인과 결제 기능은 제공되지 않아요.</p>
+      <p className="action-note">이메일 계정 기능은 사용할 수 있으며, 외부 결제 제공자 연결은 아직 준비 중이에요.</p>
     </section>
   );
 }
