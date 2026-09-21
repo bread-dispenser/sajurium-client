@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-describe("fixed-fixture provenance", () => {
-  it("contains no input-derived calculation or accuracy claims", () => {
+describe("service calculation provenance", () => {
+  it("labels the live calculation path and its limits", () => {
     const runtime = readFileSync("src/components/saju-screens.tsx", "utf8");
     const compatibility = readFileSync("src/components/people-compatibility-screens.tsx", "utf8");
     const surfaces = `${runtime}\n${compatibility}`;
@@ -18,7 +18,8 @@ describe("fixed-fixture provenance", () => {
     ]) {
       expect(surfaces).not.toContain(prohibited);
     }
-    expect(surfaces).toContain("입력값과 관계없이 같은 예시 문장을 보여드려요");
-    expect(surfaces).toContain("실제 명식·역법·사주 계산은 하지 않아요");
+    expect(runtime).toContain("명식과 오행 계산");
+    expect(runtime).toContain("버전이 기록된 계산 스냅샷");
+    expect(runtime).toContain("출생 시간에 의존하는 시주와 대운 해석은 결과에서 제외했어요");
   });
 });

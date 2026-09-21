@@ -85,7 +85,7 @@ test("common Signal Atlas shell styles remain explicit", async ({ page }) => {
     const style = getComputedStyle(document.activeElement as HTMLElement);
     return { outlineColor: style.outlineColor, outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth, outlineOffset: style.outlineOffset };
   });
-  expect(focusRing).toEqual({ outlineColor: "rgb(25, 77, 91)", outlineStyle: "solid", outlineWidth: "2px", outlineOffset: "3px" });
+  expect(focusRing).toEqual({ outlineColor: "rgb(162, 38, 85)", outlineStyle: "solid", outlineWidth: "2px", outlineOffset: "3px" });
 
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/home");
@@ -101,8 +101,8 @@ test("common Signal Atlas shell styles remain explicit", async ({ page }) => {
   });
   expect(desktopShell.sidebar).toEqual({ maxHeight: "792px", overflowY: "auto" });
   expect({ active: desktopShell.active, wordmarkFontSize: desktopShell.wordmarkFontSize }).toEqual({
-    active: { background: "rgb(233, 240, 239)", color: "rgb(25, 77, 91)", fontWeight: "700" },
-    wordmarkFontSize: "14px",
+    active: { background: "rgb(236, 239, 243)", color: "rgb(162, 38, 85)", fontWeight: "700" },
+    wordmarkFontSize: "18px",
   });
 
   await page.goto("/login");

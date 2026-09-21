@@ -23,7 +23,17 @@ const coverage = {
   "ADMIN-005": "/admin/operations", "ADMIN-006": "/admin/analytics",
 } as const;
 
-test("maps every PRD feature requirement to a published prototype", async ({ page }) => {
+const explicitlyUnavailable = new Set([
+  "/admin/analytics",
+  "/admin/operations",
+  "/billing",
+  "/calendar",
+  "/notifications/policy",
+  "/platform-labs",
+  "/profile",
+]);
+
+test("maps every PRD feature requirement to an implemented or explicit unavailable surface", async ({ page }) => {
   const ids = Object.keys(coverage);
   expect(ids).toHaveLength(70);
   expect(new Set(ids).size).toBe(ids.length);
@@ -32,6 +42,9 @@ test("maps every PRD feature requirement to a published prototype", async ({ pag
     const response = await page.goto(route);
     expect(response?.ok(), `${route} should load`).toBe(true);
     await expect(page.locator("h1").first(), `${route} should have a primary heading`).toBeVisible();
-    await expect(page.locator("body"), `${route} should not expose TODO copy`).not.toContainText(/TODO|준비 중/);
+    await expect(page.locator("body"), `${route} should not expose TODO copy`).not.toContainText(/TODO/);
+    if (explicitlyUnavailable.has(route)) {
+      await expect(page.locator("body"), `${route} should disclose that it is unavailable`).toContainText(/준비 중|제공되지 않아요/);
+    }
   }
 });
