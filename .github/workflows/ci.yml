@@ -32,18 +32,20 @@ jobs:
       # `api:check:backend` and the e2e suite both need a live FastAPI, which lives in a
       # private repository. This repository is public, so the credential is optional and
       # the backend-dependent half of the chain is reported rather than failed when it
-      # is absent. Configure `SAJURIUM_BACKEND_TOKEN` with read access to run it here;
-      # otherwise run `bun run test:quality` locally against the backend.
+      # is absent. Set `SAJURIUM_BACKEND_TOKEN` (read access) and
+      # `SAJURIUM_BACKEND_REPOSITORY` to run it here; otherwise run
+      # `bun run test:quality` locally against the backend.
       - name: Detect the backend credential
         id: backend
         env:
           TOKEN: ${{ secrets.SAJURIUM_BACKEND_TOKEN }}
+          REPOSITORY: ${{ vars.SAJURIUM_BACKEND_REPOSITORY }}
         run: |
-          if [ -n "$TOKEN" ]; then
+          if [ -n "$TOKEN" ] && [ -n "$REPOSITORY" ]; then
             echo "available=true" >>"$GITHUB_OUTPUT"
           else
             echo "available=false" >>"$GITHUB_OUTPUT"
-            echo "::notice title=Backend contract and e2e skipped::SAJURIUM_BACKEND_TOKEN is not configured, so api:check:backend and the 96 e2e tests did not run in this job. Run 'bun run test:quality' with the backend up to cover them."
+            echo "::notice title=Backend contract and e2e skipped::SAJURIUM_BACKEND_TOKEN and SAJURIUM_BACKEND_REPOSITORY are not both configured, so api:check:backend and the 96 e2e tests did not run in this job. Run 'bun run test:quality' with the backend up to cover them."
           fi
 
       - name: Install dependencies
@@ -67,7 +69,7 @@ jobs:
         if: steps.backend.outputs.available == 'true'
         uses: actions/checkout@v7
         with:
-          repository: bread-dispenser/sasaju
+          repository: ${{ vars.SAJURIUM_BACKEND_REPOSITORY }}
           token: ${{ secrets.SAJURIUM_BACKEND_TOKEN }}
           path: backend
 
