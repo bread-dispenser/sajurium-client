@@ -16,6 +16,7 @@ import type { ProductView } from "@/lib/contracts";
 
 const CURRENT_PROFILE_ID = "prf_01J62Z7M4Q8Y3T1K9A5C6N2R0X";
 const TOPIC_LABELS = { love: "연애", marriage: "결혼", reunion: "재회", career: "커리어", business: "사업", money: "재물", family: "가족", relationships: "대인관계", other: "기타" } as const;
+const PAYMENTS_ENABLED = process.env.NEXT_PUBLIC_PAYMENTS_ENABLED === "true";
 
 function getOrderDuplicateKey(productId: ProductId, productVersion: string): OrderDuplicateKey {
   return {
@@ -73,7 +74,7 @@ export function ProductListScreen() {
   const renderProduct = (product: ProductView) => (
     <article className="commerce-price-row" key={product.id}>
       <div>
-        <small>{purchased.has(product.id) ? "구매 기록 있음 · 보관함" : "단건 구매"}</small>
+        <small>{purchased.has(product.id) ? "구매 기록 있음 · 보관함" : PAYMENTS_ENABLED ? "단건 구매" : "결제 준비 중"}</small>
         <h2><Link href={`/products/${product.id}`}>{product.title}</Link></h2>
         <p>{product.description}</p>
         {product.kind === "consultation_credit" && <small>현재 {commerce.consultationCredits}회 남음</small>}
@@ -87,7 +88,7 @@ export function ProductListScreen() {
       <header className="commerce-page-header">
         <p className="section-kicker signal-atlas-overline">이용권 · 결제</p>
         <h1 id="products-title">필요한 만큼만<br />단건으로</h1>
-        <p className="supporting">구독 없이 필요한 것만 구매해요. 가격과 상품 버전은 서버가 관리합니다.</p>
+        <p className="supporting">{PAYMENTS_ENABLED ? "구독 없이 필요한 것만 구매해요. 가격과 상품 버전은 서버가 관리합니다." : "상품 구성과 가격을 확인할 수 있어요. 결제는 아직 제공하지 않습니다."}</p>
       </header>
       <div className="commerce-type-labels" aria-label="상품 안내">
         <span>이용권</span><span aria-hidden="true">·</span><span>리포트</span><span aria-hidden="true">·</span><span>이 브라우저 저장</span>
@@ -164,7 +165,7 @@ export function LiveProductDetailScreen({ productId }: { productId: ProductId })
   useEffect(() => { void getServerProduct(productId).then(setProduct).catch((reason) => setError(formatApiRequestError(reason, "상품을 불러오지 못했어요."))); }, [productId]);
   if (!product && !error) return <LoadingState title="서버 상품을 불러오고 있어요" />;
   if (error) return <CorruptState title="상품을 불러오지 못했어요" description={error} unavailable onReset={() => { window.location.reload(); return true; }} />;
-  return <main className={`screen-content product-detail signal-atlas-commerce-detail ${styles.srScreen}`} aria-labelledby="product-title"><p className="section-kicker">서버 카탈로그</p><h1 id="product-title">{product?.title}</h1><p className="lead">{product?.description}</p><strong className="product-price">{product ? price(product.priceAmount) : ""}</strong><p className="supporting">상품 버전 {product?.version} · {product?.kind === "consultation_credit" ? "상담 이용권" : "리포트"}</p><section><h2>필요한 입력</h2><ul>{product?.requiredInputs.map((item) => <li key={item}>{item}</li>)}</ul></section><section><h2>생성 방식</h2><p>{product?.generationMethod}</p></section><section><h2>환불 정책</h2><p>{product?.refundPolicy}</p></section><Link className="primary-button signal-primary-cta" href={`/checkout/${productId}`}>서버 주문으로</Link></main>;
+  return <main className={`screen-content product-detail signal-atlas-commerce-detail ${styles.srScreen}`} aria-labelledby="product-title"><p className="section-kicker">서버 카탈로그</p><h1 id="product-title">{product?.title}</h1><p className="lead">{product?.description}</p><strong className="product-price">{product ? price(product.priceAmount) : ""}</strong><p className="supporting">상품 버전 {product?.version} · {product?.kind === "consultation_credit" ? "상담 이용권" : "리포트"}</p><section><h2>필요한 입력</h2><ul>{product?.requiredInputs.map((item) => <li key={item}>{item}</li>)}</ul></section><section><h2>생성 방식</h2><p>{product?.generationMethod}</p></section><section><h2>환불 정책</h2><p>{product?.refundPolicy}</p></section>{PAYMENTS_ENABLED ? <Link className="primary-button signal-primary-cta" href={`/checkout/${productId}`}>서버 주문으로</Link> : <p className="action-note" role="status">결제와 주문은 준비 중입니다. 현재 상품 구매는 진행할 수 없어요.</p>}</main>;
 }
 
 export function CheckoutScreen({ productId }: { productId: ProductId }) {
@@ -194,7 +195,7 @@ export function CheckoutScreen({ productId }: { productId: ProductId }) {
       <aside className="check-list commerce-safety-note"><strong>확인 사항</strong><span>· 가격·통화·상품 버전은 서버가 다시 확정해요.</span><span>· 같은 요청의 중복 주문은 멱등성 키로 막아요.</span><span>· 결제 제공자 승인 전에는 상품이 지급되지 않아요.</span></aside>
       <aside className="check-list"><strong>주문 상태 7단계</strong>{ORDER_STATUSES.map((state) => <span key={state}>· {state}</span>)}</aside>
       {serverError && <p className="form-error" role="alert">{serverError}</p>}
-      <button className="primary-button signal-primary-cta" type="button" disabled={submitting} onClick={() => { void submitOrder(); }}>{submitting ? "서버에 주문 생성 중" : "서버 주문 만들기"}</button>
+      {PAYMENTS_ENABLED ? <button className="primary-button signal-primary-cta" type="button" disabled={submitting} onClick={() => { void submitOrder(); }}>{submitting ? "서버에 주문 생성 중" : "서버 주문 만들기"}</button> : <p className="action-note" role="status">결제와 주문은 준비 중입니다. 현재 상품 구매는 진행할 수 없어요.</p>}
       <p className="action-note">실제 청구는 결제 제공자 승인 화면을 완료한 뒤에만 발생합니다.</p>
     </main>
   );

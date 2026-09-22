@@ -156,16 +156,13 @@ test("does not confuse an older report with the current onboarding result", asyn
   })).toEqual({ displayName: "서연", topic: "career", feedback: "helpful" });
 });
 
-test("creates and re-reads a server-authoritative order after calculation", async ({ page }) => {
+test("keeps ordering unavailable after calculation while payments are paused", async ({ page }) => {
   await page.getByRole("button", { name: "내 흐름 살펴보기" }).click();
   await submitBirth(page);
   await expect(page).toHaveURL(/\/report$/, { timeout: 5_000 });
   await page.goto("/checkout/consult-5");
-  await page.getByRole("button", { name: "서버 주문 만들기" }).click();
-  await expect(page).toHaveURL(/\/orders\/\d+.*source=server/, { timeout: 5_000 });
-  await expect(page.getByRole("heading", { name: "주문이 안전하게 생성됐어요" })).toBeVisible();
-  await expect(page.getByText("9,900원")).toBeVisible();
-  await expect(page.getByText("PAYMENT_PENDING", { exact: true })).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("결제와 주문은 준비 중입니다");
+  await expect(page.getByRole("button", { name: "서버 주문 만들기" })).toHaveCount(0);
 });
 
 test("creates a real consultation response from the persisted chart", async ({ page }) => {

@@ -29,7 +29,7 @@ test("discloses the live-service boundary", async ({ page }) => {
 
   await page.goto("/checkout/love-report");
   await expect(page.getByText(/가격·통화·상품 버전은 서버가 다시 확정/)).toBeVisible();
-  await expect(page.getByRole("button", { name: "서버 주문 만들기" })).toBeEnabled();
+  await expect(page.getByRole("status")).toContainText("결제와 주문은 준비 중입니다");
 });
 
 test("persists a server consultation locally for immediate continuity", async ({ page }) => {
@@ -65,11 +65,10 @@ test("blocks restricted consultation questions and restores the draft", async ({
   await expect(page.locator(".form-error[role=alert]")).toContainText("확정적인 답을 제공하지 않아요");
 });
 
-test("creates a server order from the server catalog without requiring a chart", async ({ page }) => {
+test("keeps checkout unavailable while payments are paused", async ({ page }) => {
   await page.goto("/checkout/consult-5");
-  await page.getByRole("button", { name: "서버 주문 만들기" }).click();
-  await expect(page).toHaveURL(/\/orders\/\d+.*source=server/);
-  await expect(page.getByRole("heading", { name: "주문이 안전하게 생성됐어요" })).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("결제와 주문은 준비 중입니다");
+  await expect(page.getByRole("button", { name: "서버 주문 만들기" })).toHaveCount(0);
 });
 
 test("clears every service-owned local key from settings", async ({ page }) => {

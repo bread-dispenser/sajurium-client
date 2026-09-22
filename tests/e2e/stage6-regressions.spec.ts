@@ -126,12 +126,10 @@ test("storage and account deletion copy separates device and server data", async
   await expect(page.getByText(/이 프로토타입에서는 계정 삭제를 처리하지 않아요/)).toHaveCount(0);
 });
 
-test("server product detail preserves its checkout route", async ({ page }) => {
+test("server product detail discloses the paused checkout", async ({ page }) => {
   await page.goto("/products/compatibility-report");
-  const checkoutLink = page.getByRole("link", { name: "서버 주문으로" });
-  await expect(checkoutLink).toHaveAttribute("href", "/checkout/compatibility-report");
-  await checkoutLink.click();
-  await expect(page).toHaveURL("/checkout/compatibility-report");
+  await expect(page.getByRole("status")).toContainText("결제와 주문은 준비 중입니다");
+  await expect(page.getByRole("link", { name: "서버 주문으로" })).toHaveCount(0);
 });
 
 test("exact birth date, time, and place stay out of privacy-safe previews", async ({ page }) => {
@@ -151,7 +149,6 @@ test("main journey CTAs remain scrollable and clickable above the mobile bottom 
     { path: "/birth", selector: "button[type='submit']", expected: /\/report$/ },
     { path: "/home", selector: ".signal-atlas-consultation-cta a", expected: /\/consult\/new$/ },
     { path: "/consult", selector: "main.signal-consultation-home > a.signal-primary-action", expected: /\/consult\/new$/ },
-    { path: "/products/love-report", selector: ".signal-atlas-commerce-detail > a.signal-primary-cta", expected: /\/checkout\/love-report$/ },
   ];
 
   for (const width of [320, 390]) {
