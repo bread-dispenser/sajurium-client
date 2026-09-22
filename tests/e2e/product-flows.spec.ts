@@ -41,10 +41,10 @@ test("persists a server consultation locally for immediate continuity", async ({
   await page.getByRole("button", { name: "이직을 고민할 때 어떤 조건을 먼저 봐야 하나요?" }).click();
   await page.getByLabel("현재 상황").fill("업무 역할과 근무 방식이 고민됩니다.");
   await page.getByRole("button", { name: "상담 답변 보기" }).click();
-  await expect(page).toHaveURL(/\/consult\/session\//, { timeout: 5_000 });
+  await expect(page).toHaveURL(/\/consult\/session\//, { timeout: 30_000 });
   const sessionPath = new URL(page.url()).pathname;
   await expect(page.locator(".message-list article")).toHaveCount(2);
-  await expect(page.getByText(/질문하신/)).toBeVisible();
+  await expect(page.locator(".message-list article.assistant p").first()).not.toBeEmpty();
   await page.getByRole("button", { name: "이 상담 삭제" }).click();
   await page.getByRole("button", { name: "상담 삭제 확정" }).click();
   await expect(page).toHaveURL(/\/consult$/);
@@ -225,7 +225,8 @@ test("rolls back linked consultation writes when library persistence fails", asy
     };
   });
   await page.getByRole("button", { name: "상담 답변 보기" }).click();
-  await expect(page.locator(".form-error[role=alert]")).toContainText("모든 변경을 취소했어요");
+  // 이 단언은 상담 생성 왕복 뒤에 온다 — 실제 LLM이면 수 초가 걸린다.
+  await expect(page.locator(".form-error[role=alert]")).toContainText("모든 변경을 취소했어요", { timeout: 30_000 });
   const state = await page.evaluate(() => {
     (window as typeof window & { __restoreSetItem?: () => void }).__restoreSetItem?.();
     return {

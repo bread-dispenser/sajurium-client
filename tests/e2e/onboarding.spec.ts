@@ -175,8 +175,10 @@ test("creates a real consultation response from the persisted chart", async ({ p
   await page.goto("/consult/new?topic=career");
   await page.getByRole("button", { name: /이직을 고민할 때/ }).click();
   await page.getByRole("button", { name: "상담 답변 보기" }).click();
-  await expect(page).toHaveURL(/\/consult\/session\/\d+$/, { timeout: 5_000 });
-  await expect(page.getByText(/질문하신/)).toBeVisible();
+  // 실제 LLM을 쓰면 왕복이 수 초 걸린다(템플릿 생성기는 즉시). 5초는 그 구성에서 너무 짧다.
+  await expect(page).toHaveURL(/\/consult\/session\/\d+$/, { timeout: 30_000 });
+  // 제공자마다 문구가 다르므로 특정 문장이 아니라 "보조 메시지가 비어 있지 않다"를 확인한다.
+  await expect(page.locator("article.assistant p").first()).not.toBeEmpty();
 });
 
 test("lists server profiles in people storage and requires two profiles for compatibility", async ({ page }) => {
