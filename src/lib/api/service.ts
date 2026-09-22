@@ -70,6 +70,9 @@ export type AccountAuthResult = {
   migration: AnonymousMigrationStatus;
 };
 
+export type SocialProvider = "google" | "apple" | "kakao";
+export type ServerNotification = Schema<"NotificationDelivery">;
+
 export type LogoutResult = "complete" | "local-only";
 
 const PRODUCT_IDS: Record<string, string> = {
@@ -184,6 +187,20 @@ export async function loginAccount(email: string, password: string): Promise<Acc
   const anonymousToken = readAuthSession()?.anonymousToken ?? null;
   const body = new URLSearchParams({ username: email, password });
   const token = (await apiRequest<Schema<"Token">>("/api/v1/auth/login/access-token", { baseUrl: API_BASE_URL, credentials: "omit", method: "POST", body, headers: { "Content-Type": "application/x-www-form-urlencoded" } })).data;
+  storeAccountSession(token);
+  const migration = await migrateAnonymousSession(token.access_token, anonymousToken);
+  return { token, migration };
+}
+
+export async function loginSocialAccount(provider: SocialProvider, idToken: string): Promise<AccountAuthResult> {
+  if (!idToken.trim()) throw new Error("소셜 로그인 응답에 인증 토큰이 없습니다.");
+  const anonymousToken = readAuthSession()?.anonymousToken ?? null;
+  const token = (await apiRequest<Schema<"Token">>("/api/v1/auth/social", {
+    baseUrl: API_BASE_URL,
+    credentials: "omit",
+    method: "POST",
+    body: { provider, id_token: idToken },
+  })).data;
   storeAccountSession(token);
   const migration = await migrateAnonymousSession(token.access_token, anonymousToken);
   return { token, migration };
@@ -372,6 +389,22 @@ export async function getNotificationPreferences(timeoutMs = 12_000) {
 
 export async function updateNotificationPreferences(body: Partial<Schema<"NotificationPreferenceUpdate">>) {
   return (await request<Schema<"NotificationPreference">>("/api/v1/notification-preferences", { method: "PATCH", body })).data;
+}
+
+export async function listNotifications(): Promise<ServerNotification[]> {
+  return (await request<ServerNotification[]>("/api/v1/notifications")).data;
+}
+
+export async function registerPushToken(token: string) {
+  return (await request<{ push_token_id: number; status: string }>("/api/v1/push-tokens", {
+    method: "POST", body: { token, platform: "web" },
+  })).data;
+}
+
+export async function revokePushToken(token: string) {
+  return (await request<{ status: string }>("/api/v1/push-tokens", {
+    method: "DELETE", body: { token },
+  })).data;
 }
 
 export async function createReportShare(hours = 72) {

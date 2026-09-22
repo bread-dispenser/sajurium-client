@@ -18,6 +18,30 @@ describe("live API journey", () => {
     window.localStorage.clear();
   });
 
+  it("exchanges a verified social ID token and migrates the anonymous session", async () => {
+    window.localStorage.setItem(AUTH_KEY, JSON.stringify({ kind: "anonymous", accessToken: "anon_jwt", anonymousToken: "anon_raw" }));
+    const responses = [json({ access_token: "social_jwt", token_type: "bearer" }), json({ migrated_profile_count: 1 })];
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () => responses.shift() ?? json({}, 500));
+    const { loginSocialAccount } = await import("@/lib/api/service");
+
+    const result = await loginSocialAccount("google", "provider-id-token");
+
+    expect(result.migration).toBe("migrated");
+    expect(fetchMock.mock.calls[0][0]).toBe(`${API_ORIGIN}/api/v1/auth/social`);
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ provider: "google", id_token: "provider-id-token" });
+    expect(fetchMock.mock.calls[1][0]).toBe(`${API_ORIGIN}/api/v1/auth/anonymous/migrate`);
+    expect(JSON.parse(window.localStorage.getItem(AUTH_KEY) ?? "null")).toMatchObject({ kind: "account", accessToken: "social_jwt", anonymousToken: null });
+  });
+
+  it("retains the anonymous session when social login is unavailable", async () => {
+    window.localStorage.setItem(AUTH_KEY, JSON.stringify({ kind: "anonymous", accessToken: "anon_jwt", anonymousToken: "anon_raw" }));
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(json({ code: "SOCIAL_LOGIN_DISABLED", message: "현재 이용할 수 없습니다." }, 503));
+    const { loginSocialAccount } = await import("@/lib/api/service");
+
+    await expect(loginSocialAccount("apple", "provider-id-token")).rejects.toMatchObject({ status: 503 });
+    expect(JSON.parse(window.localStorage.getItem(AUTH_KEY) ?? "null")).toMatchObject({ kind: "anonymous", accessToken: "anon_jwt", anonymousToken: "anon_raw" });
+  });
+
   it("stops a stalled notification read and gives a retryable message", async () => {
     window.localStorage.setItem(AUTH_KEY, JSON.stringify({ kind: "anonymous", accessToken: "anon_jwt", anonymousToken: "anon_raw" }));
     vi.spyOn(globalThis, "fetch").mockImplementation(() => new Promise<Response>(() => {}));

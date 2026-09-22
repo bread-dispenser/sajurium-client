@@ -187,6 +187,21 @@ summary:focus-visible {
   width: 100%;
 }
 
+.social-login-options {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}
+
+.social-login-google {
+  width: 100%;
+  max-width: 320px;
+  min-height: 40px;
+}
+
+.social-login-google iframe { max-width: 100%; }
+
 h1,
 h2,
 h3,

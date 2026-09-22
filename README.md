@@ -13,6 +13,10 @@ bunx bun@1.3.14 run dev
 
 기본 개발 서버는 `http://localhost:3000`에서 실행됩니다. `NEXT_PUBLIC_SAJURIUM_API_URL`로 API 주소를 지정하며, 로컬 개발·Playwright 통합 기본값은 `http://localhost:8000`입니다.
 
+소셜 로그인 화면은 `NEXT_PUBLIC_SOCIAL_LOGIN_ENABLED=true`와 해당 제공자의 공개 client ID가 있을 때만 Google/Apple 버튼을 표시합니다. ID 토큰을 백엔드 `/auth/social`에 전달한 뒤 기존 익명 데이터를 이전합니다. 운영에서 이 값을 켜려면 백엔드의 제공자별 검증과 계정 연결 정책이 먼저 준비돼야 합니다. Kakao 웹 로그인은 인가 코드의 서버 교환 계약이 확정될 때 연결합니다.
+
+알림 화면은 서버의 알림 내역과 선호 설정을 읽습니다. 브라우저 푸시 기기 등록은 백엔드의 FCM 등록 식별자 계약과 실제 발송 경로가 정해진 뒤 연결하며, `NEXT_PUBLIC_PUSH_ENABLED`는 그때까지 `false`로 둡니다.
+
 Production build는 로컬 주소로 잘못 배포되는 일을 막기 위해 명시적인 비로컬 API origin을 요구합니다.
 
 ```bash
