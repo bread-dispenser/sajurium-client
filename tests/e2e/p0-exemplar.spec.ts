@@ -61,7 +61,7 @@ test("birth preserves validation, conditional fields and failure values without 
   await expect(page.getByRole("heading", { name: "결과를 불러오지 못했어요" })).toBeVisible();
   await page.getByRole("button", { name: "입력 정보 확인" }).click();
   await expect(page.locator("#nickname")).toHaveValue("긴이름을확인하는사용자이십글자");
-  expect(await page.locator("#birth-title").evaluate(el => getComputedStyle(el.parentElement!).animationName)).toBe("none");
+  await expect.poll(() => page.locator("#birth-title").evaluate(el => getComputedStyle(el.parentElement!).animationName)).toBe("none");
   await page.getByRole("radio", { name: "양력", exact: true }).click();
   await page.getByRole("button", { name: "다음", exact: true }).click();
   await expect(page).toHaveURL(/\/report$/, { timeout: 5000 });

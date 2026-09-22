@@ -41,6 +41,8 @@ describe("canonical frontend contracts", () => {
     expect(parseBirthDate("2026-09-02", now)).toBeNull();
     expect(parseBirthDate("2024-02-30", now)).toBeNull();
     expect(parseBirthDate("2024-02-29", now)).not.toBeNull();
+    expect(parseBirthDate("1990-02-30", now, "lunar")).not.toBeNull();
+    expect(parseBirthDate("1990-02-31", now, "lunar")).toBeNull();
   });
 
   it("never permits deleting a purchased library item", () => {

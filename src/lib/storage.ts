@@ -24,6 +24,7 @@ import type {
 import {
   getAllowedLibraryActions,
   hasValidLeapMonthSemantics,
+  parseBirthDate,
   isConsultationMessageStatus,
   isConsultationSessionStatus,
   isGenerationStatus,
@@ -165,7 +166,7 @@ function isBirthInfo(value: unknown): value is BirthInfo {
     (value.calendar === "solar" || value.calendar === "lunar") &&
     typeof value.leapMonth === "boolean" &&
     hasValidLeapMonthSemantics({ calendar: value.calendar, leapMonth: value.leapMonth }) &&
-    isIsoDate(value.birthDate) &&
+    (value.calendar === "lunar" ? typeof value.birthDate === "string" && parseBirthDate(value.birthDate, new Date(), "lunar") !== null : isIsoDate(value.birthDate)) &&
     (value.birthTime === null || (typeof value.birthTime === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(value.birthTime))) &&
     typeof value.birthTimeUnknown === "boolean" &&
     (value.birthTimeUnknown ? value.birthTime === null : value.birthTime !== null) &&
@@ -1049,5 +1050,4 @@ export function resetBirthSource(store: "draft" | "profile" | "report") {
   if (store === "profile") return profileStore.remove();
   return reportStore.remove();
 }
-
 
