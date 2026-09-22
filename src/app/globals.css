@@ -180,6 +180,13 @@ summary:focus-visible {
   padding: var(--space-6) 20px var(--space-5);
 }
 
+.login-content form,
+.login-content .signal-field,
+.login-content .signal-field input {
+  min-width: 0;
+  width: 100%;
+}
+
 h1,
 h2,
 h3,

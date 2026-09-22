@@ -41,9 +41,16 @@ test("primary Signal Atlas screens stay within every supported viewport", async 
       await expect(page.locator("html")).toHaveJSProperty("scrollWidth", viewport.width);
       const overflow = await page.evaluate(() =>
         Array.from(document.querySelectorAll<HTMLElement>("body *"))
-          .some((element) => element.getBoundingClientRect().right > window.innerWidth + 1),
+          .filter((element) => element.getBoundingClientRect().right > window.innerWidth + 1)
+          .map((element) => ({
+            tag: element.tagName.toLowerCase(),
+            id: element.id,
+            className: typeof element.className === "string" ? element.className : "",
+            right: Math.round(element.getBoundingClientRect().right),
+            width: Math.round(element.getBoundingClientRect().width),
+          })),
       );
-      expect(overflow, `${route} overflows at ${viewport.name}`).toBe(false);
+      expect(overflow, `${route} overflows at ${viewport.name}`).toEqual([]);
     }
   }
 });
