@@ -824,7 +824,7 @@ export interface paths {
         put?: never;
         /**
          * Request Privacy Deletion
-         * @description 개인정보 삭제 요청: 비동기 상태 제공, 결제 법적 보관은 분리 (§3.2).
+         * @description 개인정보 삭제 요청: 완료된 작업 상태 반환 (§3.2).
          */
         post: operations["request_privacy_deletion_api_v1_privacy_deletions_post"];
         delete?: never;

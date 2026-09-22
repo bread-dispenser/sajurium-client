@@ -18,6 +18,14 @@ describe("live API journey", () => {
     window.localStorage.clear();
   });
 
+  it("stops a stalled notification read and gives a retryable message", async () => {
+    window.localStorage.setItem(AUTH_KEY, JSON.stringify({ kind: "anonymous", accessToken: "anon_jwt", anonymousToken: "anon_raw" }));
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => new Promise<Response>(() => {}));
+    const { getNotificationPreferences } = await import("@/lib/api/service");
+
+    await expect(getNotificationPreferences(10)).rejects.toThrow("다시 시도해 주세요");
+  });
+
   it("issues an anonymous JWT then persists FastAPI profile, chart, and report references", async () => {
     const responses = [
       json({ access_token: "jwt_1", token_type: "bearer", anonymous_token: "anonymous_1" }, 201),
@@ -191,6 +199,17 @@ describe("account authentication and anonymous migration", () => {
     vi.resetModules();
     vi.restoreAllMocks();
     window.localStorage.clear();
+  });
+
+  it("clears the server journey only after account deletion completes", async () => {
+    window.localStorage.setItem(AUTH_KEY, JSON.stringify({ kind: "account", accessToken: "acct_jwt", anonymousToken: null }));
+    window.localStorage.setItem("sajurium.server-journey.v1", JSON.stringify({ profileId: "1", chartId: "2", reportId: "3" }));
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => json({ status: "DELETED", privacy_job_id: 1 }, 200));
+    const { requestAccountDeletion } = await import("@/lib/api/service");
+
+    await expect(requestAccountDeletion("test")).resolves.toMatchObject({ status: "DELETED" });
+    expect(window.localStorage.getItem(AUTH_KEY)).toBeNull();
+    expect(window.localStorage.getItem("sajurium.server-journey.v1")).toBeNull();
   });
 
   it("migrates the anonymous session with the account bearer token after login", async () => {

@@ -210,7 +210,12 @@ export async function logoutAccount(): Promise<LogoutResult> {
 }
 
 export async function requestAccountDeletion(reason: string) {
-  return (await request<Record<string, unknown>>("/api/v1/auth/account", { method: "DELETE", body: { reason: reason || null } })).data;
+  const result = (await request<Record<string, unknown>>("/api/v1/auth/account", { method: "DELETE", body: { reason: reason || null } })).data;
+  if (result.status === "DELETED") {
+    clearAuthSession();
+    window.localStorage.removeItem(JOURNEY_KEY);
+  }
+  return result;
 }
 
 // Screens issue their reads concurrently, so one expired session produces several credential
@@ -344,8 +349,24 @@ export async function deleteProfile(profileId: string) {
   await request(`/api/v1/profiles/${profileId}`, { method: "DELETE" });
 }
 
-export async function getNotificationPreferences() {
-  return (await request<Schema<"NotificationPreference">>("/api/v1/notification-preferences")).data;
+export async function getNotificationPreferences(timeoutMs = 12_000) {
+  const controller = new AbortController();
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => {
+      controller.abort();
+      reject(new Error("알림 설정 응답이 지연되고 있어요. 다시 시도해 주세요."));
+    }, timeoutMs);
+  });
+  try {
+    const response = await Promise.race([
+      request<Schema<"NotificationPreference">>("/api/v1/notification-preferences", { signal: controller.signal }),
+      deadline,
+    ]);
+    return response.data;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export async function updateNotificationPreferences(body: Partial<Schema<"NotificationPreferenceUpdate">>) {
@@ -371,7 +392,12 @@ export async function getSharedContent(token: string) {
 }
 
 export async function requestPrivacyJob(type: "exports" | "deletions") {
-  return (await request<Schema<"PrivacyJobResponse">>(`/api/v1/privacy/${type}`, { method: "POST", body: {} })).data;
+  const job = (await request<Schema<"PrivacyJobResponse">>(`/api/v1/privacy/${type}`, { method: "POST", body: {} })).data;
+  if (type === "deletions" && job.status === "COMPLETED") {
+    clearAuthSession();
+    window.localStorage.removeItem(JOURNEY_KEY);
+  }
+  return job;
 }
 
 export async function submitReportFeedback(reportId: string, rating: "helpful" | "unclear" | "wrong", detailReason: string, reported: boolean) {

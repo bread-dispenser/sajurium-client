@@ -54,6 +54,22 @@ test("loads and updates notification preferences through the API", async ({ page
   await expect(firstPreference).toBeChecked({ checked: !before });
 });
 
+test("offers a retry after the notification settings request fails", async ({ page }) => {
+  let failed = false;
+  await page.route("**/api/v1/notification-preferences", async (route) => {
+    if (route.request().method() === "GET" && !failed) {
+      failed = true;
+      await route.abort("failed");
+      return;
+    }
+    await route.continue();
+  });
+  await page.goto("/notifications");
+  await expect(page.getByRole("button", { name: "다시 시도" })).toBeVisible();
+  await page.getByRole("button", { name: "다시 시도" }).click();
+  await expect(page.getByRole("heading", { name: "받고 싶은 소식" })).toBeVisible();
+});
+
 test("keeps an invalid public share token private and non-indexable", async ({ page }) => {
   await page.goto("/shared/V7m2Q9x4Ka8Nz3Rt");
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /noindex/);

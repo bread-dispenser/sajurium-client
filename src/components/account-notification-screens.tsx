@@ -263,13 +263,20 @@ export function NotificationCenterScreen() {
 export function LiveNotificationScreen() {
   const [preferences, setPreferences] = useState<{ topics: Record<string, boolean>; quiet_hours_start: number; quiet_hours_end: number; timezone: string } | null>(null);
   const [error, setError] = useState("");
-  useEffect(() => { void getNotificationPreferences().then(setPreferences).catch((reason) => setError(formatApiRequestError(reason, "알림 설정을 불러오지 못했어요."))); }, []);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let active = true;
+    void getNotificationPreferences()
+      .then((value) => { if (active) setPreferences(value); })
+      .catch((reason) => { if (active) setError(formatApiRequestError(reason, "알림 설정을 불러오지 못했어요.")); });
+    return () => { active = false; };
+  }, [attempt]);
   if (!preferences && !error) return <LoadingState title="서버 알림 설정을 불러오고 있어요" />;
   return (
     <main className={`screen-content settings-content ${styles.srScreen}`} aria-labelledby="notification-title">
       <p className="section-kicker">알림 설정</p>
       <h1 id="notification-title">받고 싶은 소식</h1>
-      {error ? <p className="form-error" role="alert">{error}</p> : <>
+      {error ? <><p className="form-error" role="alert">{error}</p><button className="secondary-button" type="button" onClick={() => { setPreferences(null); setError(""); setAttempt((value) => value + 1); }}>다시 시도</button></> : <>
         <p className="supporting">선호도는 서버 계정 또는 익명 세션에 저장됩니다.</p>
         {Object.entries(preferences?.topics ?? {}).map(([topic, enabled]) => (
           <label className="setting-toggle" key={topic}>
@@ -316,5 +323,5 @@ export function LiveLoginScreen() {
 
 export function LiveAccountScreen() {
   const [reason, setReason] = useState(""); const [message, setMessage] = useState("");
-  return <main className={`screen-content account-content ${styles.srScreen}`} aria-labelledby="account-title"><p className="section-kicker">계정</p><h1 id="account-title">계정과 데이터</h1><p className="supporting">익명 세션은 로그인 후 서버 계정으로 이전할 수 있습니다. 삭제 요청은 서버 정책에 따라 처리됩니다.</p><button className="secondary-button" type="button" onClick={() => { void logoutAccount().then((result) => setMessage(result === "complete" ? "로그아웃됐어요. 이 기기의 계정 세션을 지웠습니다." : "서버에 연결하지 못했지만 이 기기의 계정 세션은 지웠습니다.")); }}>로그아웃</button><label className="signal-field">삭제 사유 (선택)<textarea value={reason} onChange={(event) => setReason(event.target.value)} /></label><button className="secondary-button" type="button" onClick={() => { void requestAccountDeletion(reason).then((result) => setMessage(`삭제 요청 상태: ${String(result.status ?? "접수됨")}`)).catch((error) => setMessage(error instanceof Error ? error.message : "삭제 요청을 접수하지 못했어요.")); }}>계정 삭제 요청</button>{message && <p className="form-error" role="status">{message}</p>}</main>;
+  return <main className={`screen-content account-content ${styles.srScreen}`} aria-labelledby="account-title"><p className="section-kicker">계정</p><h1 id="account-title">계정과 데이터</h1><p className="supporting">익명 세션은 로그인 후 서버 계정으로 이전할 수 있습니다. 계정 삭제는 서버 처리가 완료된 뒤 결과를 알려줍니다.</p><button className="secondary-button" type="button" onClick={() => { void logoutAccount().then((result) => setMessage(result === "complete" ? "로그아웃됐어요. 이 기기의 계정 세션을 지웠습니다." : "서버에 연결하지 못했지만 이 기기의 계정 세션은 지웠습니다.")); }}>로그아웃</button><label className="signal-field">삭제 사유 (선택)<textarea value={reason} onChange={(event) => setReason(event.target.value)} /></label><button className="secondary-button" type="button" onClick={() => { void requestAccountDeletion(reason).then((result) => setMessage(result.status === "DELETED" ? "서버 계정 데이터 삭제가 완료됐어요. 이 기기의 저장 정보는 별도로 지울 수 있어요." : `삭제 요청 상태: ${String(result.status ?? "접수됨")}`)).catch((error) => setMessage(error instanceof Error ? error.message : "삭제 요청을 접수하지 못했어요.")); }}>계정 삭제 요청</button>{message && <p className="form-error" role="status">{message}</p>}</main>;
 }
