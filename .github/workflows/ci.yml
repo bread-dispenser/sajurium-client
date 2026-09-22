@@ -32,17 +32,45 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - uses: actions/setup-python@v6
+      # The backend is private. A separate read-only token enables the full chain;
+      # without it, the public client checks still gate deployment.
+      - name: Detect the backend credential
+        id: backend
+        env:
+          TOKEN: ${{ secrets.SAJURIUM_BACKEND_TOKEN }}
+          REPOSITORY: ${{ vars.SAJURIUM_BACKEND_REPOSITORY }}
+        run: |
+          if [ -n "$TOKEN" ] && [ -n "$REPOSITORY" ]; then
+            echo "available=true" >>"$GITHUB_OUTPUT"
+          else
+            echo "available=false" >>"$GITHUB_OUTPUT"
+            echo "::notice title=Backend contract and e2e skipped::A backend read token is not configured; run the full chain locally against an isolated backend."
+          fi
+
+      - name: Quality gates that need no backend
+        if: steps.backend.outputs.available != 'true'
+        run: |
+          bun run api:check
+          bun run lint
+          bun run typecheck
+          bun run test:unit
+          bun run build
+
+      - if: steps.backend.outputs.available == 'true'
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
       - name: Check out the backend contract
+        if: steps.backend.outputs.available == 'true'
         uses: actions/checkout@v7
         with:
           repository: ${{ vars.SAJURIUM_BACKEND_REPOSITORY }}
+          token: ${{ secrets.SAJURIUM_BACKEND_TOKEN }}
           path: backend
 
       - name: Install the backend
+        if: steps.backend.outputs.available == 'true'
         working-directory: backend
         run: |
           python -m venv .venv
@@ -51,6 +79,7 @@ jobs:
       # The server and the chain share one step: GitHub does not guarantee that a
       # background process outlives the step that started it.
       - name: Full quality chain against a live backend
+        if: steps.backend.outputs.available == 'true'
         working-directory: backend
         env:
           # A CI-only secret: this instance is disposable and never reaches production.
