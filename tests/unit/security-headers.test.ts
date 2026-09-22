@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { buildSecurityHeaders } from "@/lib/security-headers";
 
 function headerMap() {
@@ -44,5 +44,23 @@ describe("production security headers", () => {
     expect(csp).toContain("object-src 'none'");
     expect(csp).toContain("base-uri 'self'");
     expect(csp).toContain(`connect-src 'self' ${apiOrigin}`);
+  });
+
+  it("opens provider script and frame origins only for configured social login", () => {
+    try {
+      vi.stubEnv("NEXT_PUBLIC_SOCIAL_LOGIN_ENABLED", "false");
+      expect(headerMap().get("Content-Security-Policy")).not.toContain("accounts.google.com");
+      vi.stubEnv("NEXT_PUBLIC_SOCIAL_LOGIN_ENABLED", "true");
+      vi.stubEnv("NEXT_PUBLIC_GOOGLE_CLIENT_ID", "google-client");
+      vi.stubEnv("NEXT_PUBLIC_APPLE_CLIENT_ID", "apple-client");
+      vi.stubEnv("NEXT_PUBLIC_APPLE_REDIRECT_URI", "https://sajurium.justn.me/login");
+      const csp = headerMap().get("Content-Security-Policy")!;
+      expect(csp).toContain("script-src 'self' 'unsafe-inline'");
+      expect(csp).toContain("https://accounts.google.com/gsi/client");
+      expect(csp).toContain("https://appleid.cdn-apple.com");
+      expect(csp).toContain("frame-src 'self' https://accounts.google.com/gsi/ https://appleid.apple.com");
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });

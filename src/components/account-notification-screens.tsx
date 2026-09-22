@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { formatApiRequestError, getNotificationPreferences, loginAccount, logoutAccount, registerAccount, requestAccountDeletion, type AnonymousMigrationStatus, updateNotificationPreferences } from "@/lib/api/service";
+import { useEffect, useRef, useState } from "react";
+import { formatApiRequestError, getNotificationPreferences, listNotifications, loginAccount, loginSocialAccount, logoutAccount, registerAccount, requestAccountDeletion, type AnonymousMigrationStatus, type ServerNotification, type SocialProvider, updateNotificationPreferences } from "@/lib/api/service";
+import { appleLoginAvailable, googleLoginAvailable, pushEnabled } from "@/lib/feature-availability";
+import { SocialLoginOptions } from "./social-login-options";
 import { LoadingState } from "./page-state";
 import type { FormEvent } from "react";
 import styles from "./saas-system-rollout.module.css";
@@ -10,6 +12,17 @@ import styles from "./saas-system-rollout.module.css";
 type Provider = "카카오" | "Apple" | "Google" | "이메일";
 type NotificationTab = "all" | "unread";
 type NotificationKind = "흐름" | "리포트" | "결제";
+
+const LIVE_NOTIFICATION_TOPIC_LABELS: Record<string, string> = {
+  daily_flow: "오늘의 흐름",
+  report_ready: "리포트",
+  marketing: "소식",
+  payment: "결제",
+};
+
+function notificationTopicLabel(topic: string) {
+  return LIVE_NOTIFICATION_TOPIC_LABELS[topic] ?? "알림";
+}
 
 type PrototypeNotification = {
   id: number;
@@ -264,6 +277,9 @@ export function LiveNotificationScreen() {
   const [preferences, setPreferences] = useState<{ topics: Record<string, boolean>; quiet_hours_start: number; quiet_hours_end: number; timezone: string } | null>(null);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
+  const [notifications, setNotifications] = useState<ServerNotification[] | null>(null);
+  const [notificationError, setNotificationError] = useState("");
+  const [notificationAttempt, setNotificationAttempt] = useState(0);
   useEffect(() => {
     let active = true;
     void getNotificationPreferences()
@@ -271,16 +287,43 @@ export function LiveNotificationScreen() {
       .catch((reason) => { if (active) setError(formatApiRequestError(reason, "알림 설정을 불러오지 못했어요.")); });
     return () => { active = false; };
   }, [attempt]);
-  if (!preferences && !error) return <LoadingState title="서버 알림 설정을 불러오고 있어요" />;
+  useEffect(() => {
+    let active = true;
+    void listNotifications()
+      .then((items) => { if (active) setNotifications(items); })
+      .catch((reason) => { if (active) setNotificationError(formatApiRequestError(reason, "알림 내역을 불러오지 못했어요.")); });
+    return () => { active = false; };
+  }, [notificationAttempt]);
+  if (!preferences && !error && !notifications && !notificationError) return <LoadingState title="서버 알림을 불러오고 있어요" />;
   return (
     <main className={`screen-content settings-content ${styles.srScreen}`} aria-labelledby="notification-title">
       <p className="section-kicker">알림 설정</p>
       <h1 id="notification-title">받고 싶은 소식</h1>
+      {!pushEnabled && <p className="supporting">기기 푸시는 준비 중입니다. 서버에 기록된 알림은 여기에서 확인할 수 있어요.</p>}
+      <section className="settings-section signal-notification-list-section" aria-labelledby="notification-list-heading">
+        <h2 id="notification-list-heading">받은 알림</h2>
+        {notificationError ? <><p className="form-error" role="alert">{notificationError}</p>
+          <button className="secondary-button" type="button" onClick={() => { setNotifications(null); setNotificationError(""); setNotificationAttempt((value) => value + 1); }}>알림 다시 시도</button></> :
+          notifications === null ? <p className="supporting">알림 내역을 불러오고 있어요.</p> :
+          notifications.length === 0 ? <p className="supporting">아직 도착한 알림이 없어요.</p> :
+          <div className="library-list signal-notification-list">
+            {notifications.map((notification) => {
+              const href = notification.deep_link?.startsWith("/") && !notification.deep_link.startsWith("//") ? notification.deep_link : null;
+              const status = notification.status === "READ" ? "읽음" : notification.status === "FAILED" ? "전송 실패" : notification.status === "RESERVED" ? "예약됨" : "기록됨";
+              return <article className="signal-notification-row" key={notification.id}>
+                <div><small>{notificationTopicLabel(notification.topic)} · {status}</small><h3>{notification.title}</h3>
+                  {notification.body && <p>{notification.body}</p>}
+                  <time dateTime={notification.created_at}>{notification.created_at.slice(0, 10)}</time></div>
+                {href && <Link className="text-link" href={href}>내용 보기</Link>}
+              </article>;
+            })}
+          </div>}
+      </section>
       {error ? <><p className="form-error" role="alert">{error}</p><button className="secondary-button" type="button" onClick={() => { setPreferences(null); setError(""); setAttempt((value) => value + 1); }}>다시 시도</button></> : <>
         <p className="supporting">선호도는 서버 계정 또는 익명 세션에 저장됩니다.</p>
         {Object.entries(preferences?.topics ?? {}).map(([topic, enabled]) => (
           <label className="setting-toggle" key={topic}>
-            <span><strong>{topic}</strong></span>
+            <span><strong>{notificationTopicLabel(topic)}</strong></span>
             <input type="checkbox" checked={enabled} onChange={(event) => {
               if (!preferences) return;
               const previous = preferences;
@@ -310,15 +353,53 @@ const MIGRATION_MESSAGES: Record<AnonymousMigrationStatus, string> = {
 export function LiveLoginScreen() {
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [name, setName] = useState(""); const [message, setMessage] = useState("");
+  const [pending, setPending] = useState(false);
+  const pendingRef = useRef(false);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (pendingRef.current) return;
+    pendingRef.current = true;
     setMessage("");
+    setPending(true);
     const action = mode === "login" ? loginAccount(email, password) : registerAccount(email, password, name);
-    void action.then((result) => setMessage(MIGRATION_MESSAGES[result.migration])).catch((error) => setMessage(formatApiRequestError(error, "인증에 실패했어요.")));
+    void action.then((result) => setMessage(MIGRATION_MESSAGES[result.migration]))
+      .catch((error) => setMessage(formatApiRequestError(error, "인증에 실패했어요.")))
+      .finally(() => { pendingRef.current = false; setPending(false); });
   }
 
-  return <main className={`screen-content login-content ${styles.srScreen}`} aria-labelledby="login-title"><p className="section-kicker">계정</p><h1 id="login-title">{mode === "login" ? "로그인" : "계정 만들기"}</h1><p className="supporting">로그인하면 현재 익명 데이터 이전을 이어갈 수 있습니다.</p><form onSubmit={submit}><label className="signal-field">이메일<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>{mode === "register" && <label className="signal-field">이름<input value={name} onChange={(event) => setName(event.target.value)} /></label>}<label className="signal-field">비밀번호<input type="password" minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} required /></label><button className="primary-button" type="submit">{mode === "login" ? "로그인" : "계정 만들기"}</button></form>{message && <p className="form-error" role="status">{message}</p>}<button className="text-button" type="button" onClick={() => setMode((current) => current === "login" ? "register" : "login")}>{mode === "login" ? "계정 만들기" : "로그인으로"}</button><p className="action-note">소셜 로그인은 제공자 자격증명이 연결되면 이 화면에 추가됩니다.</p></main>;
+  async function acceptSocialCredential(provider: SocialProvider, idToken: string) {
+    if (pendingRef.current) return;
+    pendingRef.current = true;
+    setPending(true);
+    setMessage("");
+    try {
+      const result = await loginSocialAccount(provider, idToken);
+      setMessage(MIGRATION_MESSAGES[result.migration]);
+    } catch (error) {
+      setMessage(formatApiRequestError(error, "소셜 로그인을 완료하지 못했어요."));
+    } finally {
+      pendingRef.current = false;
+      setPending(false);
+    }
+  }
+
+  return <main className={`screen-content login-content ${styles.srScreen}`} aria-labelledby="login-title">
+    <p className="section-kicker">계정</p>
+    <h1 id="login-title">{mode === "login" ? "로그인" : "계정 만들기"}</h1>
+    <p className="supporting">로그인하면 현재 익명 데이터 이전을 이어갈 수 있습니다.</p>
+    <form onSubmit={submit}>
+      <label className="signal-field">이메일<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
+      {mode === "register" && <label className="signal-field">이름<input value={name} onChange={(event) => setName(event.target.value)} /></label>}
+      <label className="signal-field">비밀번호<input type="password" minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
+      <button className="primary-button" type="submit" disabled={pending}>{mode === "login" ? "로그인" : "계정 만들기"}</button>
+    </form>
+    <SocialLoginOptions onCredential={acceptSocialCredential} onError={setMessage} pending={pending} />
+    {message && <p className="form-error" role="status">{message}</p>}
+    <button className="text-button" type="button" disabled={pending}
+            onClick={() => setMode((current) => current === "login" ? "register" : "login")}>{mode === "login" ? "계정 만들기" : "로그인으로"}</button>
+    {!googleLoginAvailable && !appleLoginAvailable && <p className="action-note">소셜 로그인은 제공자 자격증명이 연결되면 이 화면에 추가됩니다.</p>}
+  </main>;
 }
 
 export function LiveAccountScreen() {

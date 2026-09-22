@@ -55,6 +55,24 @@ test("loads and updates notification preferences through the API", async ({ page
   await expect(firstPreference).toBeChecked({ checked: !before });
 });
 
+test("shows server notifications without linking to an external deep link", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.route("**/api/v1/notifications", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([
+      { id: 1, topic: "report_ready", title: "리포트가 준비됐어요", body: "결과를 확인해 주세요.", status: "SENT", created_at: "2026-09-23T10:00:00Z", deep_link: "/report" },
+      { id: 2, topic: "notice", title: "외부 링크는 열지 않아요", status: "SENT", created_at: "2026-09-23T10:00:00Z", deep_link: "https://example.org" },
+    ]) });
+  });
+  await page.goto("/notifications");
+  await expect(page.getByRole("heading", { name: "리포트가 준비됐어요" })).toBeVisible();
+  await expect(page.getByText("리포트 · 기록됨")).toBeVisible();
+  await expect(page.getByRole("link", { name: "내용 보기" })).toHaveAttribute("href", "/report");
+  await expect(page.getByRole("heading", { name: "외부 링크는 열지 않아요" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "내용 보기" })).toHaveCount(1);
+  await expect(page.locator("html")).toHaveJSProperty("scrollWidth", 320);
+  await page.screenshot({ path: testInfo.outputPath("notifications.png"), fullPage: true });
+});
+
 test("downloads an authenticated account export with the saved profile", async ({ page }) => {
   await createServerReport(page);
   await page.goto("/settings/privacy");
