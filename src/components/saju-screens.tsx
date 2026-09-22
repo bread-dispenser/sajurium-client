@@ -185,7 +185,7 @@ export function BirthScreen({ initialCalculationFailure }: { initialCalculationF
   function submitBirth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const displayName = birth.displayName.trim();
-    const selectedDate = parseBirthDate(birth.birthDate);
+    const selectedDate = parseBirthDate(birth.birthDate, new Date(), birth.calendar);
     if (!displayName) return setFormError("이름 또는 닉네임을 입력해 주세요.");
     if (!selectedDate) return setFormError("1900년 이후, 오늘보다 늦지 않은 올바른 생년월일을 입력해 주세요.");
     if (!hasValidLeapMonthSemantics(birth)) return setFormError("양력 날짜에는 윤달을 선택할 수 없어요.");
@@ -298,7 +298,7 @@ export function BirthScreen({ initialCalculationFailure }: { initialCalculationF
           <div className="birth-datetime-row">
             <div className="field-group">
               <label className="field-label" htmlFor="birth-date">생년월일</label>
-              <input id="birth-date" name="birthDate" type="date" lang="ko-KR" min="1900-01-01" max={localDateValue()} value={birth.birthDate} onChange={(event) => updateBirth({ birthDate: event.target.value })} />
+              <input id="birth-date" name="birthDate" type={birth.calendar === "lunar" ? "text" : "date"} lang="ko-KR" min={birth.calendar === "solar" ? "1900-01-01" : undefined} max={birth.calendar === "solar" ? localDateValue() : undefined} placeholder={birth.calendar === "lunar" ? "YYYY-MM-DD (음력)" : undefined} value={birth.birthDate} onChange={(event) => updateBirth({ birthDate: event.target.value })} />
             </div>
             <div className="field-group">
               <label className="field-label" htmlFor="birth-time">출생 시간</label>

@@ -184,7 +184,7 @@ function PersonForm({ existing }: { existing?: PersonProfile }) {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!profile.displayName.trim()) return setError("이름 또는 별칭을 입력해 주세요.");
-    if (!parseBirthDate(profile.birthDate)) return setError("1900년 이후, 오늘보다 늦지 않은 올바른 생년월일을 입력해 주세요.");
+    if (!parseBirthDate(profile.birthDate, new Date(), profile.calendar)) return setError("1900년 이후, 오늘보다 늦지 않은 올바른 생년월일을 입력해 주세요.");
     if (!hasValidLeapMonthSemantics(profile)) return setError("양력 날짜에는 윤달을 선택할 수 없어요.");
     if (!profile.birthTimeUnknown && !profile.birthTime) return setError("출생 시간을 입력하거나 시간 미상을 선택해 주세요.");
     if (!profile.birthplace.trim()) return setError("출생지를 입력해 주세요.");
@@ -224,7 +224,7 @@ function PersonForm({ existing }: { existing?: PersonProfile }) {
         <legend>출생 정보</legend>
         <fieldset className="signal-fieldset"><legend>달력 기준</legend><div className="segmented-control signal-choice-row">{(["solar", "lunar"] as CalendarKind[]).map((calendar) => <button type="button" key={calendar} className={profile.calendar === calendar ? "selected signal-selected" : ""} aria-pressed={profile.calendar === calendar} onClick={() => updateProfile({ calendar, leapMonth: calendar === "lunar" ? profile.leapMonth : false })}>{calendar === "solar" ? "양력" : "음력"}</button>)}</div></fieldset>
         {profile.calendar === "lunar" && <label className="check-card signal-check-row"><input type="checkbox" checked={profile.leapMonth} onChange={(event) => updateProfile({ leapMonth: event.target.checked })} />윤달</label>}
-        <label className="signal-field" htmlFor="person-birth-date">생년월일<input id="person-birth-date" type="date" value={profile.birthDate} onChange={(event) => updateProfile({ birthDate: event.target.value })} /></label>
+        <label className="signal-field" htmlFor="person-birth-date">생년월일<input id="person-birth-date" type={profile.calendar === "lunar" ? "text" : "date"} placeholder={profile.calendar === "lunar" ? "YYYY-MM-DD (음력)" : undefined} value={profile.birthDate} onChange={(event) => updateProfile({ birthDate: event.target.value })} /></label>
         <label className="signal-field" htmlFor="person-birth-time">출생 시간<input id="person-birth-time" type="time" value={profile.birthTime ?? ""} disabled={profile.birthTimeUnknown} onChange={(event) => updateProfile({ birthTime: event.target.value || null })} /></label>
         <label className="check-card signal-check-row"><input type="checkbox" checked={profile.birthTimeUnknown} onChange={(event) => updateProfile({ birthTimeUnknown: event.target.checked, birthTime: event.target.checked ? null : profile.birthTime })} />출생 시간을 몰라요</label>
         <label className="signal-field" htmlFor="person-birthplace">출생지<input id="person-birthplace" value={profile.birthplace} onChange={(event) => updateProfile({ birthplace: event.target.value })} /></label>
@@ -406,7 +406,7 @@ export function LivePeopleScreen() {
   return <main className={`screen-content people-content signal-screen signal-people ${styles.scope}`} aria-labelledby="people-title">
     <div className="signal-hero people-hero"><p className="section-kicker signal-kicker">사람 보관함</p><h1 id="people-title">서버에 저장한 사람</h1><p className="supporting">출생 정보는 권한 있는 세션에서만 저장하고 목록에서는 가려 보여요.</p></div>
     <Link className="primary-button signal-action signal-primary-action" href="/people/new">새 인물 추가</Link>
-    {profiles?.length === 0 ? <EmptyState title="저장한 사람이 없어요" description="궁합을 보려면 두 사람의 프로필이 필요해요." action={{ href: "/people/new", label: "인물 추가" }} /> : <div className="people-list signal-row-list">{profiles?.map((person) => <article key={person.id} className="signal-row signal-person-row"><div className="signal-row-copy"><small>{person.isSelf ? "본인" : person.relationship ?? "관계 프로필"}</small><h2>{person.nickname}</h2><p>{person.birthDate.slice(0, 4)}년생 · {person.birthLocation ?? "출생지 비공개"}</p></div><button className="signal-action signal-destructive-action" type="button" onClick={() => { void deleteProfile(person.id).then(() => setProfiles((items) => items?.filter((item) => item.id !== person.id) ?? null)).catch(() => setError("삭제하지 못했어요.")); }}>삭제</button></article>)}</div>}
+    {profiles?.length === 0 ? <EmptyState title="저장한 사람이 없어요" description="궁합을 보려면 두 사람의 프로필이 필요해요." action={{ href: "/people/new", label: "인물 추가" }} /> : <div className="people-list signal-row-list">{profiles?.map((person) => <article key={person.id} className="signal-row signal-person-row"><div className="signal-row-copy"><small>{person.isSelf ? "본인" : person.relationship ?? "관계 프로필"}</small><h2>{person.nickname}</h2><p>{person.birthYear}년생 · {person.birthLocation ?? "출생지 비공개"}</p></div><button className="signal-action signal-destructive-action" type="button" onClick={() => { void deleteProfile(person.id).then(() => setProfiles((items) => items?.filter((item) => item.id !== person.id) ?? null)).catch(() => setError("삭제하지 못했어요.")); }}>삭제</button></article>)}</div>}
     <Link className="secondary-button signal-action" href="/compatibility">두 사람 궁합 보기</Link>
   </main>;
 }

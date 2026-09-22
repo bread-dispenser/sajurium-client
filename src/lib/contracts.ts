@@ -53,16 +53,24 @@ export function hasValidLeapMonthSemantics(profile: Pick<ProfileInput, "calendar
 
 /**
  * Parses a birth date as a local calendar date and applies the product's
- * shared input bounds. A Date object is returned only for a real date from
- * 1900-01-01 through today; invalid, future, and non-ISO values return null.
+ * shared input bounds. Lunar month length is validated by the API; a safe
+ * Gregorian day is used here only for the upper date bound.
  */
-export function parseBirthDate(value: string, now = new Date()): Date | null {
+export function parseBirthDate(value: string, now = new Date(), calendar: CalendarKind = "solar"): Date | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!match) return null;
   const [, yearText, monthText, dayText] = match;
   const year = Number(yearText);
   const month = Number(monthText);
   const day = Number(dayText);
+  if (calendar === "lunar") {
+    if (year < 1900 || month < 1 || month > 12 || day < 1 || day > 30) return null;
+    // The API validates actual lunar month lengths and leap months. A Gregorian
+    // Date cannot represent lunar February 30, so use a safe day for bounds.
+    const lunarBound = new Date(year, month - 1, Math.min(day, 28));
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return lunarBound <= today ? lunarBound : null;
+  }
   const date = new Date(year, month - 1, day);
   if (
     year < 1900 ||

@@ -33,7 +33,7 @@ import {
   settingsStore,
 } from "@/lib/storage";
 import { CorruptState, EmptyState, LoadingState } from "./page-state";
-import { formatApiRequestError, requestPrivacyJob } from "@/lib/api/service";
+import { downloadPrivacyExport, formatApiRequestError, requestPrivacyJob } from "@/lib/api/service";
 
 function getSettings(): SettingsData | null {
   const inspection = settingsStore.inspect();
@@ -148,7 +148,7 @@ export function SettingsScreen() {
     const birthDate = String(form.get("birthDate") ?? "");
     const birthTime = String(form.get("birthTime") ?? "");
     const birthTimeUnknown = form.get("birthTimeUnknown") === "on";
-    const validDate = parseBirthDate(birthDate) !== null;
+    const validDate = parseBirthDate(birthDate, new Date(), birth.calendar) !== null;
     if (!displayName || !validDate) return setMessage("이름과 실제 존재하는 생년월일을 입력해 주세요.");
     const [hour, minute] = birthTime.split(":").map(Number);
     const validTime = /^\d{2}:\d{2}$/.test(birthTime) && hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59;
@@ -214,7 +214,7 @@ export function SettingsScreen() {
           <p>현재 프로필의 핵심 값만 수정합니다. 달력·윤달·출생지·시간대·계산 기준과 관심사는 전체 프로필에서 관리하세요.</p>
           <form className="settings-birth-form" onSubmit={saveBirth}>
             <label>이름 또는 닉네임<input name="displayName" defaultValue={birth.displayName} /></label>
-            <label>생년월일<input name="birthDate" type="date" defaultValue={birth.birthDate} /></label>
+            <label>생년월일<input name="birthDate" type={birth.calendar === "lunar" ? "text" : "date"} placeholder={birth.calendar === "lunar" ? "YYYY-MM-DD (음력)" : undefined} defaultValue={birth.birthDate} /></label>
             <label>출생 시간<input name="birthTime" type="time" defaultValue={birth.birthTime ?? ""} /></label>
             <label className="check-card"><input name="birthTimeUnknown" type="checkbox" defaultChecked={birth.birthTimeUnknown} /> 출생 시간을 몰라요</label>
             <button className="secondary-button" type="submit">출생 정보 저장</button>
@@ -376,7 +376,7 @@ function FeedbackEditForm({ entry, entries }: { entry: FeedbackEntry; entries: F
 
 export function InformationScreen({ kind }: { kind: "ai" | "privacy" | "terms" | "safety" }) {
   const content = {
-    ai: { kicker: "AI 사용 안내", title: "계산과 설명을 구분합니다", sections: ["현재 답변은 미리 작성된 예시이며 AI가 생성하지 않습니다.", "사주 계산과 결과를 설명하는 과정은 서로 구분합니다.", "결과의 근거와 한계를 함께 알립니다."] },
+    ai: { kicker: "AI 사용 안내", title: "계산과 설명을 구분합니다", sections: ["명식 계산은 입력한 출생 정보를 바탕으로 수행하고, 상담 답변은 AI가 생성합니다.", "AI 답변에는 오류나 부정확한 해석이 있을 수 있습니다.", "건강·재정·법률 등 중요한 결정에는 전문가의 판단을 확인해 주세요."] },
     privacy: { kicker: "개인정보 안내", title: "현재 데이터는 브라우저에만 저장됩니다", sections: ["이름·출생 정보·상담·궁합은 외부로 전송하지 않습니다.", "브라우저 데이터를 삭제하면 이 기기의 기록도 사라집니다.", "저장 범위와 삭제 방법을 언제나 확인할 수 있게 합니다."] },
     terms: { kicker: "이용약관", title: "현재 제공 범위를 안내합니다", sections: ["명식 계산·기본 리포트·상담·궁합·계정 데이터는 사주리움 API에서 처리합니다.", "결과와 상담은 중요한 결정이나 전문 판단을 대신하지 않습니다.", "외부 결제 제공자 승인과 유료 상품 지급은 아직 제공하지 않습니다."] },
     safety: { kicker: "콘텐츠 안전", title: "공포를 판매하지 않습니다", sections: ["질병·사망·사고·파산·이혼을 확정적으로 예언하지 않습니다.", "퇴사·투자·치료·결혼 같은 결정을 대신하지 않습니다.", "위기 상황이나 불안을 결제 유도에 사용하지 않습니다."] },
@@ -389,7 +389,17 @@ export function LivePrivacyScreen() {
   const [pending, setPending] = useState<"exports" | "deletions" | null>(null);
   async function submit(type: "exports" | "deletions") {
     setPending(type); setMessage("");
-    try { const job = await requestPrivacyJob(type); setMessage(type === "deletions" && job.status === "COMPLETED" ? "서버 계정 데이터 삭제가 완료됐어요. 이 기기의 저장 정보는 별도로 지울 수 있어요." : `${type === "exports" ? "내보내기" : "삭제"} 요청이 접수됐어요. 작업 ${job.job_id} · ${job.status}`); } catch (error) { setMessage(formatApiRequestError(error, "요청을 접수하지 못했어요.")); } finally { setPending(null); }
+    try {
+      const job = await requestPrivacyJob(type);
+      if (type === "exports" && job.status === "COMPLETED") {
+        await downloadPrivacyExport(job.job_id);
+        setMessage("내 데이터 파일을 내려받았어요.");
+      } else if (type === "deletions" && job.status === "COMPLETED") {
+        setMessage("서버 계정 데이터 삭제가 완료됐어요. 이 기기의 저장 정보는 별도로 지울 수 있어요.");
+      } else {
+        setMessage(`작업 ${job.job_id} · ${job.status}`);
+      }
+    } catch (error) { setMessage(formatApiRequestError(error, "요청을 처리하지 못했어요.")); } finally { setPending(null); }
   }
-  return <main className="screen-content information-content" aria-labelledby="privacy-title"><p className="section-kicker">개인정보</p><h1 id="privacy-title">내 데이터 요청</h1><p className="supporting">삭제는 서버 처리 완료 후 결과를 알려줍니다. 내보내기는 작업으로 접수되며, 결제 기록은 별도 보관될 수 있습니다.</p><button className="primary-button" disabled={pending !== null} type="button" onClick={() => { void submit("exports"); }}>{pending === "exports" ? "내보내기 요청 중" : "내 데이터 내보내기"}</button><button className="secondary-button" disabled={pending !== null} type="button" onClick={() => { void submit("deletions"); }}>{pending === "deletions" ? "삭제 요청 중" : "계정 데이터 삭제 요청"}</button>{message && <p className="form-error" role="status">{message}</p>}</main>;
+  return <main className="screen-content information-content" aria-labelledby="privacy-title"><p className="section-kicker">개인정보</p><h1 id="privacy-title">내 데이터 요청</h1><p className="supporting">내보내기는 JSON 파일을 바로 내려받습니다. 삭제는 서버 처리 완료 후 결과를 알려줍니다. 결제 기록은 별도 보관될 수 있습니다.</p><button className="primary-button" disabled={pending !== null} type="button" onClick={() => { void submit("exports"); }}>{pending === "exports" ? "내보내기 요청 중" : "내 데이터 내보내기"}</button><button className="secondary-button" disabled={pending !== null} type="button" onClick={() => { void submit("deletions"); }}>{pending === "deletions" ? "삭제 요청 중" : "계정 데이터 삭제 요청"}</button>{message && <p className="form-error" role="status">{message}</p>}</main>;
 }

@@ -112,7 +112,7 @@ export interface paths {
         put?: never;
         /**
          * Logout
-         * @description JWT 무상태 로그아웃: 클라이언트가 토큰을 폐기한다. 운영 시 블랙리스트 연결 지점.
+         * @description Invalidate all previously issued tokens for this account.
          */
         post: operations["logout_api_v1_auth_logout_post"];
         delete?: never;
@@ -804,9 +804,26 @@ export interface paths {
         put?: never;
         /**
          * Request Privacy Export
-         * @description 개인정보 내보내기: 비동기 상태 제공 (§3.2).
+         * @description Export is ready immediately; authenticated download builds a fresh file.
          */
         post: operations["request_privacy_export_api_v1_privacy_exports_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/privacy/exports/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Privacy Export */
+        get: operations["download_privacy_export_api_v1_privacy_exports__job_id__get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1685,6 +1702,33 @@ export interface components {
             /** Birth Location */
             birth_location?: string | null;
         };
+        /**
+         * SajuProfileSummary
+         * @description Profile list omits the exact birth date, time, and location.
+         */
+        SajuProfileSummary: {
+            /** Id */
+            id: number;
+            /** User Id */
+            user_id: number;
+            /** Nickname */
+            nickname: string;
+            /** Is Self */
+            is_self: boolean;
+            /** Relationship Type */
+            relationship_type?: string | null;
+            /** Birth Year */
+            birth_year: number;
+            /** Birth Time Unknown */
+            birth_time_unknown: boolean;
+            /** Birth Location Masked */
+            birth_location_masked?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
         /** SajuProfileUpdate */
         SajuProfileUpdate: {
             /** Nickname */
@@ -2079,7 +2123,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SajuProfile"][];
+                    "application/json": components["schemas"]["SajuProfileSummary"][];
                 };
             };
             /** @description Validation Error */
@@ -2492,7 +2536,7 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            202: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2816,7 +2860,7 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            202: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3469,6 +3513,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PrivacyJobResponse"];
+                };
+            };
+        };
+    };
+    download_privacy_export_api_v1_privacy_exports__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

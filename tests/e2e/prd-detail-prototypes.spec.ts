@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 
 async function createServerReport(page: import("@playwright/test").Page) {
   await page.goto("/birth");
@@ -52,6 +53,18 @@ test("loads and updates notification preferences through the API", async ({ page
   const before = await firstPreference.isChecked();
   await firstPreference.setChecked(!before);
   await expect(firstPreference).toBeChecked({ checked: !before });
+});
+
+test("downloads an authenticated account export with the saved profile", async ({ page }) => {
+  await createServerReport(page);
+  await page.goto("/settings/privacy");
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "내 데이터 내보내기" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe("sajurium-account-export.json");
+  const exported = JSON.parse(await readFile(await download.path(), "utf8"));
+  expect(exported.data.profiles[0].nickname).toBe("공유 확인");
+  expect(exported.data.user.hashed_password).toBeUndefined();
 });
 
 test("offers a retry after the notification settings request fails", async ({ page }) => {

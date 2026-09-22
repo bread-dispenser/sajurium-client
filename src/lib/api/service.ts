@@ -4,6 +4,7 @@ import { ApiRequestError, apiRequest } from "@/lib/api/client";
 
 type Schema<Name extends keyof components["schemas"]> = components["schemas"][Name];
 type ApiProfile = Schema<"SajuProfile">;
+type ApiProfileSummary = Schema<"SajuProfileSummary">;
 type ApiChart = Schema<"ChartSnapshot">;
 type ApiReport = Schema<"Report">;
 type ApiProduct = Schema<"Product">;
@@ -40,7 +41,7 @@ export type LiveOrder = {
 };
 
 export type CreditSnapshot = { balance: { balance: number }; ledger: { items: CreditLedgerEntry[] } };
-export type ServerProfile = { id: string; nickname: string; isSelf: boolean; relationship: string | null; birthDate: string; birthTimeUnknown: boolean; birthLocation: string | null; createdAt: string };
+export type ServerProfile = { id: string; nickname: string; isSelf: boolean; relationship: string | null; birthYear: number; birthTimeUnknown: boolean; birthLocation: string | null; createdAt: string };
 export type ServerCompatibility = { id: string; relation: string; summary: string; limitedByUnknownTime: boolean; createdAt: string };
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_SAJURIUM_API_URL ?? "http://localhost:8000";
@@ -330,12 +331,12 @@ function profilePayload(profile: ProfileInput): Schema<"SajuProfileCreate"> {
   };
 }
 
-function toServerProfile(profile: ApiProfile): ServerProfile {
-  return { id: String(profile.id), nickname: profile.nickname, isSelf: profile.is_self, relationship: profile.relationship_type ?? null, birthDate: `${profile.birth_year}-${String(profile.birth_month).padStart(2, "0")}-${String(profile.birth_day).padStart(2, "0")}`, birthTimeUnknown: profile.birth_time_unknown, birthLocation: profile.birth_location_masked ?? null, createdAt: toIso(profile.created_at)! };
+function toServerProfile(profile: ApiProfileSummary): ServerProfile {
+  return { id: String(profile.id), nickname: profile.nickname, isSelf: profile.is_self, relationship: profile.relationship_type ?? null, birthYear: profile.birth_year, birthTimeUnknown: profile.birth_time_unknown, birthLocation: profile.birth_location_masked ?? null, createdAt: toIso(profile.created_at)! };
 }
 
 export async function listProfiles(): Promise<ServerProfile[]> {
-  return (await request<ApiProfile[]>("/api/v1/profiles/")).data.map(toServerProfile);
+  return (await request<ApiProfileSummary[]>("/api/v1/profiles/")).data.map(toServerProfile);
 }
 
 export async function createProfile(profile: ProfileInput): Promise<ServerProfile> {
@@ -398,6 +399,22 @@ export async function requestPrivacyJob(type: "exports" | "deletions") {
     window.localStorage.removeItem(JOURNEY_KEY);
   }
   return job;
+}
+
+export async function downloadPrivacyExport(jobId: number) {
+  const exportData = (await request<Record<string, unknown>>(`/api/v1/privacy/exports/${jobId}`)).data;
+  const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  try {
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "sajurium-account-export.json";
+    document.body.append(link);
+    link.click();
+    link.remove();
+  } finally {
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
 }
 
 export async function submitReportFeedback(reportId: string, rating: "helpful" | "unclear" | "wrong", detailReason: string, reported: boolean) {
