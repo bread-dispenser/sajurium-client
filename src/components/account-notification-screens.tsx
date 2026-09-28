@@ -2,357 +2,217 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { formatApiRequestError, getNotificationPreferences, listNotifications, loginAccount, loginSocialAccount, logoutAccount, registerAccount, requestAccountDeletion, type AnonymousMigrationStatus, type ServerNotification, type SocialProvider, updateNotificationPreferences } from "@/lib/api/service";
-import { appleLoginAvailable, googleLoginAvailable, pushEnabled } from "@/lib/feature-availability";
-import { SocialLoginOptions } from "./social-login-options";
-import { LoadingState } from "./page-state";
 import type { FormEvent } from "react";
-import styles from "./saas-system-rollout.module.css";
+import { formatApiRequestError, getNotificationPreferences, listNotifications, loginAccount, loginSocialAccount, logoutAccount, registerAccount, requestAccountDeletion, type AnonymousMigrationStatus, type ServerNotification, type SocialProvider, updateNotificationPreferences } from "@/lib/api/service";
+import { pushEnabled } from "@/lib/feature-availability";
+import { SocialLoginOptions } from "./social-login-options";
+import { EmptyState, LoadingState } from "./page-state";
+import { CheckIcon } from "./ui/icons";
+import { Banner, GroupRowLink } from "./ui/layout";
 
-type Provider = "카카오" | "Apple" | "Google" | "이메일";
-type NotificationTab = "all" | "unread";
-type NotificationKind = "흐름" | "리포트" | "결제";
+/* ---------- Notification topics ---------- */
 
-const LIVE_NOTIFICATION_TOPIC_LABELS: Record<string, string> = {
-  daily_flow: "오늘의 흐름",
-  report_ready: "리포트",
-  marketing: "소식",
-  payment: "결제",
-};
-
-function notificationTopicLabel(topic: string) {
-  return LIVE_NOTIFICATION_TOPIC_LABELS[topic] ?? "알림";
-}
-
-type PrototypeNotification = {
-  id: number;
-  kind: NotificationKind;
-  title: string;
-  description: string;
-  time: string;
-  read: boolean;
-};
-
-const PROVIDERS: Provider[] = ["카카오", "Apple", "Google", "이메일"];
-
-const INITIAL_NOTIFICATIONS: PrototypeNotification[] = [
-  {
-    id: 1,
-    kind: "흐름",
-    title: "오늘의 흐름이 준비됐어요",
-    description: "서두르기보다 해야 할 일의 순서를 정리해 보기 좋은 날이에요.",
-    time: "오늘 오전 8:30",
-    read: false,
-  },
-  {
-    id: 2,
-    kind: "리포트",
-    title: "관계 리포트를 이어서 읽어보세요",
-    description: "저장해 둔 리포트의 핵심 해석과 대화 제안을 다시 확인할 수 있어요.",
-    time: "어제 오후 6:10",
-    read: false,
-  },
-  {
-    id: 3,
-    kind: "결제",
-    title: "체험 결제 상태를 확인했어요",
-    description: "실제 결제나 상품 지급 없이 화면 흐름만 완료된 체험 기록이에요.",
-    time: "8월 22일 오후 2:40",
-    read: true,
-  },
+const NOTIFICATION_TOPICS: readonly { code: string; label: string; desc: string }[] = [
+  { code: "daily_flow", label: "오늘의 흐름", desc: "그날의 흐름이 준비되면 알려드려요" },
+  { code: "report_ready", label: "리포트 완성", desc: "리포트가 준비되면 알려드려요" },
+  { code: "payment", label: "결제", desc: "주문과 결제 상태가 바뀌면 알려드려요" },
+  { code: "marketing", label: "혜택과 소식", desc: "새 리포트와 이벤트 안내, 따로 동의한 경우에만 보내요" },
 ];
 
-export function LoginPrototypeScreen() {
-  const [provider, setProvider] = useState<Provider>("카카오");
-  const [email, setEmail] = useState("");
-  const [serviceConsent, setServiceConsent] = useState(false);
-  const [privacyConsent, setPrivacyConsent] = useState(false);
-  const [marketingConsent, setMarketingConsent] = useState(false);
-  const [account, setAccount] = useState<{ provider: Provider; email: string; marketing: boolean } | null>(null);
-
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setAccount({ provider, email: email.trim(), marketing: marketingConsent });
-  }
-
-  if (account) {
-    return (
-      <main className={`screen-content settings-content signal-atlas-account-summary ${styles.srScreen}`} aria-labelledby="account-summary-title">
-        <p className="section-kicker signal-atlas-overline">로그인 체험 완료</p>
-        <h1 id="account-summary-title">사주리움에<br />돌아오셨네요</h1>
-        <p className="supporting" role="status">입력한 내용으로 로그인 이후 화면을 미리 보여드려요.</p>
-
-        <section className="insight-card current signal-account-summary-card" aria-labelledby="prototype-account-heading">
-          <small>체험 계정</small>
-          <h2 id="prototype-account-heading">체험 계정 요약</h2>
-          <p><strong>연결 방식</strong> · {account.provider}</p>
-          <p><strong>이메일</strong> · {account.email || "소셜 로그인 방식"}</p>
-          <p><strong>소식 수신 선호</strong> · {account.marketing ? "선택함" : "선택하지 않음"}</p>
-        </section>
-
-        <aside className="privacy-panel signal-local-only-note">
-          <strong>실제 로그인이 아닙니다</strong>
-          <p>계정과 세션은 생성되지 않으며, 입력한 이메일과 선택 내용은 저장되거나 외부로 전송되지 않습니다.</p>
-        </aside>
-
-        <button className="secondary-button signal-secondary-action" type="button" onClick={() => setAccount(null)}>로그인 화면으로 돌아가기</button>
-      </main>
-    );
-  }
-
-  return (
-    <main className={`screen-content form-content signal-atlas-login-screen ${styles.srScreen}`} aria-labelledby="login-title">
-      <header className="form-hero signal-login-hero">
-        <p className="section-kicker signal-atlas-overline">로그인</p>
-        <h1 id="login-title">기록을 이어가려면<br />로그인해 주세요</h1>
-        <p className="supporting">무료 요약은 가입 전에도 볼 수 있어요.</p>
-      </header>
-
-      <aside className="privacy-panel signal-login-disclosure" id="login-disclosure">
-        <strong>로그인 체험 전용</strong>
-        <p>실제 계정이나 세션을 만들지 않습니다. 소셜 서비스에 연결하지 않으며 입력값을 저장하거나 외부로 전송하지 않습니다.</p>
-      </aside>
-
-      <section data-slop-allow="nested-cards" className="signal-login-benefits" aria-label="로그인 후 이용할 수 있는 기능">
-        <div className="signal-login-benefit-row">
-          <span className="signal-login-benefit-icon" aria-hidden="true">✓</span>
-          <span><strong>기기 기록 이관</strong><small>기존 기록을 계정으로 옮겨요.</small></span>
-        </div>
-        <div className="signal-login-benefit-row">
-          <span className="signal-login-benefit-icon" aria-hidden="true">▣</span>
-          <span><strong>구매 리포트 보관</strong><small>구매한 리포트를 보관함에 저장해요.</small></span>
-        </div>
-      </section>
-
-      <form className="birth-fields signal-login-form" onSubmit={submit} aria-describedby="login-disclosure">
-        <fieldset className="signal-login-provider-fieldset">
-          <legend>로그인 방법 선택</legend>
-          <div className="signal-login-provider-list topic-list">
-            {PROVIDERS.map((item) => (
-              <label className={`topic-card signal-login-provider${provider === item ? " selected" : ""}`} key={item}>
-                <input
-                  className="selection-radio"
-                  type="radio"
-                  name="provider"
-                  value={item}
-                  checked={provider === item}
-                  onChange={() => setProvider(item)}
-                />
-                <span className="signal-login-provider-icon" aria-hidden="true">{item === "이메일" ? "✉" : item === "Google" ? "G" : "●"}</span>
-                <span><strong>{item}로 로그인</strong><small>{item === "이메일" ? "이메일 주소로 로그인 체험" : `${item} 계정 연결 없이 선택만 체험`}</small></span>
-                <span className="row-marker" aria-hidden="true">{provider === item ? "선택" : "○"}</span>
-              </label>
-            ))}
-          </div>
-        </fieldset>
-
-        {provider === "이메일" && (
-          <label className="field-group signal-login-email-field" htmlFor="prototype-email">
-            <span className="field-label">이메일</span>
-            <input
-              id="prototype-email"
-              name="email"
-              type="email"
-              autoComplete="email"
-              placeholder="name@example.com"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              required
-            />
-          </label>
-        )}
-
-        <fieldset className="signal-login-consent-fieldset">
-          <legend>약관 동의</legend>
-          <label className="check-card">
-            <input type="checkbox" checked={serviceConsent} onChange={(event) => setServiceConsent(event.target.checked)} required />
-            <span>[필수] 서비스 이용약관에 동의합니다</span>
-          </label>
-          <label className="check-card">
-            <input type="checkbox" checked={privacyConsent} onChange={(event) => setPrivacyConsent(event.target.checked)} required />
-            <span>[필수] 개인정보 안내를 확인했습니다</span>
-          </label>
-          <label className="check-card">
-            <input type="checkbox" checked={marketingConsent} onChange={(event) => setMarketingConsent(event.target.checked)} />
-            <span>[선택] 새로운 해석과 소식 안내를 받습니다</span>
-          </label>
-          <nav className="signal-login-legal-links" aria-label="약관 및 개인정보 안내">
-            <Link href="/settings/terms">이용약관</Link>
-            <Link href="/settings/privacy">개인정보 처리방침</Link>
-          </nav>
-          <p className="signal-login-legal-note">가입하면 위 약관에 동의해요. 기록은 언제든 삭제할 수 있어요.</p>
-        </fieldset>
-
-        <button className="primary-button signal-primary-cta form-submit" type="submit">로그인 이후 화면 보기</button>
-        <p className="action-note">선택 동의 여부와 관계없이 프로토타입을 체험할 수 있어요.</p>
-      </form>
-    </main>
-  );
+function notificationTopicLabel(topic: string) {
+  return NOTIFICATION_TOPICS.find((item) => item.code === topic)?.label ?? "알림";
 }
 
-export function NotificationCenterScreen() {
-  const [tab, setTab] = useState<NotificationTab>("all");
-  const [notifications, setNotifications] = useState(INITIAL_NOTIFICATIONS);
-  const [preferences, setPreferences] = useState({ flow: true, report: true, payment: false, email: false });
-
-  const unreadCount = notifications.filter((notification) => !notification.read).length;
-  const visibleNotifications = tab === "unread"
-    ? notifications.filter((notification) => !notification.read)
-    : notifications;
-
-  function markRead(id: number) {
-    setNotifications((current) => current.map((notification) => (
-      notification.id === id ? { ...notification, read: true } : notification
-    )));
-  }
-
-  function markAllRead() {
-    setNotifications((current) => current.map((notification) => ({ ...notification, read: true })));
-  }
-
-  function updatePreference(key: keyof typeof preferences, checked: boolean) {
-    setPreferences((current) => ({ ...current, [key]: checked }));
-  }
-
-  return (
-    <main className={`screen-content settings-content signal-atlas-notifications-screen ${styles.srScreen}`} aria-labelledby="notifications-title">
-      <header className="signal-notifications-header">
-        <p className="section-kicker signal-atlas-overline">소식과 기록</p>
-        <h1 id="notifications-title">알림 센터</h1>
-        <p className="supporting" aria-live="polite">읽지 않은 알림 {unreadCount}개 · 이 화면에서만 상태가 바뀝니다.</p>
-      </header>
-
-      <aside className="privacy-panel signal-notifications-disclosure">
-        <strong>알림 체험 전용</strong>
-        <p>실제 푸시나 이메일은 발송되지 않습니다. 읽음 상태와 수신 선호는 현재 화면에만 반영되며 저장되거나 외부로 전송되지 않아요.</p>
-      </aside>
-
-      <section className="settings-section signal-notification-list-section" aria-labelledby="notification-list-heading">
-        <div>
-          <h2 id="notification-list-heading">받은 알림</h2>
-          <div className="segmented-control notification-tabs signal-notification-tabs" role="tablist" aria-label="알림 보기 범위">
-            <button id="all-notifications-tab" className={tab === "all" ? "selected" : ""} type="button" role="tab" aria-controls="notification-panel" aria-selected={tab === "all"} onClick={() => setTab("all")}>전체 {notifications.length}</button>
-            <button id="unread-notifications-tab" className={tab === "unread" ? "selected" : ""} type="button" role="tab" aria-controls="notification-panel" aria-selected={tab === "unread"} onClick={() => setTab("unread")}>읽지 않음 {unreadCount}</button>
-          </div>
-        </div>
-
-        {unreadCount > 0 && <button className="secondary-button" type="button" onClick={markAllRead}>모두 읽음으로 표시</button>}
-
-        <div id="notification-panel" className="library-list signal-notification-list" role="tabpanel" aria-labelledby={`${tab}-notifications-tab`} aria-live="polite">
-          {visibleNotifications.map((notification) => (
-            <article className={`signal-notification-row${notification.read ? " notification-read-item" : ""}`} key={notification.id}>
-              <div>
-                <small>{notification.kind} · {notification.read ? "읽음" : "새 알림"}</small>
-                <h2>{notification.title}</h2>
-                <p>{notification.description}</p>
-                <time>{notification.time}</time>
-              </div>
-              <div className="library-item-actions">
-                {!notification.read && <button type="button" onClick={() => markRead(notification.id)} aria-label={`‘${notification.title}’ 읽음으로 표시`}>읽음 표시</button>}
-              </div>
-            </article>
-          ))}
-          {visibleNotifications.length === 0 && (
-            <article>
-              <div><small>모두 확인했어요</small><h2>읽지 않은 알림이 없습니다</h2><p>전체 탭에서 지난 체험 알림을 다시 볼 수 있어요.</p></div>
-            </article>
-          )}
-        </div>
-      </section>
-
-      <section className="settings-section signal-notification-preferences" aria-labelledby="notification-preferences-heading">
-        <h2 id="notification-preferences-heading">알림 선호</h2>
-        <p>아래 선택은 발송 신청이 아닌 화면 체험용 설정입니다.</p>
-        <label className="setting-toggle"><span><strong>오늘의 흐름</strong><small>매일의 흐름 소식</small></span><input type="checkbox" checked={preferences.flow} onChange={(event) => updatePreference("flow", event.target.checked)} /></label>
-        <label className="setting-toggle"><span><strong>새 리포트</strong><small>리포트 준비 및 다시 읽기</small></span><input type="checkbox" checked={preferences.report} onChange={(event) => updatePreference("report", event.target.checked)} /></label>
-        <label className="setting-toggle"><span><strong>결제 상태</strong><small>체험 결제 흐름의 상태</small></span><input type="checkbox" checked={preferences.payment} onChange={(event) => updatePreference("payment", event.target.checked)} /></label>
-        <label className="setting-toggle"><span><strong>이메일로 받기</strong><small>실제 이메일은 발송되지 않음</small></span><input type="checkbox" checked={preferences.email} onChange={(event) => updatePreference("email", event.target.checked)} /></label>
-        <p className="action-note" role="status">{Object.values(preferences).filter(Boolean).length}개 항목을 화면에서 선택했어요.</p>
-      </section>
-    </main>
-  );
+function formatHour(hour: number) {
+  if (hour === 0) return "자정";
+  if (hour < 6) return `새벽 ${hour}시`;
+  if (hour < 12) return `아침 ${hour}시`;
+  if (hour === 12) return "낮 12시";
+  if (hour < 18) return `오후 ${hour - 12}시`;
+  return `밤 ${hour - 12}시`;
 }
 
-export function LiveNotificationScreen() {
-  const [preferences, setPreferences] = useState<{ topics: Record<string, boolean>; quiet_hours_start: number; quiet_hours_end: number; timezone: string } | null>(null);
-  const [error, setError] = useState("");
+function formatNotificationDate(iso: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!match) return iso.slice(0, 10);
+  return `${Number(match[2])}월 ${Number(match[3])}일`;
+}
+
+type NotificationPreferences = { topics: Record<string, boolean>; quiet_hours_start: number; quiet_hours_end: number; timezone: string };
+
+/** Server-backed notification preferences, shown as a group inside the settings screen. */
+export function NotificationPreferencesGroup() {
+  const [preferences, setPreferences] = useState<NotificationPreferences | null>(null);
+  const [loadError, setLoadError] = useState("");
+  const [saveError, setSaveError] = useState("");
   const [attempt, setAttempt] = useState(0);
-  const [notifications, setNotifications] = useState<ServerNotification[] | null>(null);
-  const [notificationError, setNotificationError] = useState("");
-  const [notificationAttempt, setNotificationAttempt] = useState(0);
+  const [quietOpen, setQuietOpen] = useState(false);
   useEffect(() => {
     let active = true;
     void getNotificationPreferences()
       .then((value) => { if (active) setPreferences(value); })
-      .catch((reason) => { if (active) setError(formatApiRequestError(reason, "알림 설정을 불러오지 못했어요.")); });
+      .catch((reason) => { if (active) setLoadError(formatApiRequestError(reason, "알림 설정을 불러오지 못했어요.")); });
     return () => { active = false; };
   }, [attempt]);
+
+  function save(next: NotificationPreferences, body: Partial<NotificationPreferences>) {
+    if (!preferences) return;
+    const previous = preferences;
+    setPreferences(next);
+    setSaveError("");
+    void updateNotificationPreferences(body).then(setPreferences).catch(() => {
+      setPreferences(previous);
+      setSaveError("알림 설정을 저장하지 못했어요. 잠시 후 다시 바꿔 주세요.");
+    });
+  }
+
+  if (loadError) {
+    return (
+      <div className="sj-card">
+        <p className="sj-error" role="alert">{loadError}</p>
+        <button className="sj-button-secondary" type="button" onClick={() => { setPreferences(null); setLoadError(""); setAttempt((value) => value + 1); }}>다시 시도</button>
+      </div>
+    );
+  }
+  if (!preferences) {
+    return (
+      <div className="sj-card" aria-busy="true">
+        <p className="sj-meta">알림 설정을 불러오고 있어요.</p>
+      </div>
+    );
+  }
+
+  const known = NOTIFICATION_TOPICS.filter((topic) => topic.code in preferences.topics);
+  const extra = Object.keys(preferences.topics).filter((code) => !NOTIFICATION_TOPICS.some((topic) => topic.code === code));
+  const rows = [...known, ...extra.map((code) => ({ code, label: "기타 알림", desc: "서비스 운영에 필요한 안내" }))];
+  const hours = Array.from({ length: 24 }, (_, hour) => hour);
+
+  return (
+    <>
+      <div className="sj-group">
+        {rows.map((topic) => (
+          <label className="sj-row-in-group" key={topic.code} style={{ minHeight: 64 }}>
+            <span className="sj-row-main">
+              <span className="sj-row-title">{topic.label}</span>
+              <span className="sj-row-sub" style={{ fontSize: 12 }}>{topic.desc}</span>
+            </span>
+            <input className="sj-switch" type="checkbox" role="switch" checked={preferences.topics[topic.code]} onChange={(event) => {
+              const topics = { ...preferences.topics, [topic.code]: event.target.checked };
+              save({ ...preferences, topics }, { topics });
+            }} />
+          </label>
+        ))}
+        <button className="sj-row-in-group" type="button" aria-expanded={quietOpen} aria-controls="quiet-hours-panel" onClick={() => setQuietOpen((value) => !value)}>
+          <span className="sj-row-main"><span className="sj-row-title">방해 금지 시간</span></span>
+          <span className="sj-row-value">{formatHour(preferences.quiet_hours_start)} – {formatHour(preferences.quiet_hours_end)}</span>
+        </button>
+        {quietOpen && (
+          <div id="quiet-hours-panel" className="sj-section" style={{ padding: "4px 16px 16px" }}>
+            <p className="sj-help">이 시간에는 알림을 보내지 않아요.</p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <div className="sj-field">
+                <label className="sj-label" htmlFor="quiet-start">시작</label>
+                <select id="quiet-start" className="sj-select" value={preferences.quiet_hours_start} onChange={(event) => {
+                  const value = Number(event.target.value);
+                  save({ ...preferences, quiet_hours_start: value }, { quiet_hours_start: value });
+                }}>
+                  {hours.map((hour) => <option key={hour} value={hour}>{formatHour(hour)}</option>)}
+                </select>
+              </div>
+              <div className="sj-field">
+                <label className="sj-label" htmlFor="quiet-end">끝</label>
+                <select id="quiet-end" className="sj-select" value={preferences.quiet_hours_end} onChange={(event) => {
+                  const value = Number(event.target.value);
+                  save({ ...preferences, quiet_hours_end: value }, { quiet_hours_end: value });
+                }}>
+                  {hours.map((hour) => <option key={hour} value={hour}>{formatHour(hour)}</option>)}
+                </select>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+      {!pushEnabled && <p className="sj-fine" style={{ margin: "8px 4px 0" }}>휴대폰 푸시는 준비 중이에요. 고른 알림은 알림함에 쌓여요.</p>}
+      {saveError && <p className="sj-error" role="alert" style={{ marginTop: 8 }}>{saveError}</p>}
+    </>
+  );
+}
+
+/* ---------- Notification inbox ---------- */
+
+export function LiveNotificationScreen() {
+  const [notifications, setNotifications] = useState<ServerNotification[] | null>(null);
+  const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let active = true;
     void listNotifications()
       .then((items) => { if (active) setNotifications(items); })
-      .catch((reason) => { if (active) setNotificationError(formatApiRequestError(reason, "알림 내역을 불러오지 못했어요.")); });
+      .catch((reason) => { if (active) setError(formatApiRequestError(reason, "알림을 불러오지 못했어요.")); });
     return () => { active = false; };
-  }, [notificationAttempt]);
-  if (!preferences && !error && !notifications && !notificationError) return <LoadingState title="서버 알림을 불러오고 있어요" />;
+  }, [attempt]);
+  if (!notifications && !error) return <LoadingState title="받은 알림을 불러오고 있어요" />;
+  if (notifications && notifications.length === 0) {
+    return (
+      <main className="sj-page">
+        <EmptyState title="아직 받은 알림이 없어요" description="리포트가 준비되거나 그날의 흐름이 열리면 여기에 모아 드려요. 받을 알림 종류는 설정에서 고를 수 있어요." action={{ href: "/settings#notifications", label: "알림 설정 열기" }} />
+      </main>
+    );
+  }
   return (
-    <main className={`screen-content settings-content ${styles.srScreen}`} aria-labelledby="notification-title">
-      <p className="section-kicker">알림 설정</p>
-      <h1 id="notification-title">받고 싶은 소식</h1>
-      {!pushEnabled && <p className="supporting">기기 푸시는 준비 중입니다. 서버에 기록된 알림은 여기에서 확인할 수 있어요.</p>}
-      <section className="settings-section signal-notification-list-section" aria-labelledby="notification-list-heading">
-        <h2 id="notification-list-heading">받은 알림</h2>
-        {notificationError ? <><p className="form-error" role="alert">{notificationError}</p>
-          <button className="secondary-button" type="button" onClick={() => { setNotifications(null); setNotificationError(""); setNotificationAttempt((value) => value + 1); }}>알림 다시 시도</button></> :
-          notifications === null ? <p className="supporting">알림 내역을 불러오고 있어요.</p> :
-          notifications.length === 0 ? <p className="supporting">아직 도착한 알림이 없어요.</p> :
-          <div className="library-list signal-notification-list">
-            {notifications.map((notification) => {
+    <main className="sj-page" aria-labelledby="notification-title">
+      <h1 id="notification-title" className="sj-visually-hidden">받은 알림</h1>
+      {!pushEnabled && <Banner>휴대폰 푸시는 준비 중이고, 알림은 여기서 모두 볼 수 있어요.</Banner>}
+
+      {error ? (
+        <div className="sj-section">
+          <p className="sj-error" role="alert">{error}</p>
+          <button className="sj-button-secondary" type="button" onClick={() => { setNotifications(null); setError(""); setAttempt((value) => value + 1); }}>알림 다시 불러오기</button>
+        </div>
+      ) : (
+        <section className="sj-section" style={{ gap: 0 }} aria-labelledby="notification-list-heading">
+          <h2 id="notification-list-heading" className="sj-group-title">받은 알림 {notifications?.length ?? 0}개</h2>
+          <ul className="sj-group" style={{ margin: 0, padding: 0, listStyle: "none" }}>
+            {(notifications ?? []).map((notification, index) => {
               const href = notification.deep_link?.startsWith("/") && !notification.deep_link.startsWith("//") ? notification.deep_link : null;
-              const status = notification.status === "READ" ? "읽음" : notification.status === "FAILED" ? "전송 실패" : notification.status === "RESERVED" ? "예약됨" : "기록됨";
-              return <article className="signal-notification-row" key={notification.id}>
-                <div><small>{notificationTopicLabel(notification.topic)} · {status}</small><h3>{notification.title}</h3>
-                  {notification.body && <p>{notification.body}</p>}
-                  <time dateTime={notification.created_at}>{notification.created_at.slice(0, 10)}</time></div>
-                {href && <Link className="text-link" href={href}>내용 보기</Link>}
-              </article>;
+              const read = Boolean(notification.read_at);
+              return (
+                <li key={notification.id} className="sj-section" style={{ gap: 2, padding: "14px 16px", borderTop: index ? "1px solid var(--sj-track)" : undefined }}>
+                  <span className="sj-fine">{notificationTopicLabel(notification.topic)}, {formatNotificationDate(notification.created_at)}{read ? ", 읽음" : ""}</span>
+                  <h3 className="sj-h3" style={read ? { fontWeight: 500, color: "var(--sj-ink-strong-muted)" } : undefined}>{notification.title}</h3>
+                  {notification.body && <p className="sj-meta" style={{ color: "var(--sj-ink-strong-muted)" }}>{notification.body}</p>}
+                  {href && <Link className="sj-text-button" href={href} style={{ alignSelf: "flex-start" }}>내용 보기</Link>}
+                </li>
+              );
             })}
-          </div>}
+          </ul>
+        </section>
+      )}
+
+      <section className="sj-section" style={{ gap: 0 }} aria-label="알림 설정">
+        <div className="sj-group">
+          <GroupRowLink href="/settings#notifications" title="알림 설정" sub="받을 알림 종류와 방해 금지 시간" />
+        </div>
       </section>
-      {error ? <><p className="form-error" role="alert">{error}</p><button className="secondary-button" type="button" onClick={() => { setPreferences(null); setError(""); setAttempt((value) => value + 1); }}>다시 시도</button></> : <>
-        <p className="supporting">선호도는 서버 계정 또는 익명 세션에 저장됩니다.</p>
-        {Object.entries(preferences?.topics ?? {}).map(([topic, enabled]) => (
-          <label className="setting-toggle" key={topic}>
-            <span><strong>{notificationTopicLabel(topic)}</strong></span>
-            <input type="checkbox" checked={enabled} onChange={(event) => {
-              if (!preferences) return;
-              const previous = preferences;
-              const topics = { ...preferences.topics, [topic]: event.target.checked };
-              setPreferences({ ...preferences, topics });
-              void updateNotificationPreferences({ topics }).then(setPreferences).catch(() => {
-                setPreferences(previous);
-                setError("저장하지 못했어요.");
-              });
-            }} />
-          </label>
-        ))}
-        <p className="action-note">조용한 시간: {preferences?.quiet_hours_start}:00–{preferences?.quiet_hours_end}:00 · {preferences?.timezone}</p>
-      </>}
     </main>
   );
 }
+
+/* ---------- Login ---------- */
 
 const MIGRATION_MESSAGES: Record<AnonymousMigrationStatus, string> = {
   migrated: "로그인됐어요. 익명 데이터를 계정으로 옮겼어요.",
   "already-migrated": "로그인됐어요. 익명 데이터는 이미 계정으로 이전되어 있어요.",
   unavailable: "로그인됐어요. 익명 데이터가 만료되었거나 존재하지 않아 이전하지 못했어요.",
   pending: "로그인됐어요. 익명 데이터 이전을 마치지 못해 다음 로그인에서 이어서 시도돼요.",
-  "not-needed": "로그인됐어요. 서버 계정으로 계속 진행할 수 있습니다.",
+  "not-needed": "로그인됐어요. 계정으로 계속 이용할 수 있어요.",
 };
 
 export function LiveLoginScreen() {
   const [mode, setMode] = useState<"login" | "register">("login");
-  const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [name, setName] = useState(""); const [message, setMessage] = useState("");
+  const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [name, setName] = useState("");
+  const [message, setMessage] = useState("");
+  const [signedIn, setSignedIn] = useState(false);
   const [pending, setPending] = useState(false);
   const pendingRef = useRef(false);
 
@@ -361,10 +221,11 @@ export function LiveLoginScreen() {
     if (pendingRef.current) return;
     pendingRef.current = true;
     setMessage("");
+    setSignedIn(false);
     setPending(true);
     const action = mode === "login" ? loginAccount(email, password) : registerAccount(email, password, name);
-    void action.then((result) => setMessage(MIGRATION_MESSAGES[result.migration]))
-      .catch((error) => setMessage(formatApiRequestError(error, "인증에 실패했어요.")))
+    void action.then((result) => { setMessage(MIGRATION_MESSAGES[result.migration]); setSignedIn(true); })
+      .catch((error) => setMessage(formatApiRequestError(error, "로그인하지 못했어요. 이메일과 비밀번호를 확인해 주세요.")))
       .finally(() => { pendingRef.current = false; setPending(false); });
   }
 
@@ -373,36 +234,165 @@ export function LiveLoginScreen() {
     pendingRef.current = true;
     setPending(true);
     setMessage("");
+    setSignedIn(false);
     try {
       const result = await loginSocialAccount(provider, idToken);
       setMessage(MIGRATION_MESSAGES[result.migration]);
+      setSignedIn(true);
     } catch (error) {
-      setMessage(formatApiRequestError(error, "소셜 로그인을 완료하지 못했어요."));
+      setMessage(formatApiRequestError(error, "소셜 로그인을 마치지 못했어요. 다시 시도해 주세요."));
     } finally {
       pendingRef.current = false;
       setPending(false);
     }
   }
 
-  return <main className={`screen-content login-content ${styles.srScreen}`} aria-labelledby="login-title">
-    <p className="section-kicker">계정</p>
-    <h1 id="login-title">{mode === "login" ? "로그인" : "계정 만들기"}</h1>
-    <p className="supporting">로그인하면 현재 익명 데이터 이전을 이어갈 수 있습니다.</p>
-    <form onSubmit={submit}>
-      <label className="signal-field">이메일<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
-      {mode === "register" && <label className="signal-field">이름<input value={name} onChange={(event) => setName(event.target.value)} /></label>}
-      <label className="signal-field">비밀번호<input type="password" minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
-      <button className="primary-button" type="submit" disabled={pending}>{mode === "login" ? "로그인" : "계정 만들기"}</button>
-    </form>
-    <SocialLoginOptions onCredential={acceptSocialCredential} onError={setMessage} pending={pending} />
-    {message && <p className="form-error" role="status">{message}</p>}
-    <button className="text-button" type="button" disabled={pending}
-            onClick={() => setMode((current) => current === "login" ? "register" : "login")}>{mode === "login" ? "계정 만들기" : "로그인으로"}</button>
-    {!googleLoginAvailable && !appleLoginAvailable && <p className="action-note">소셜 로그인은 제공자 자격증명이 연결되면 이 화면에 추가됩니다.</p>}
-  </main>;
+  function switchMode(next: "login" | "register") {
+    if (pending) return;
+    setMode(next);
+    setMessage("");
+  }
+
+  const submitLabel = mode === "login" ? "로그인" : "계정 만들기";
+
+  return (
+    <main className="sj-page" style={{ gap: 24 }} aria-labelledby="login-title">
+      <div className="sj-section" style={{ gap: 8 }}>
+        <h1 id="login-title" className="sj-h1">{mode === "login" ? "로그인하고 기록을 이어가세요" : "계정을 만들고 기록을 옮겨요"}</h1>
+        <p className="sj-lead" style={{ fontSize: 14 }}>다른 기기에서도 같은 명식과 리포트를 볼 수 있어요.</p>
+      </div>
+
+      <div className="sj-segmented" role="tablist" aria-label="로그인 방식">
+        <button className="sj-segment" id="login-tab-login" type="button" role="tab" aria-selected={mode === "login"} aria-controls="login-panel" disabled={pending} onClick={() => switchMode("login")}>로그인</button>
+        <button className="sj-segment" id="login-tab-register" type="button" role="tab" aria-selected={mode === "register"} aria-controls="login-panel" disabled={pending} onClick={() => switchMode("register")}>계정 만들기</button>
+      </div>
+
+      <Banner>지금 이 기기에서 쓰던 명식, 리포트, 상담 기록과 이용권은 로그인하면 계정으로 옮겨져요.</Banner>
+
+      <form id="login-panel" role="tabpanel" aria-labelledby={mode === "login" ? "login-tab-login" : "login-tab-register"} className="sj-section" style={{ gap: 18 }} onSubmit={submit}>
+        <div className="sj-field">
+          <label className="sj-label" htmlFor="login-email">이메일</label>
+          <input id="login-email" className="sj-input" type="email" autoComplete="email" placeholder="name@example.com" value={email} onChange={(event) => setEmail(event.target.value)} required />
+        </div>
+        {mode === "register" && (
+          <div className="sj-field">
+            <label className="sj-label" htmlFor="login-name">이름</label>
+            <input id="login-name" className="sj-input" autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} />
+          </div>
+        )}
+        <div className="sj-field">
+          <label className="sj-label" htmlFor="login-password">비밀번호</label>
+          <input id="login-password" className="sj-input" type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} minLength={8} aria-describedby="login-password-help" value={password} onChange={(event) => setPassword(event.target.value)} required />
+          <p id="login-password-help" className="sj-help">8자 이상이에요</p>
+        </div>
+        <button className="sj-button sj-button-block" type="submit" disabled={pending}>{submitLabel}</button>
+      </form>
+
+      {message && (
+        <div className="sj-section" style={{ gap: 8 }}>
+          <p className={signedIn ? "sj-meta" : "sj-error"} role="status" style={signedIn ? { display: "flex", gap: 8, alignItems: "flex-start", color: "var(--sj-ink-body)" } : undefined}>
+            {signedIn && <CheckIcon style={{ flex: "0 0 auto", marginTop: 2 }} />}{message}
+          </p>
+          {signedIn && <Link className="sj-button-secondary" href="/home">홈으로 가기</Link>}
+        </div>
+      )}
+
+      <SocialLoginOptions onCredential={acceptSocialCredential} onError={(text) => { setSignedIn(false); setMessage(text); }} pending={pending} />
+
+      <p className="sj-fine sj-center">가입하면 <Link href="/settings/terms">이용약관</Link>과 <Link href="/settings/privacy">개인정보 처리방침</Link>에 동의하게 돼요.</p>
+    </main>
+  );
 }
 
+/* ---------- Account ---------- */
+
+const MOVED_RECORDS = ["프로필과 명식", "리포트", "상담 기록", "사람 보관함", "상담 이용권"];
+
 export function LiveAccountScreen() {
-  const [reason, setReason] = useState(""); const [message, setMessage] = useState("");
-  return <main className={`screen-content account-content ${styles.srScreen}`} aria-labelledby="account-title"><p className="section-kicker">계정</p><h1 id="account-title">계정과 데이터</h1><p className="supporting">익명 세션은 로그인 후 서버 계정으로 이전할 수 있습니다. 계정 삭제는 서버 처리가 완료된 뒤 결과를 알려줍니다.</p><button className="secondary-button" type="button" onClick={() => { void logoutAccount().then((result) => setMessage(result === "complete" ? "로그아웃됐어요. 이 기기의 계정 세션을 지웠습니다." : "서버에 연결하지 못했지만 이 기기의 계정 세션은 지웠습니다.")); }}>로그아웃</button><label className="signal-field">삭제 사유 (선택)<textarea value={reason} onChange={(event) => setReason(event.target.value)} /></label><button className="secondary-button" type="button" onClick={() => { void requestAccountDeletion(reason).then((result) => setMessage(result.status === "DELETED" ? "서버 계정 데이터 삭제가 완료됐어요. 이 기기의 저장 정보는 별도로 지울 수 있어요." : `삭제 요청 상태: ${String(result.status ?? "접수됨")}`)).catch((error) => setMessage(error instanceof Error ? error.message : "삭제 요청을 접수하지 못했어요.")); }}>계정 삭제 요청</button>{message && <p className="form-error" role="status">{message}</p>}</main>;
+  const [reason, setReason] = useState("");
+  const [logoutMessage, setLogoutMessage] = useState("");
+  const [deleteMessage, setDeleteMessage] = useState<{ tone: "status" | "error"; text: string } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [pending, setPending] = useState<"logout" | "delete" | null>(null);
+
+  function logout() {
+    setPending("logout");
+    setLogoutMessage("");
+    void logoutAccount()
+      .then((result) => setLogoutMessage(result === "complete" ? "로그아웃됐어요. 이 기기의 계정 연결을 지웠어요." : "서버에 연결하지 못했지만 이 기기의 계정 연결은 지웠어요."))
+      .finally(() => setPending(null));
+  }
+
+  function deleteAccount() {
+    setPending("delete");
+    setDeleteMessage(null);
+    void requestAccountDeletion(reason)
+      .then((result) => setDeleteMessage(result.status === "DELETED"
+        ? { tone: "status", text: "계정과 서버 기록을 삭제했어요. 이 기기의 저장 정보는 설정에서 따로 지울 수 있어요." }
+        : { tone: "status", text: "삭제 요청을 받았어요. 처리가 끝나면 알려드려요." }))
+      .catch((error) => setDeleteMessage({ tone: "error", text: formatApiRequestError(error, "계정 삭제 요청을 보내지 못했어요. 잠시 후 다시 시도해 주세요.") }))
+      .finally(() => { setPending(null); setConfirmDelete(false); });
+  }
+
+  return (
+    <main className="sj-page" style={{ gap: 24 }} aria-labelledby="account-title">
+      <section className="sj-card" style={{ gap: 16 }} aria-labelledby="account-title">
+        <div className="sj-section" style={{ gap: 6 }}>
+          <h1 id="account-title" className="sj-h1" style={{ fontSize: 20 }}>로그인하면 지금 기록을 계정으로 옮겨요</h1>
+          <p className="sj-body" style={{ fontSize: 14 }}>익명으로 쓰던 기록이 그대로 옮겨지고, 다른 기기에서도 이어 볼 수 있어요.</p>
+        </div>
+        <ul className="sj-list" aria-label="계정으로 옮겨지는 기록">
+          {MOVED_RECORDS.map((record, index) => (
+            <li key={record} style={{ display: "flex", alignItems: "center", gap: 12, minHeight: 44, borderTop: index ? "1px solid var(--sj-track)" : undefined }}>
+              <CheckIcon style={{ color: "var(--sj-muted)" }} />
+              <span className="sj-row-title">{record}</span>
+            </li>
+          ))}
+        </ul>
+        <div className="sj-actions">
+          <Link className="sj-button" href="/login">로그인하고 기록 옮기기</Link>
+        </div>
+        <p className="sj-fine">옮기는 도중 연결이 끊기면 다음에 로그인할 때 이어서 옮겨요.</p>
+      </section>
+
+      <section className="sj-section" style={{ gap: 0 }} aria-labelledby="account-session-title">
+        <h2 id="account-session-title" className="sj-group-title">로그인 정보</h2>
+        <div className="sj-group">
+          <button className="sj-row-in-group" type="button" disabled={pending !== null} onClick={logout}>
+            <span className="sj-row-main"><span className="sj-row-title">로그아웃</span></span>
+          </button>
+        </div>
+        <p className="sj-fine" style={{ margin: "8px 4px 0" }}>로그아웃하면 이 기기에서만 연결이 풀려요. 기록은 계정에 그대로 있어요.</p>
+        {logoutMessage && <p className="sj-meta" role="status" style={{ marginTop: 8 }}>{logoutMessage}</p>}
+      </section>
+
+      <section className="sj-card" style={{ gap: 14, borderColor: "var(--sj-danger)" }} aria-labelledby="account-delete-title">
+        <h2 id="account-delete-title" className="sj-h2" style={{ color: "var(--sj-danger)" }}>계정 삭제</h2>
+        <ul className="sj-body" style={{ margin: 0, paddingLeft: 18, fontSize: 14 }}>
+          <li>명식, 리포트, 상담 기록, 남은 이용권이 모두 사라져요.</li>
+          <li>삭제한 계정은 되돌릴 수 없어요.</li>
+          <li>이 기기의 저장 정보는 설정에서 따로 지울 수 있어요.</li>
+        </ul>
+        <p className="sj-meta">기록을 남겨두고 싶다면 먼저 <Link href="/settings/privacy">내 데이터 내려받기</Link>를 해 두세요.</p>
+        <div className="sj-field">
+          <label className="sj-label" htmlFor="account-delete-reason">삭제하는 이유 <span style={{ fontWeight: 400, color: "var(--sj-muted)" }}>(선택)</span></label>
+          <textarea id="account-delete-reason" className="sj-textarea" style={{ minHeight: 88 }} rows={2} value={reason} onChange={(event) => setReason(event.target.value)} />
+        </div>
+        {confirmDelete ? (
+          <div className="sj-section" style={{ gap: 8 }}>
+            <p className="sj-meta">정말 계정을 삭제할까요?</p>
+            <div className="sj-actions-row">
+              <button className="sj-button-danger" type="button" disabled={pending !== null} onClick={deleteAccount}>{pending === "delete" ? "삭제하고 있어요" : "계정 삭제 확정"}</button>
+              <button className="sj-button-secondary" type="button" onClick={() => setConfirmDelete(false)}>취소</button>
+            </div>
+          </div>
+        ) : (
+          <button className="sj-button-danger" type="button" disabled={pending !== null} onClick={() => setConfirmDelete(true)}>계정 삭제</button>
+        )}
+        {deleteMessage && (deleteMessage.tone === "error"
+          ? <p className="sj-error" role="alert">{deleteMessage.text}</p>
+          : <p className="sj-meta" role="status">{deleteMessage.text}</p>)}
+      </section>
+    </main>
+  );
 }
