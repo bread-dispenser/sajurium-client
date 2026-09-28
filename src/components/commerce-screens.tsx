@@ -7,12 +7,12 @@ import type { ReactNode } from "react";
 import type { CommerceData, DemoOrderStatus, OrderDuplicateKey, ProductId } from "@/lib/domain";
 import type { CreditLedgerEntry, OrderStatus, ProductView } from "@/lib/contracts";
 import { commerceStore } from "@/lib/storage";
-import { getProduct, INITIAL_COMMERCE_DATA } from "@/lib/fixtures";
+import { getProduct, INITIAL_COMMERCE_DATA, isProductId } from "@/lib/fixtures";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { CorruptState, LoadingState } from "./page-state";
 import { Banner } from "./ui/layout";
 import { ChevronIcon, InfoIcon } from "./ui/icons";
-import { createOrder, formatApiRequestError, getCredits, getOrder, getProduct as getServerProduct, listProducts, type LiveOrder } from "@/lib/api/service";
+import { createOrder, formatApiRequestError, getCredits, getOrder, getProduct as getServerProduct, isAccountSessionExpired, listOrderRefunds, listOrders, listProducts, type LiveOrder, type LiveRefund } from "@/lib/api/service";
 
 const CURRENT_PROFILE_ID = "prf_01J62Z7M4Q8Y3T1K9A5C6N2R0X";
 const PAYMENTS_ENABLED = process.env.NEXT_PUBLIC_PAYMENTS_ENABLED === "true";
@@ -639,6 +639,138 @@ export function CreditsScreen() {
       </section>
 
       <p className="sj-fine">기록은 지우거나 고치지 않고 쌓여요. 잔액은 가장 최근 기록의 잔액과 같아요.</p>
+    </main>
+  );
+}
+
+const BILLING_STATUS_LABELS: Record<string, { label: string; tone: "dark" | "accent" | "plain" }> = {
+  COMPLETED: { label: "완료", tone: "dark" },
+  PAID: { label: "지급 중", tone: "plain" },
+  FULFILLING: { label: "지급 중", tone: "plain" },
+  PENDING: { label: "결제 대기", tone: "plain" },
+  CREATED: { label: "결제 대기", tone: "plain" },
+  FAILED: { label: "결제 실패", tone: "accent" },
+  REFUNDED: { label: "환불 완료", tone: "plain" },
+};
+
+const REFUND_STATUS_LABELS: Record<string, string> = {
+  REQUESTED: "환불 요청됨",
+  APPROVED: "환불 승인",
+  REFUNDED: "환불 완료",
+  REJECTED: "환불 거절",
+};
+
+function orderLinkState(status: string): DemoOrderStatus {
+  if (status === "COMPLETED" || status === "PAID" || status === "FULFILLING" || status === "REFUNDED") return "success";
+  if (status === "FAILED") return "failure";
+  return "pending";
+}
+
+export function BillingScreen() {
+  const hydrated = useHydrated();
+  const [orders, setOrders] = useState<LiveOrder[] | null>(null);
+  const [refunds, setRefunds] = useState<LiveRefund[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [expired, setExpired] = useState(false);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    let active = true;
+    void listOrders()
+      .then(async (items) => {
+        if (!active) return;
+        setOrders(items);
+        const lists = await Promise.all(items.map((order) => listOrderRefunds(order.order_id).catch(() => [] as LiveRefund[])));
+        if (active) setRefunds(lists.flat());
+      })
+      .catch((cause: unknown) => {
+        if (!active) return;
+        setExpired(isAccountSessionExpired(cause));
+        setError(formatApiRequestError(cause, "주문 내역을 불러오지 못했어요. 잠시 후 다시 시도해 주세요."));
+      });
+    return () => { active = false; };
+  }, [hydrated]);
+
+  if (!hydrated || (!orders && !error)) return <LoadingState title="주문 내역을 불러오고 있어요" />;
+
+  if (error || !orders) {
+    return (
+      <main className="sj-state" aria-labelledby="billing-error-title">
+        <h1 id="billing-error-title" className="sj-h1">주문 내역을 불러오지 못했어요</h1>
+        <p className="sj-error" role="alert">{error}</p>
+        {expired
+          ? <Link className="sj-button sj-button-block" href="/login">다시 로그인하기</Link>
+          : <button className="sj-button sj-button-block" type="button" onClick={reload}>다시 시도</button>}
+      </main>
+    );
+  }
+
+  const productName = (orderId: string) => orders.find((order) => order.order_id === orderId)?.product_name ?? "주문";
+
+  return (
+    <main className="sj-page" aria-labelledby="billing-title">
+      <div className="sj-section">
+        <h1 id="billing-title" className="sj-h1">주문 {orders.length}건</h1>
+        {!PAYMENTS_ENABLED && <Banner>결제는 준비 중이에요. 지난 주문과 환불 내역은 계속 볼 수 있어요.</Banner>}
+      </div>
+
+      <section className="sj-section" aria-labelledby="billing-orders">
+        <h2 id="billing-orders" className="sj-h2">주문</h2>
+        {orders.length === 0 ? (
+          <p className="sj-meta">아직 주문이 없어요. 리포트나 이용권을 사면 여기에 쌓여요.</p>
+        ) : (
+          <ul className="sj-list" style={{ borderTop: "1px solid var(--sj-line)" }}>
+            {orders.map((order) => {
+              const status = BILLING_STATUS_LABELS[order.status] ?? { label: order.status, tone: "plain" as const };
+              const known = isProductId(order.product_id);
+              const content = (
+                <>
+                  <span className="sj-row-main">
+                    <span className="sj-row-title">{order.product_name}</span>
+                    <span className="sj-row-sub"><time dateTime={order.created_at}>{shortDate(order.created_at)}</time>, 주문번호 {order.order_number}</span>
+                  </span>
+                  <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flex: "0 0 auto" }}>
+                    <span style={{ fontSize: 15, fontWeight: 700 }}>{price(order.amount_minor)}</span>
+                    <span className={`sj-badge${status.tone === "dark" ? " sj-badge-dark" : status.tone === "accent" ? " sj-badge-accent" : ""}`}>{status.label}</span>
+                  </span>
+                  {known && <ChevronIcon className="sj-chevron" />}
+                </>
+              );
+              return (
+                <li key={order.order_id}>
+                  {known
+                    ? <Link className="sj-row" href={`/orders/${order.order_id}?source=server&productId=${order.product_id}&state=${orderLinkState(order.status)}`}>{content}</Link>
+                    : <div className="sj-row" style={{ cursor: "default" }}>{content}</div>}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+
+      <section className="sj-section" aria-labelledby="billing-refunds">
+        <h2 id="billing-refunds" className="sj-h2">환불 요청</h2>
+        {refunds.length === 0 ? (
+          <p className="sj-meta">환불 요청이 없어요.</p>
+        ) : (
+          <ul className="sj-list" style={{ borderTop: "1px solid var(--sj-line)" }}>
+            {refunds.map((refund) => (
+              <li key={refund.id} className="sj-row" style={{ cursor: "default" }}>
+                <span className="sj-row-main">
+                  <span className="sj-row-title">{productName(refund.orderId)}</span>
+                  <span className="sj-row-sub"><time dateTime={refund.createdAt}>{shortDate(refund.createdAt)}</time>{refund.reason ? `, ${refund.reason}` : ""}</span>
+                </span>
+                <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flex: "0 0 auto" }}>
+                  <span style={{ fontSize: 15, fontWeight: 700 }}>{price(refund.amount)}</span>
+                  <span className="sj-badge">{REFUND_STATUS_LABELS[refund.status] ?? refund.status}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <Link className="sj-text-button" href="/products/credits">상담 이용권 변동 기록 보기</Link>
     </main>
   );
 }

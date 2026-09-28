@@ -34,12 +34,17 @@ export type LiveReport = {
 
 export type LiveOrder = {
   order_id: string;
+  order_number: string;
   status: string;
+  fulfillment_status: string | null;
   amount_minor: number;
   currency: string;
   product_id: string;
+  product_name: string;
   created_at: string;
 };
+
+export type LiveRefund = { id: string; orderId: string; amount: number; reason: string | null; status: string; createdAt: string };
 
 export type CreditSnapshot = { balance: { balance: number }; ledger: { items: CreditLedgerEntry[] } };
 export type ServerProfile = { id: string; nickname: string; isSelf: boolean; relationship: string | null; birthYear: number; birthTimeUnknown: boolean; birthLocation: string | null; createdAt: string };
@@ -591,7 +596,26 @@ export async function createOrder(productId: string): Promise<LiveOrder> {
 }
 
 function toLiveOrder(order: ApiOrder): LiveOrder {
-  return { order_id: String(order.id), status: order.status, amount_minor: order.amount, currency: order.currency, product_id: PRODUCT_IDS[order.product_code] ?? order.product_code, created_at: toIso(order.created_at)! };
+  return {
+    order_id: String(order.id),
+    order_number: order.order_number,
+    status: order.status,
+    fulfillment_status: order.fulfillment_status ?? null,
+    amount_minor: order.amount,
+    currency: order.currency,
+    product_id: PRODUCT_IDS[order.product_code] ?? order.product_code,
+    product_name: order.product_name,
+    created_at: toIso(order.created_at)!,
+  };
+}
+
+export async function listOrders(): Promise<LiveOrder[]> {
+  return (await request<ApiOrder[]>("/api/v1/orders")).data.map(toLiveOrder);
+}
+
+export async function listOrderRefunds(orderId: string): Promise<LiveRefund[]> {
+  const refunds = (await request<Schema<"Refund">[]>(`/api/v1/orders/${orderId}/refunds`)).data;
+  return refunds.map((refund) => ({ id: String(refund.id), orderId: String(refund.order_id), amount: refund.amount, reason: refund.reason ?? null, status: refund.status, createdAt: toIso(refund.created_at)! }));
 }
 
 export async function getOrder(orderId: string): Promise<LiveOrder> {
