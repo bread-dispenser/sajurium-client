@@ -120,6 +120,12 @@ function readAuthSession(): StoredAuthSession | null {
   }
 }
 
+/** Which session this browser holds, for choosing account copy. Never exposes tokens. */
+export function getSessionKind(): SessionKind | "none" {
+  const session = readAuthSession();
+  return session && session.accessToken ? session.kind : "none";
+}
+
 function storeAuthSession(session: StoredAuthSession) {
   window.localStorage.setItem(AUTH_KEY, JSON.stringify(session));
 }

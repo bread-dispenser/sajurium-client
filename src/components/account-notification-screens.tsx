@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { formatApiRequestError, getNotificationPreferences, listNotifications, loginAccount, loginSocialAccount, logoutAccount, registerAccount, requestAccountDeletion, type AnonymousMigrationStatus, type ServerNotification, type SocialProvider, updateNotificationPreferences } from "@/lib/api/service";
+import { formatApiRequestError, getNotificationPreferences, getSessionKind, listNotifications, loginAccount, loginSocialAccount, logoutAccount, registerAccount, requestAccountDeletion, type AnonymousMigrationStatus, type ServerNotification, type SocialProvider, updateNotificationPreferences } from "@/lib/api/service";
+import { useHydrated } from "@/hooks/use-hydrated";
 import { pushEnabled } from "@/lib/feature-availability";
 import { SocialLoginOptions } from "./social-login-options";
 import { EmptyState, LoadingState } from "./page-state";
@@ -309,6 +310,9 @@ export function LiveLoginScreen() {
 const MOVED_RECORDS = ["프로필과 명식", "리포트", "상담 기록", "사람 보관함", "상담 이용권"];
 
 export function LiveAccountScreen() {
+  const hydrated = useHydrated();
+  const sessionKind = hydrated ? getSessionKind() : "none";
+  const signedIn = sessionKind === "account";
   const [reason, setReason] = useState("");
   const [logoutMessage, setLogoutMessage] = useState("");
   const [deleteMessage, setDeleteMessage] = useState<{ tone: "status" | "error"; text: string } | null>(null);
@@ -336,6 +340,12 @@ export function LiveAccountScreen() {
 
   return (
     <main className="sj-page" style={{ gap: 24 }} aria-labelledby="account-title">
+      {signedIn ? (
+        <section className="sj-section" aria-labelledby="account-title">
+          <h1 id="account-title" className="sj-h1" style={{ fontSize: 20 }}>계정으로 로그인되어 있어요</h1>
+          <p className="sj-body" style={{ fontSize: 14 }}>기록은 계정에 저장되고, 다른 기기에서 로그인해도 이어서 볼 수 있어요.</p>
+        </section>
+      ) : (
       <section className="sj-card" style={{ gap: 16 }} aria-labelledby="account-title">
         <div className="sj-section" style={{ gap: 6 }}>
           <h1 id="account-title" className="sj-h1" style={{ fontSize: 20 }}>로그인하면 지금 기록을 계정으로 옮겨요</h1>
@@ -354,7 +364,9 @@ export function LiveAccountScreen() {
         </div>
         <p className="sj-fine">옮기는 도중 연결이 끊기면 다음에 로그인할 때 이어서 옮겨요.</p>
       </section>
+      )}
 
+      {signedIn && (
       <section className="sj-section" style={{ gap: 0 }} aria-labelledby="account-session-title">
         <h2 id="account-session-title" className="sj-group-title">로그인 정보</h2>
         <div className="sj-group">
@@ -365,6 +377,7 @@ export function LiveAccountScreen() {
         <p className="sj-fine" style={{ margin: "8px 4px 0" }}>로그아웃하면 이 기기에서만 연결이 풀려요. 기록은 계정에 그대로 있어요.</p>
         {logoutMessage && <p className="sj-meta" role="status" style={{ marginTop: 8 }}>{logoutMessage}</p>}
       </section>
+      )}
 
       <section className="sj-card" style={{ gap: 14, borderColor: "var(--sj-danger)" }} aria-labelledby="account-delete-title">
         <h2 id="account-delete-title" className="sj-h2" style={{ color: "var(--sj-danger)" }}>계정 삭제</h2>
