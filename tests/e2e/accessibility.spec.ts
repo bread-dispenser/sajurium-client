@@ -28,7 +28,7 @@ test("honors reduced motion and exposes visible keyboard focus", async ({ page }
   const focused = page.locator(":focus");
   await expect(focused).toBeVisible();
   const motion = await page.evaluate(() => {
-    const element = document.querySelector(".primary-button");
+    const element = document.querySelector(".sj-button");
     if (!element) return null;
     const style = getComputedStyle(element);
     const seconds = style.transitionDuration.endsWith("ms")
@@ -43,7 +43,7 @@ test("honors reduced motion and exposes visible keyboard focus", async ({ page }
 test("navigation accessible names include their visible labels", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/home");
-  for (const label of ["홈", "내 사주", "상담", "궁합", "보관함"]) {
+  for (const label of ["홈", "명식", "상담", "궁합", "보관함"]) {
     await expect(page.getByRole("navigation", { name: "주요 메뉴" }).getByRole("link", { name: label, exact: true })).toBeVisible();
   }
 });

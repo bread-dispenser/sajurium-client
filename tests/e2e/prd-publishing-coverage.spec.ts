@@ -27,8 +27,6 @@ const explicitlyUnavailable = new Set([
   "/admin/analytics",
   "/admin/operations",
   "/billing",
-  "/calendar",
-  "/notifications/policy",
   "/platform-labs",
   "/profile",
 ]);
