@@ -3,8 +3,8 @@ import { notFound } from "next/navigation";
 import { LiveSharedResultScreen } from "@/components/distribution-future-prototype";
 
 export const metadata: Metadata = {
-  title: "공유된 관계 요약 | 사주리움",
-  description: "개인정보를 제외한 읽기 전용 관계 요약",
+  title: "공유된 사주 결과 | 사주리움",
+  description: "출생 정보를 뺀 읽기 전용 공유 결과",
   robots: { index: false, follow: false, noarchive: true },
 };
 
