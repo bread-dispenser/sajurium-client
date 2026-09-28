@@ -1349,8 +1349,10 @@ body {
   .sj-landing {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
-    gap: 80px;
-    align-items: center;
+    grid-template-rows: auto auto;
+    column-gap: 80px;
+    row-gap: 32px;
+    align-content: center;
     flex: 1 1 auto;
   }
 }

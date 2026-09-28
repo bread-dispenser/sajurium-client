@@ -42,10 +42,18 @@ input,
 select,
 textarea { font: inherit; color: inherit; }
 
-button { cursor: pointer; }
+button {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+}
 button:disabled { cursor: not-allowed; }
 
 a { color: inherit; }
+
+summary { cursor: pointer; }
 
 body {
   min-width: 320px;

@@ -122,16 +122,16 @@ export function LandingScreen({ initialCalculationFailure }: { initialCalculatio
         <Link className="sj-text-button" href="/login">로그인</Link>
       </header>
       <main className="sj-landing sj-page" aria-labelledby="landing-title" style={{ paddingTop: 24 }}>
-        <div className="sj-section" style={{ gap: 16 }}>
+        <div className="sj-section" style={{ gap: 16, alignSelf: "end" }}>
           <h1 id="landing-title" className="sj-h1 sj-h1-hero">태어난 순간을<br />여덟 글자로 펼쳐봅니다</h1>
           <p className="sj-lead">생년월일시로 명식을 계산하고, 오행의 균형과 지금 지나는 대운을 근거와 함께 보여드려요.</p>
           <p className="sj-meta sj-desktop-only">명식, 오행, 대운, 오늘의 흐름과 기본 리포트는 무료로 볼 수 있어요. 궁금한 점은 명식을 바탕으로 상담해볼 수 있어요.</p>
         </div>
-        <figure className="sj-section" aria-label="명식 예시: 계미시, 을축일, 병오월, 임신년" style={{ margin: 0, gridRow: "span 2" }}>
+        <figure className="sj-section" aria-label="명식 예시: 계미시, 을축일, 병오월, 임신년" style={{ margin: 0, gridColumn: 2, gridRow: "1 / span 2", alignSelf: "center" }}>
           <PillarStrip chart={SAMPLE_CHART} />
           <figcaption className="sj-fine">예시 명식이에요. 1992년 6월 18일 오후 2시 30분에 태어난 사람의 명식이고, 어두운 칸이 나를 뜻하는 일간이에요.</figcaption>
         </figure>
-        <div className="sj-actions">
+        <div className="sj-actions" style={{ alignSelf: "start" }}>
           <div className="sj-actions-row">
             <Link className="sj-button sj-button-block" href={birthHref} style={{ flex: "1 1 220px" }}>내 명식 계산하기</Link>
             <Link className="sj-button-secondary sj-desktop-only" href="/login" style={{ flex: "1 1 220px", minHeight: 56 }}>로그인하고 기록 불러오기</Link>
