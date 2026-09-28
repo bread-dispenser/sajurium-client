@@ -17,9 +17,12 @@ describe("network-free anti-slop structural regressions", () => {
     expect(css).toContain('[class~="message-list"] article');
   });
 
-  it("keeps nested-card allowances limited to consultation topic rows", () => {
-    expect(calculation.match(/data-slop-allow="nested-cards"/g)).toBeNull();
-    expect(consultation.match(/data-slop-allow="nested-cards"/g)).toHaveLength(1);
-    expect(consultation).toContain('className="consult-topic-list signal-row-list" data-slop-allow="nested-cards"');
+  it("never nests a card inside a card on calculation or consultation screens", () => {
+    for (const source of [calculation, consultation]) {
+      expect(source.match(/data-slop-allow="nested-cards"/g)).toBeNull();
+    }
+    // 상담 유형은 카드 목록이 아니라 한 줄 세그먼트로 고른다.
+    expect(consultation).toContain('className="sj-segmented"');
+    expect(consultation).not.toContain("consult-topic-list");
   });
 });
