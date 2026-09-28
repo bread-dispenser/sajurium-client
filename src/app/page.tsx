@@ -6,6 +6,5 @@ type HomeProps = {
 
 export default async function Home({ searchParams }: HomeProps) {
   const { calculation } = await searchParams;
-
-  return <main className="app-shell p0-shell"><LandingScreen initialCalculationFailure={calculation === "fail"} /></main>;
+  return <LandingScreen initialCalculationFailure={calculation === "fail"} />;
 }
