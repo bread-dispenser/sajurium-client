@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { Noto_Sans_KR, Noto_Serif_KR } from "next/font/google";
 import "./globals.css";
+import "./design-system.css";
 
 const editorialFont = Noto_Serif_KR({
   weight: "variable",

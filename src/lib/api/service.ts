@@ -1,6 +1,7 @@
 import type { components } from "@/lib/api/sasaju.generated";
 import type { CreditLedgerEntry, LibraryAction, LibraryItemView, ProductView, ProfileInput } from "@/lib/contracts";
 import { ApiRequestError, apiRequest } from "@/lib/api/client";
+import { toChartView, type ChartView } from "@/lib/saju";
 
 type Schema<Name extends keyof components["schemas"]> = components["schemas"][Name];
 type ApiProfile = Schema<"SajuProfile">;
@@ -527,6 +528,12 @@ export async function getCurrentReport(): Promise<LiveReport | null> {
   const journey = readServerJourney();
   if (!journey) return null;
   return toLiveReport((await request<ApiReport>(`/api/v1/reports/${journey.reportId}`)).data, journey);
+}
+
+export async function getCurrentChart(): Promise<ChartView | null> {
+  const journey = readServerJourney();
+  if (!journey) return null;
+  return toChartView((await request<ApiChart>(`/api/v1/charts/${journey.chartId}`)).data);
 }
 
 export async function getFlow(scope: "today" | "month" | "year"): Promise<LiveReport> {
