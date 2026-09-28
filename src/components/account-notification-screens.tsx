@@ -375,9 +375,10 @@ export function LiveAccountScreen() {
           </button>
         </div>
         <p className="sj-fine" style={{ margin: "8px 4px 0" }}>로그아웃하면 이 기기에서만 연결이 풀려요. 기록은 계정에 그대로 있어요.</p>
-        {logoutMessage && <p className="sj-meta" role="status" style={{ marginTop: 8 }}>{logoutMessage}</p>}
       </section>
       )}
+      {/* 로그아웃하면 signedIn이 바로 false가 되므로, 결과 안내는 로그인 정보 영역 밖에 둔다. */}
+      {logoutMessage && <p className="sj-meta" role="status">{logoutMessage}</p>}
 
       <section className="sj-card" style={{ gap: 14, borderColor: "var(--sj-danger)" }} aria-labelledby="account-delete-title">
         <h2 id="account-delete-title" className="sj-h2" style={{ color: "var(--sj-danger)" }}>계정 삭제</h2>

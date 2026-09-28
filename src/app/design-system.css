@@ -218,7 +218,12 @@ body {
 
 @media (max-width: 1023px) {
   .sj-desktop-only { display: none !important; }
+  /* Keep focused or scrolled-to controls clear of the fixed bottom tab bar. */
+  html:has(.sj-tabbar) { scroll-padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 }
+
+/* Keep focused controls clear of the sticky top bar. */
+html:has(.sj-topbar) { scroll-padding-top: 80px; }
 
 /* ---------- Page structure ---------- */
 
