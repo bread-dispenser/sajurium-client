@@ -1,20 +1,25 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const css = readFileSync("src/app/globals.css", "utf8");
+const css = readFileSync("src/app/design-system.css", "utf8");
 const calculation = readFileSync("src/components/saju-screens.tsx", "utf8");
 const consultation = readFileSync("src/components/consultation-screens.tsx", "utf8");
 
 describe("network-free anti-slop structural regressions", () => {
-  it("keeps descendant surface rules out of page/container class maps", () => {
-    expect(css).not.toMatch(/\.consultation-form textarea/);
-    expect(css).not.toMatch(/\.person-form input/);
-    expect(css).not.toMatch(/\.person-form select/);
-    expect(css).not.toMatch(/\.message-list article/);
-    expect(css).toContain('[class~="consultation-form"] textarea');
-    expect(css).toContain('[class~="person-form"] input');
-    expect(css).toContain('[class~="person-form"] select');
-    expect(css).toContain('[class~="message-list"] article');
+  it("keeps design-system selectors flat instead of reaching into page containers", () => {
+    // Each rule targets one component class; no descendant combinators such as `.form input`.
+    const selectors = css
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .split("{")
+      .slice(0, -1)
+      .map((chunk) => chunk.split(/[;}]/).at(-1)!.trim())
+      .filter((selector) => selector && !selector.startsWith("@") && !/^(from|to|\d+%)$/.test(selector));
+    expect(selectors.length).toBeGreaterThan(100);
+    for (const selector of selectors) {
+      for (const part of selector.split(",")) {
+        expect(part.trim(), selector).not.toMatch(/\.[\w-]+(\[[^\]]*\])?(:[\w-]+(\([^)]*\))?)*\s+[.#\w[]/);
+      }
+    }
   });
 
   it("never nests a card inside a card on calculation or consultation screens", () => {
