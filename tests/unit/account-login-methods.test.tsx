@@ -167,6 +167,40 @@ describe("account login methods", () => {
     expect(screen.queryByRole("button", { name: /카카오/ })).toBeNull();
   });
 
+  it("links a provider credential to this account and refreshes the list", async () => {
+    let googleCallback: ((response: { credential?: string }) => void) | undefined;
+    window.google = { accounts: { id: {
+      initialize: vi.fn((options) => { googleCallback = options.callback; }),
+      renderButton: vi.fn((target) => {
+        const button = document.createElement("button");
+        button.textContent = "Google provider";
+        button.onclick = () => googleCallback?.({ credential: "google-id-token" });
+        target.append(button);
+      }),
+      disableAutoSelect: vi.fn(),
+    } } };
+    const link = vi.fn((_method: string, body: unknown) => {
+      expect(body).toEqual({ provider: "google", id_token: "google-id-token" });
+      return json({ provider: "google", linked_at: "2026-10-01T03:00:00Z", status: "LINKED" });
+    });
+    const fetchMock = mockApi({
+      identities: [{ has_password: true, email: "me@example.com", identities: [] }, PASSWORD_AND_GOOGLE],
+      providers: { enabled: true, providers: [{ provider: "google", enabled: true }, { provider: "apple", enabled: false }] },
+      link,
+    });
+    render(<LiveAccountScreen />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Google provider" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Google 계정을 연결했어요. 이제 Google로 로그인해도 이 계정이 열려요.");
+    expect(link).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole("button", { name: "Google 연결 해제" })).toBeDefined();
+    // An already linked provider is not offered again, and linking keeps the current session.
+    expect(screen.queryByRole("button", { name: "Google provider" })).toBeNull();
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/api/v1/auth/social"))).toBe(false);
+    expect(JSON.parse(window.localStorage.getItem(AUTH_KEY) ?? "null")).toMatchObject({ accessToken: "acct_jwt" });
+  });
+
   it("shows no link buttons and a neutral note when the backend enables no provider", async () => {
     window.AppleID = { auth: { init: vi.fn(), signIn: vi.fn() } };
     mockApi({ identities: PASSWORD_AND_GOOGLE, providers: { enabled: false, providers: [{ provider: "google", enabled: false }, { provider: "apple", enabled: false }] } });
