@@ -337,7 +337,7 @@ export function MarkdownBlocks({ blocks, headingLevel = 3, textClassName = "sj-b
           case "paragraph":
             return <p key={key} className={textClassName} style={textStyle}>{renderLines(block.lines, key)}</p>;
           case "list": {
-            const items = block.items.map((item, itemIndex) => <li key={`${key}-${itemIndex}`}>{renderLines(item, `${key}-${itemIndex}`)}</li>);
+            const items = block.items.map((item, itemIndex) => <li key={`${key}-${itemIndex}`} className="sj-md-item">{renderLines(item, `${key}-${itemIndex}`)}</li>);
             const className = `${textClassName} sj-md-list`;
             return block.ordered
               ? <ol key={key} className={className} style={textStyle} start={block.start === 1 ? undefined : block.start}>{items}</ol>
