@@ -462,9 +462,58 @@ export async function downloadPrivacyExport(jobId: number) {
   }
 }
 
-export async function submitReportFeedback(reportId: string, rating: "helpful" | "unclear" | "wrong", detailReason: string, reported: boolean) {
-  const serverRating = reported || rating === "wrong" ? "reported" : rating === "helpful" ? "helpful" : "not_helpful";
-  return (await request<Schema<"Feedback">>("/api/v1/feedback", { method: "POST", body: { report_id: Number(reportId), rating: serverRating, detail_reason: detailReason } })).data;
+/* ---------- Feedback ---------- */
+
+export type FeedbackRating = "helpful" | "unclear" | "wrong";
+export type ServerFeedbackRating = "helpful" | "unclear" | "inaccurate" | "reported";
+export type FeedbackTargetRef = { type: "report"; reportId: string } | { type: "consultation_message"; messageId: string };
+export type ServerFeedbackItem = {
+  id: string;
+  targetType: "report" | "consultation";
+  targetTitle: string | null;
+  reportId: string | null;
+  consultationSessionId: string | null;
+  rating: ServerFeedbackRating | "not_helpful" | null;
+  detailReason: string | null;
+  reportReason: string | null;
+  status: "RECEIVED" | "REVIEWING" | "RESOLVED" | string;
+  createdAt: string;
+};
+
+/** A report always wins over the chosen rating; otherwise each screen rating maps to its own server value. */
+export function serverFeedbackRating(rating: FeedbackRating, reported: boolean): ServerFeedbackRating {
+  if (reported) return "reported";
+  return rating === "wrong" ? "inaccurate" : rating;
+}
+
+export async function submitFeedback(
+  target: FeedbackTargetRef,
+  { rating, reported = false, reason = null, comment = "" }: { rating: FeedbackRating; reported?: boolean; reason?: string | null; comment?: string },
+) {
+  const detail = [reason, comment.trim()].filter(Boolean).join("\n") || null;
+  const body: Schema<"FeedbackCreate"> = {
+    ...(target.type === "report" ? { report_id: Number(target.reportId) } : { consultation_message_id: Number(target.messageId) }),
+    rating: serverFeedbackRating(rating, reported),
+    detail_reason: detail,
+    report_reason: reported ? reason || "문제 신고" : null,
+  };
+  return (await request<Schema<"Feedback">>("/api/v1/feedback", { method: "POST", body })).data;
+}
+
+export async function listFeedback(): Promise<ServerFeedbackItem[]> {
+  const rows = (await request<Schema<"FeedbackListItem">[]>("/api/v1/feedback?limit=100")).data;
+  return rows.map((row) => ({
+    id: String(row.id),
+    targetType: row.target_type === "consultation" ? "consultation" : "report",
+    targetTitle: row.target_title ?? null,
+    reportId: row.report_id != null ? String(row.report_id) : null,
+    consultationSessionId: row.consultation_session_id != null ? String(row.consultation_session_id) : null,
+    rating: (row.rating ?? null) as ServerFeedbackItem["rating"],
+    detailReason: row.detail_reason ?? null,
+    reportReason: row.report_reason ?? null,
+    status: row.status,
+    createdAt: toIso(row.created_at)!,
+  }));
 }
 
 export async function createCompatibility(profileAId: string, profileBId: string, relation: "couple" | "friend" | "colleague" | "family"): Promise<ServerCompatibility> {

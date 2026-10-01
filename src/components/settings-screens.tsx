@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { parseBirthDate } from "@/lib/contracts";
 import type { FeedbackEntry, FeedbackReason } from "@/lib/domain";
@@ -34,7 +34,7 @@ import { CorruptState, EmptyState, LoadingState } from "./page-state";
 import { NotificationPreferencesGroup } from "./account-notification-screens";
 import { ChevronIcon } from "./ui/icons";
 import { GroupRowLink } from "./ui/layout";
-import { downloadPrivacyExport, formatApiRequestError, requestPrivacyJob } from "@/lib/api/service";
+import { downloadPrivacyExport, formatApiRequestError, getSessionKind, listFeedback, requestPrivacyJob, type ServerFeedbackItem } from "@/lib/api/service";
 
 type InventoryStatus = "ok" | "empty" | "corrupt" | "unavailable";
 
@@ -226,7 +226,7 @@ export function SettingsScreen() {
         <h2 id="settings-privacy-title" className="sj-group-title">개인정보와 안내</h2>
         <nav className="sj-group" aria-label="개인정보와 안내">
           <GroupRowLink href="/settings/privacy" title="내 데이터 내려받기와 삭제" />
-          <GroupRowLink href="/settings/feedback" title="피드백과 신고" sub="이 기기에 저장된 평가와 신고" />
+          <GroupRowLink href="/settings/feedback" title="피드백과 신고" sub="보낸 평가와 신고, 처리 상태" />
           <GroupRowLink href="/settings/about-ai" title="AI 해석은 이렇게 만들어져요" />
           <GroupRowLink href="/settings/safety" title="안전한 이용 안내" />
           <GroupRowLink href="/settings/terms" title="이용약관" />
@@ -321,16 +321,84 @@ function formatShortDate(iso: string) {
   return `${Number(match[2])}월 ${Number(match[3])}일`;
 }
 
-export function FeedbackManagementScreen() {
+const SERVER_RATING_LABELS: Record<string, string> = {
+  helpful: "도움됐어요",
+  unclear: "잘 모르겠어요",
+  inaccurate: "틀린 것 같아요",
+  not_helpful: "도움이 안 됐어요",
+  reported: "신고",
+};
+
+const SERVER_STATUS: Record<string, { label: string; color: string }> = {
+  RECEIVED: { label: "접수했어요", color: "var(--sj-on-dark-muted)" },
+  REVIEWING: { label: "확인하고 있어요", color: "var(--sj-accent)" },
+  RESOLVED: { label: "확인을 마쳤어요", color: "var(--sj-ink)" },
+};
+
+function formatLocalDay(iso: string) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return formatShortDate(iso);
+  return `${date.getMonth() + 1}월 ${date.getDate()}일`;
+}
+
+function serverTargetLabel(item: ServerFeedbackItem) {
+  if (item.targetType === "consultation") return `상담, ${item.targetTitle ?? "삭제된 상담"}`;
+  return `리포트, ${item.targetTitle ?? "삭제된 리포트"}`;
+}
+
+/** Entries kept on this device that never reached the server: fixture previews and local-only targets. */
+function isLegacyLocalEntry(entry: FeedbackEntry) {
+  return !(entry.target.type === "report" && /^\d+$/.test(entry.target.reportId));
+}
+
+function ServerFeedbackRow({ item, first }: { item: ServerFeedbackItem; first: boolean }) {
+  const [reasonLine, ...commentLines] = (item.detailReason ?? "").split("\n");
+  const reason = item.reportReason ?? (reasonLine || null);
+  const comment = (item.reportReason ? [reasonLine, ...commentLines].filter((line) => line && line !== item.reportReason) : commentLines).join(" ").trim();
+  const status = SERVER_STATUS[item.status] ?? { label: "접수했어요", color: "var(--sj-on-dark-muted)" };
+  const reported = item.rating === "reported";
+  return (
+    <li className="sj-section" style={{ gap: 8, padding: 16, borderTop: first ? undefined : "1px solid var(--sj-track)" }}>
+      <div className="sj-section-head">
+        <h3 className="sj-h3">{serverTargetLabel(item)}</h3>
+        <span className="sj-fine" style={{ flex: "0 0 auto" }}>{formatLocalDay(item.createdAt)}</span>
+      </div>
+      <div className="sj-chips">
+        <span className={reported ? "sj-badge sj-badge-accent" : "sj-badge"}>{SERVER_RATING_LABELS[item.rating ?? ""] ?? "평가"}</span>
+        <span className="sj-meta">{reason ?? "사유 없음"}</span>
+      </div>
+      {comment && <p className="sj-body" style={{ fontSize: 14 }}>{comment}</p>}
+      <p className="sj-meta" style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--sj-ink-strong-muted)" }}>
+        <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 4, flex: "0 0 auto", background: status.color }} />
+        <span><span className="sj-visually-hidden">처리 상태: </span>{status.label}</span>
+      </p>
+    </li>
+  );
+}
+
+export function FeedbackManagementScreen({ justSent = false }: { justSent?: boolean }) {
   const hydrated = useHydrated();
   const raw = useSyncExternalStore(feedbackListStore.subscribe, feedbackListStore.rawSnapshot, () => null);
+  const [serverItems, setServerItems] = useState<ServerFeedbackItem[] | null>(null);
+  const [serverError, setServerError] = useState("");
+  const [attempt, setAttempt] = useState(0);
   const [error, setError] = useState("");
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
-  if (!hydrated) return <LoadingState title="피드백 기록을 확인하고 있어요" />;
+  useEffect(() => {
+    let active = true;
+    // Without a stored session nothing was ever sent, and asking would mint an anonymous user.
+    const load = getSessionKind() === "none" ? Promise.resolve([]) : listFeedback();
+    load
+      .then((items) => { if (active) setServerItems(items); })
+      .catch((reason) => { if (active) { setServerItems([]); setServerError(formatApiRequestError(reason, "보낸 피드백을 불러오지 못했어요.")); } });
+    return () => { active = false; };
+  }, [attempt]);
+  if (!hydrated || !serverItems) return <LoadingState title="피드백 기록을 확인하고 있어요" />;
   void raw;
   const inspection = feedbackListStore.inspect();
   if (inspection.status === "corrupt" || inspection.status === "unavailable") return <CorruptState title="피드백 데이터를 읽을 수 없어요" description="손상된 피드백을 확인 없이 초기화하지 않아요." unavailable={inspection.status === "unavailable"} onReset={feedbackListStore.remove} />;
   const data = inspection.status === "ok" ? inspection.value : { version: 1 as const, entries: [] };
+  const legacy = data.entries.filter(isLegacyLocalEntry);
 
   function updateEntry(id: string, update: (entry: FeedbackEntry) => FeedbackEntry) {
     if (!feedbackListStore.write({ version: 1, entries: data.entries.map((entry) => entry.id === id ? update(entry) : entry) })) setError("피드백을 바꾸지 못했어요. 브라우저 저장소 설정을 확인해 주세요.");
@@ -345,49 +413,67 @@ export function FeedbackManagementScreen() {
     setError("");
   }
 
-  if (data.entries.length === 0) return <EmptyState title="저장된 피드백이 없어요" description="리포트를 읽고 평가나 신고를 남기면 여기에서 고치거나 지울 수 있어요." action={{ href: "/report/feedback", label: "피드백 남기기" }} />;
+  if (!serverError && serverItems.length === 0 && legacy.length === 0) return <EmptyState title="아직 보낸 피드백이 없어요" description="리포트나 상담 답변에 평가나 신고를 남기면 여기에서 처리 상태를 볼 수 있어요." action={{ href: "/report", label: "리포트 보러 가기" }} />;
   return (
     <main className="sj-page" aria-labelledby="feedback-management-title">
       <div className="sj-section">
         <h1 id="feedback-management-title" className="sj-h1">보낸 평가와 신고</h1>
-        <p className="sj-lead">남겨주신 의견은 이 기기에 저장돼 있어요. 사유를 고치거나 신고를 취소하고, 필요 없으면 지울 수 있어요.</p>
+        <p className="sj-lead">보내주신 의견은 해석 문장을 고치는 데 써요. 신고는 먼저 확인하고 결과를 여기에 적어 둬요.</p>
       </div>
+      {justSent && <p className="sj-meta" role="status">피드백을 보냈어요. 처리 상태는 아래 목록에서 볼 수 있어요.</p>}
 
-      <section className="sj-section" style={{ gap: 0 }} aria-labelledby="feedback-count-title">
-        <h2 id="feedback-count-title" className="sj-group-title">보낸 기록 {data.entries.length}개</h2>
-        <div className="sj-group">
-          {data.entries.map((entry, index) => (
-            <article key={entry.id} className="sj-section" style={{ gap: 8, padding: 16, borderTop: index ? "1px solid var(--sj-track)" : undefined }}>
-              <div className="sj-section-head">
-                <h3 className="sj-h3">{feedbackTargetLabel(entry)}</h3>
-                <span className="sj-fine" style={{ flex: "0 0 auto" }}>{formatShortDate(entry.createdAt)}</span>
-              </div>
-              <div className="sj-chips">
-                <span className={entry.reported ? "sj-badge sj-badge-accent" : "sj-badge"}>{entry.reported ? "신고함" : feedbackRatingLabel(entry)}</span>
-                <span className="sj-meta">{FEEDBACK_REASON_LABELS[entry.reason]}</span>
-              </div>
-              {entry.comment && <p className="sj-body" style={{ fontSize: 14 }}>{entry.comment}</p>}
-              {pendingDeleteId === entry.id ? (
-                <div className="sj-section" style={{ gap: 8, paddingTop: 10, borderTop: "1px solid var(--sj-track)" }}>
-                  <p className="sj-meta">이 피드백을 기기에서 삭제할까요?</p>
-                  <div className="sj-actions-row">
-                    <button className="sj-button-danger" type="button" onClick={() => deleteEntry(entry.id)}>피드백 삭제 확정</button>
-                    <button className="sj-button-secondary" type="button" onClick={() => setPendingDeleteId(null)}>취소</button>
-                  </div>
-                </div>
-              ) : (
-                <div className="sj-actions-row" style={{ gap: 16, paddingTop: 6, borderTop: "1px solid var(--sj-track)" }}>
-                  <Link className="sj-text-button" href={`/settings/feedback/${entry.id}`}>사유 고치기</Link>
-                  <button className="sj-text-button" type="button" onClick={() => updateEntry(entry.id, (current) => ({ ...current, reported: !current.reported }))}>{entry.reported ? "신고 취소" : "부적절한 표현 신고"}</button>
-                  <button className="sj-text-button" type="button" style={{ color: "var(--sj-muted)" }} onClick={() => setPendingDeleteId(entry.id)}>삭제</button>
-                </div>
-              )}
-            </article>
-          ))}
+      {serverError ? (
+        <div className="sj-section">
+          <p className="sj-error" role="alert">{serverError}</p>
+          <button className="sj-button-secondary" type="button" onClick={() => { setServerError(""); setServerItems(null); setAttempt((value) => value + 1); }}>다시 불러오기</button>
         </div>
-      </section>
+      ) : serverItems.length > 0 && (
+        <section className="sj-section" style={{ gap: 0 }} aria-labelledby="feedback-count-title">
+          <h2 id="feedback-count-title" className="sj-group-title">보낸 기록 {serverItems.length}개</h2>
+          <ul className="sj-group" style={{ margin: 0, padding: 0, listStyle: "none" }}>
+            {serverItems.map((item, index) => <ServerFeedbackRow key={item.id} item={item} first={index === 0} />)}
+          </ul>
+        </section>
+      )}
+
+      {legacy.length > 0 && (
+        <section className="sj-section" style={{ gap: 0 }} aria-labelledby="feedback-local-title">
+          <h2 id="feedback-local-title" className="sj-group-title">이 기기에만 남은 이전 기록 {legacy.length}개</h2>
+          <div className="sj-group">
+            {legacy.map((entry, index) => (
+              <article key={entry.id} className="sj-section" style={{ gap: 8, padding: 16, borderTop: index ? "1px solid var(--sj-track)" : undefined }}>
+                <div className="sj-section-head">
+                  <h3 className="sj-h3">{feedbackTargetLabel(entry)}</h3>
+                  <span className="sj-fine" style={{ flex: "0 0 auto" }}>{formatShortDate(entry.createdAt)}</span>
+                </div>
+                <div className="sj-chips">
+                  <span className={entry.reported ? "sj-badge sj-badge-accent" : "sj-badge"}>{entry.reported ? "신고함" : feedbackRatingLabel(entry)}</span>
+                  <span className="sj-meta">{FEEDBACK_REASON_LABELS[entry.reason]}</span>
+                </div>
+                {entry.comment && <p className="sj-body" style={{ fontSize: 14 }}>{entry.comment}</p>}
+                {pendingDeleteId === entry.id ? (
+                  <div className="sj-section" style={{ gap: 8, paddingTop: 10, borderTop: "1px solid var(--sj-track)" }}>
+                    <p className="sj-meta">이 피드백을 기기에서 삭제할까요?</p>
+                    <div className="sj-actions-row">
+                      <button className="sj-button-danger" type="button" onClick={() => deleteEntry(entry.id)}>피드백 삭제 확정</button>
+                      <button className="sj-button-secondary" type="button" onClick={() => setPendingDeleteId(null)}>취소</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="sj-actions-row" style={{ gap: 16, paddingTop: 6, borderTop: "1px solid var(--sj-track)" }}>
+                    <Link className="sj-text-button" href={`/settings/feedback/${entry.id}`}>사유 고치기</Link>
+                    <button className="sj-text-button" type="button" onClick={() => updateEntry(entry.id, (current) => ({ ...current, reported: !current.reported }))}>{entry.reported ? "신고 취소" : "부적절한 표현 신고"}</button>
+                    <button className="sj-text-button" type="button" style={{ color: "var(--sj-muted)" }} onClick={() => setPendingDeleteId(entry.id)}>삭제</button>
+                  </div>
+                )}
+              </article>
+            ))}
+          </div>
+          <p className="sj-fine" style={{ margin: "8px 4px 0" }}>서버에 연결되기 전 미리보기에 남긴 기록이라 이 기기에서만 보이고, 여기서 고치거나 지울 수 있어요.</p>
+        </section>
+      )}
       {error && <p className="sj-error" role="alert">{error}</p>}
-      <Link className="sj-button-secondary" href="/report/feedback">피드백 남기기</Link>
+      <Link className="sj-button-secondary" href="/report">리포트에서 피드백 남기기</Link>
     </main>
   );
 }
