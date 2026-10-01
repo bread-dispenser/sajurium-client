@@ -12,7 +12,7 @@ import { useHydrated } from "@/hooks/use-hydrated";
 import { ConnectionErrorState, CorruptState, LoadingState } from "./page-state";
 import { Banner } from "./ui/layout";
 import { ChevronIcon, InfoIcon } from "./ui/icons";
-import { createOrder, formatApiRequestError, formatConnectionError, getCredits, getOrder, getProduct as getServerProduct, isAccountSessionExpired, listOrderRefunds, listOrders, listProducts, type LiveOrder, type LiveRefund } from "@/lib/api/service";
+import { createOrder, formatApiRequestError, formatConnectionError, formatOrderError, getCredits, getOrder, getProduct as getServerProduct, isAccountSessionExpired, listOrders, listProducts, listProfiles, listRefunds, orderProfileRequirement, validateOrderSelection, type CompatibilityRelation, type LiveOrder, type LiveRefundListItem, type OrderProfileSelection, type ServerProfile } from "@/lib/api/service";
 
 const CURRENT_PROFILE_ID = "prf_01J62Z7M4Q8Y3T1K9A5C6N2R0X";
 const PAYMENTS_ENABLED = process.env.NEXT_PUBLIC_PAYMENTS_ENABLED === "true";
@@ -75,6 +75,41 @@ function getCommerceData(): CommerceData | null {
 
 function price(value: number) {
   return `${value.toLocaleString("ko-KR")}원`;
+}
+
+/** Joins two names with the right particle: "나와 민준", "민준과 서연". */
+function joinNames(first: string, second: string) {
+  const code = first.charCodeAt(first.length - 1);
+  const hasFinal = code >= 0xac00 && code <= 0xd7a3 && (code - 0xac00) % 28 !== 0;
+  return `${first}${hasFinal ? "과" : "와"} ${second}`;
+}
+
+const DELETED_PROFILE_LABEL = "삭제한 프로필";
+
+/**
+ * Who an order was bought for, e.g. "나" or "나와 민준". Null for credit packs, which the server
+ * stores without a profile. A profile deleted after the order keeps its id on some databases but
+ * loses its name, so that case gets its own label instead of a blank.
+ */
+export function orderReferenceLabel(order: Pick<LiveOrder, "profile_id" | "profile_display_name" | "partner_profile_id" | "partner_profile_display_name">): string | null {
+  const first = order.profile_display_name ?? (order.profile_id ? DELETED_PROFILE_LABEL : null);
+  const second = order.partner_profile_display_name ?? (order.partner_profile_id ? DELETED_PROFILE_LABEL : null);
+  if (first && second) return joinNames(first, second);
+  return first ?? second;
+}
+
+const COMPAT_RELATIONS: readonly { id: CompatibilityRelation; label: string }[] = [
+  { id: "couple", label: "연인" },
+  { id: "friend", label: "친구" },
+  { id: "family", label: "가족" },
+  { id: "colleague", label: "동료" },
+];
+
+const PROFILE_RELATION_LABELS: Record<string, string> = { partner: "연인", friend: "친구", family: "가족", coworker: "동료" };
+
+function profileOptionLabel(profile: ServerProfile) {
+  const relation = profile.isSelf ? "본인" : PROFILE_RELATION_LABELS[profile.relationship ?? ""] ?? "저장한 사람";
+  return `${profile.nickname}, ${relation}`;
 }
 
 function shortDate(iso: string) {
@@ -353,12 +388,117 @@ export function LiveProductDetailScreen({ productId }: { productId: ProductId })
 
 /* ---------- 결제하기 ---------- */
 
+/** Default checkout selection: the self profile first, and for compatibility the first other person. */
+export function defaultOrderSelection(profiles: readonly ServerProfile[]): OrderProfileSelection {
+  const self = profiles.find((profile) => profile.isSelf) ?? profiles[0];
+  const partner = profiles.find((profile) => profile.id !== self?.id);
+  return { profileId: self?.id ?? null, partnerProfileId: partner?.id ?? null, relationType: "couple" };
+}
+
+type ProfileLoad = { status: "loading" } | { status: "error"; message: string } | { status: "ready"; profiles: ServerProfile[] };
+
+export function OrderProfileStep({ productId, load, selection, onChange, onRetry }: {
+  productId: ProductId;
+  load: ProfileLoad;
+  selection: OrderProfileSelection;
+  onChange: (next: OrderProfileSelection) => void;
+  onRetry: () => void;
+}) {
+  const requirement = orderProfileRequirement(productId);
+  const firstId = useId();
+  const secondId = useId();
+  const errorId = useId();
+  if (requirement === "none") return null;
+  const pair = requirement === "pair";
+
+  let body: ReactNode;
+  if (load.status === "loading") {
+    body = <p className="sj-meta" aria-busy="true">저장한 사람을 불러오고 있어요</p>;
+  } else if (load.status === "error") {
+    body = (
+      <>
+        <p className="sj-error" role="alert">{load.message}</p>
+        <button className="sj-button-secondary" type="button" onClick={onRetry} style={{ alignSelf: "flex-start" }}>사람 목록 다시 불러오기</button>
+      </>
+    );
+  } else if (load.profiles.length === 0) {
+    body = (
+      <>
+        <p className="sj-body">아직 계산한 명식이 없어요. 출생 정보를 입력하면 그 명식으로 리포트를 만들 수 있어요.</p>
+        <Link className="sj-button-secondary" href="/birth" style={{ alignSelf: "flex-start" }}>내 명식 계산하기</Link>
+      </>
+    );
+  } else if (pair && load.profiles.length < 2) {
+    body = (
+      <>
+        <p className="sj-body">궁합은 두 사람이 필요해요. 함께 볼 사람을 사람 보관함에 먼저 저장해 주세요.</p>
+        <Link className="sj-button-secondary" href="/people/new" style={{ alignSelf: "flex-start" }}>사람 추가</Link>
+      </>
+    );
+  } else {
+    const invalid = validateOrderSelection(productId, selection);
+    const sameProfile = pair && Boolean(selection.profileId) && selection.profileId === selection.partnerProfileId;
+    const options = load.profiles.map((profile) => <option key={profile.id} value={profile.id}>{profileOptionLabel(profile)}</option>);
+    body = (
+      <>
+        <div className="sj-field">
+          <label className="sj-label" htmlFor={firstId}>{pair ? "기준이 되는 사람" : "누구의 명식으로 볼까요"}</label>
+          <select id={firstId} className="sj-select" value={selection.profileId ?? ""} onChange={(event) => onChange({ ...selection, profileId: event.target.value || null })}>
+            {!selection.profileId && <option value="">사람을 골라 주세요</option>}
+            {options}
+          </select>
+        </div>
+        {pair && (
+          <>
+            <div className="sj-field">
+              <label className="sj-label" htmlFor={secondId}>함께 볼 사람</label>
+              <select id={secondId} className="sj-select" value={selection.partnerProfileId ?? ""} aria-invalid={sameProfile || undefined} aria-describedby={invalid ? errorId : undefined} onChange={(event) => onChange({ ...selection, partnerProfileId: event.target.value || null })}>
+                {!selection.partnerProfileId && <option value="">사람을 골라 주세요</option>}
+                {options}
+              </select>
+            </div>
+            <fieldset className="sj-field">
+              <legend className="sj-label" style={{ marginBottom: 8 }}>어떤 관계로 볼까요</legend>
+              <div className="sj-segmented">
+                {COMPAT_RELATIONS.map((item) => (
+                  <button key={item.id} type="button" className="sj-segment" aria-pressed={(selection.relationType ?? "couple") === item.id} onClick={() => onChange({ ...selection, relationType: item.id })}>{item.label}</button>
+                ))}
+              </div>
+            </fieldset>
+          </>
+        )}
+        {invalid && <p id={errorId} className="sj-error" role="alert">{invalid}</p>}
+        <p className="sj-help">{pair ? "두 사람의 지금 명식을 나란히 놓고 리포트를 만들어요." : "고른 사람의 지금 명식으로 리포트를 만들어요."}</p>
+      </>
+    );
+  }
+
+  return (
+    <section className="sj-section" aria-labelledby="checkout-profile">
+      <h2 id="checkout-profile" className="sj-h2">기준 명식</h2>
+      {body}
+    </section>
+  );
+}
+
+function selectionLabel(profiles: readonly ServerProfile[], selection: OrderProfileSelection, pair: boolean) {
+  const name = (id: string | null | undefined) => profiles.find((profile) => profile.id === id)?.nickname ?? null;
+  const first = name(selection.profileId);
+  if (!pair) return first;
+  const second = name(selection.partnerProfileId);
+  return first && second ? joinNames(first, second) : first ?? second;
+}
+
 export function CheckoutScreen({ productId }: { productId: ProductId }) {
   const router = useRouter();
   const fallback = getProduct(productId);
   const consentId = useId();
+  const requirement = orderProfileRequirement(productId);
   const [product, setProduct] = useState<ProductView | null>(null);
   const [productError, setProductError] = useState(false);
+  const [profileLoad, setProfileLoad] = useState<ProfileLoad>({ status: "loading" });
+  const [profileAttempt, setProfileAttempt] = useState(0);
+  const [selection, setSelection] = useState<OrderProfileSelection>({ relationType: "couple" });
   const [agreed, setAgreed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState("");
@@ -371,7 +511,38 @@ export function CheckoutScreen({ productId }: { productId: ProductId }) {
     return () => { active = false; };
   }, [productId]);
 
+  useEffect(() => {
+    if (requirement === "none") return;
+    let active = true;
+    void listProfiles()
+      .then((profiles) => {
+        if (!active) return;
+        setProfileLoad({ status: "ready", profiles });
+        setSelection(defaultOrderSelection(profiles));
+      })
+      .catch((reason) => active && setProfileLoad({ status: "error", message: formatConnectionError(reason, "저장한 사람을 불러오지 못했어요. 연결 상태를 확인한 뒤 다시 시도해 주세요.") }));
+    return () => { active = false; };
+  }, [requirement, profileAttempt]);
+
+  function retryProfiles() {
+    setProfileLoad({ status: "loading" });
+    setProfileAttempt((value) => value + 1);
+  }
+
+  function changeSelection(next: OrderProfileSelection) {
+    setSelection(next);
+    setServerError("");
+  }
+
+  const selectionError = requirement === "none" ? null
+    : profileLoad.status !== "ready" ? "기준 명식을 고른 뒤 결제할 수 있어요."
+    : validateOrderSelection(productId, selection);
+
   async function submitOrder() {
+    if (selectionError) {
+      setServerError(selectionError);
+      return;
+    }
     if (!agreed) {
       setServerError("주문 내용과 환불 규정을 확인한 뒤 동의에 표시해 주세요.");
       return;
@@ -379,10 +550,10 @@ export function CheckoutScreen({ productId }: { productId: ProductId }) {
     setSubmitting(true);
     setServerError("");
     try {
-      const created = await createOrder(productId);
+      const created = await createOrder(productId, selection);
       router.push(`/orders/${created.order_id}?productId=${productId}&state=pending&source=server`);
     } catch (error) {
-      setServerError(formatApiRequestError(error, "주문을 만들지 못했어요. 잠시 후 다시 시도해 주세요."));
+      setServerError(formatOrderError(error));
       setSubmitting(false);
     }
   }
@@ -390,7 +561,8 @@ export function CheckoutScreen({ productId }: { productId: ProductId }) {
   const title = product?.title ?? fallback.title;
   const isReport = (product?.kind ?? fallback.kind) === "report";
   const amount = product ? price(product.priceAmount) : productError ? "확인하지 못했어요" : "확인 중";
-  const canSubmit = PAYMENTS_ENABLED && Boolean(product) && !submitting;
+  const canSubmit = PAYMENTS_ENABLED && Boolean(product) && !submitting && !selectionError;
+  const reference = profileLoad.status === "ready" ? selectionLabel(profileLoad.profiles, selection, requirement === "pair") : null;
 
   return (
     <main className="sj-page" aria-labelledby="checkout-title">
@@ -412,6 +584,7 @@ export function CheckoutScreen({ productId }: { productId: ProductId }) {
               <span className="sj-row-sub">{isReport ? "한 번 구매하면 보관함에 남아요" : "구매하면 이용권이 바로 지급돼요"}</span>
             </span>
           </div>
+          {reference && <SummaryRow label="기준 명식" value={reference} />}
           <SummaryRow label="상품 금액" value={amount} />
           <div className="sj-row-in-group" style={{ justifyContent: "space-between", minHeight: 60, background: "var(--sj-canvas)", borderTopColor: "var(--sj-line)", cursor: "default" }}>
             <span style={{ fontSize: 15, fontWeight: 700 }}>결제할 금액</span>
@@ -420,6 +593,8 @@ export function CheckoutScreen({ productId }: { productId: ProductId }) {
         </div>
         <p className="sj-fine">금액은 결제 직전에 한 번 더 확인해요. 화면의 금액과 다르면 결제되지 않아요.</p>
       </section>
+
+      <OrderProfileStep productId={productId} load={profileLoad} selection={selection} onChange={changeSelection} onRetry={retryProfiles} />
 
       <section className="sj-section" aria-labelledby="checkout-method">
         <h2 id="checkout-method" className="sj-h2">결제 수단</h2>
@@ -506,6 +681,8 @@ export function PaymentStatusScreen({ orderId, productId, status, server = false
     const title = serverProductTitle ?? product.title;
     const completed = serverOrder.status === "COMPLETED";
     const statusLabel = ORDER_STATUS_LABELS[serverOrder.status] ?? serverOrder.status;
+    const reference = orderReferenceLabel(serverOrder);
+    const relation = serverOrder.relation_type ? COMPAT_RELATIONS.find((item) => item.id === serverOrder.relation_type)?.label ?? null : null;
     const headline = completed ? (product.kind === "report" ? "리포트가 준비됐어요" : "이용권이 지급됐어요")
       : serverOrder.status === "FAILED" ? "결제가 완료되지 않았어요"
       : serverOrder.status === "REFUNDED" ? "환불이 끝났어요"
@@ -527,7 +704,9 @@ export function PaymentStatusScreen({ orderId, productId, status, server = false
         </section>
         <section className="sj-group" aria-label="주문 정보">
           <SummaryRow label="상품" value={title} strong />
-          <SummaryRow label="주문번호" value={serverOrder.order_id} />
+          {reference && <SummaryRow label="기준 명식" value={reference} />}
+          {relation && <SummaryRow label="관계" value={relation} />}
+          <SummaryRow label="주문번호" value={serverOrder.order_number} />
           <SummaryRow label="결제 금액" value={price(serverOrder.amount_minor)} strong />
           <SummaryRow label="주문 일시" value={longDateTime(serverOrder.created_at)} />
           <SummaryRow label="상태" value={statusLabel} />
@@ -666,12 +845,18 @@ const BILLING_STATUS_LABELS: Record<string, { label: string; tone: "dark" | "acc
   REFUNDED: { label: "환불 완료", tone: "plain" },
 };
 
-const REFUND_STATUS_LABELS: Record<string, string> = {
-  REQUESTED: "환불 요청됨",
-  APPROVED: "환불 승인",
-  REFUNDED: "환불 완료",
-  REJECTED: "환불 거절",
+const REFUND_STATUS_LABELS: Record<string, { label: string; tone: "dark" | "accent" | "plain" }> = {
+  REQUESTED: { label: "환불 요청됨", tone: "plain" },
+  APPROVED: { label: "환불 처리 중", tone: "plain" },
+  COMPLETED: { label: "환불 완료", tone: "dark" },
+  REFUNDED: { label: "환불 완료", tone: "dark" },
+  REJECTED: { label: "환불 거절", tone: "accent" },
+  FAILED: { label: "환불 실패", tone: "accent" },
 };
+
+function badgeClass(tone: "dark" | "accent" | "plain") {
+  return `sj-badge${tone === "dark" ? " sj-badge-dark" : tone === "accent" ? " sj-badge-accent" : ""}`;
+}
 
 function orderLinkState(status: string): DemoOrderStatus {
   if (status === "COMPLETED" || status === "PAID" || status === "FULFILLING" || status === "REFUNDED") return "success";
@@ -682,7 +867,8 @@ function orderLinkState(status: string): DemoOrderStatus {
 export function BillingScreen() {
   const hydrated = useHydrated();
   const [orders, setOrders] = useState<LiveOrder[] | null>(null);
-  const [refunds, setRefunds] = useState<LiveRefund[]>([]);
+  const [refunds, setRefunds] = useState<LiveRefundListItem[] | null>(null);
+  const [refundError, setRefundError] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expired, setExpired] = useState(false);
 
@@ -690,17 +876,16 @@ export function BillingScreen() {
     if (!hydrated) return;
     let active = true;
     void listOrders()
-      .then(async (items) => {
-        if (!active) return;
-        setOrders(items);
-        const lists = await Promise.all(items.map((order) => listOrderRefunds(order.order_id).catch(() => [] as LiveRefund[])));
-        if (active) setRefunds(lists.flat());
-      })
+      .then((items) => active && setOrders(items))
       .catch((cause: unknown) => {
         if (!active) return;
         setExpired(isAccountSessionExpired(cause));
         setError(formatApiRequestError(cause, "주문 내역을 불러오지 못했어요. 잠시 후 다시 시도해 주세요."));
       });
+    // One `GET /refunds` covers every order; it keeps working while payments are paused.
+    void listRefunds()
+      .then((items) => active && setRefunds(items))
+      .catch(() => active && setRefundError(true));
     return () => { active = false; };
   }, [hydrated]);
 
@@ -718,7 +903,7 @@ export function BillingScreen() {
     );
   }
 
-  const productName = (orderId: string) => orders.find((order) => order.order_id === orderId)?.product_name ?? "주문";
+  const productName = (refund: LiveRefundListItem) => refund.productName ?? orders.find((order) => order.order_id === refund.orderId)?.product_name ?? "주문";
 
   return (
     <main className="sj-page" aria-labelledby="billing-title">
@@ -732,19 +917,21 @@ export function BillingScreen() {
         {orders.length === 0 ? (
           <p className="sj-meta">아직 주문이 없어요. 리포트나 이용권을 사면 여기에 쌓여요.</p>
         ) : (
-          <ul className="sj-list" style={{ borderTop: "1px solid var(--sj-line)" }}>
+          <ul className="sj-list" aria-label="주문 목록" style={{ borderTop: "1px solid var(--sj-line)" }}>
             {orders.map((order) => {
               const status = BILLING_STATUS_LABELS[order.status] ?? { label: order.status, tone: "plain" as const };
               const known = isProductId(order.product_id);
+              const reference = orderReferenceLabel(order);
               const content = (
                 <>
                   <span className="sj-row-main">
                     <span className="sj-row-title">{order.product_name}</span>
                     <span className="sj-row-sub"><time dateTime={order.created_at}>{shortDate(order.created_at)}</time>, 주문번호 {order.order_number}</span>
+                    {reference && <span className="sj-row-sub">기준: {reference}</span>}
                   </span>
                   <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flex: "0 0 auto" }}>
                     <span style={{ fontSize: 15, fontWeight: 700 }}>{price(order.amount_minor)}</span>
-                    <span className={`sj-badge${status.tone === "dark" ? " sj-badge-dark" : status.tone === "accent" ? " sj-badge-accent" : ""}`}>{status.label}</span>
+                    <span className={badgeClass(status.tone)}>{status.label}</span>
                   </span>
                   {known && <ChevronIcon className="sj-chevron" />}
                 </>
@@ -763,22 +950,30 @@ export function BillingScreen() {
 
       <section className="sj-section" aria-labelledby="billing-refunds">
         <h2 id="billing-refunds" className="sj-h2">환불 요청</h2>
-        {refunds.length === 0 ? (
+        {refundError ? (
+          <p className="sj-error" role="alert">환불 내역을 불러오지 못했어요. 새로고침한 뒤 다시 확인해 주세요.</p>
+        ) : refunds === null ? (
+          <p className="sj-meta" aria-busy="true">환불 내역을 불러오고 있어요</p>
+        ) : refunds.length === 0 ? (
           <p className="sj-meta">환불 요청이 없어요.</p>
         ) : (
-          <ul className="sj-list" style={{ borderTop: "1px solid var(--sj-line)" }}>
-            {refunds.map((refund) => (
-              <li key={refund.id} className="sj-row" style={{ cursor: "default" }}>
-                <span className="sj-row-main">
-                  <span className="sj-row-title">{productName(refund.orderId)}</span>
-                  <span className="sj-row-sub"><time dateTime={refund.createdAt}>{shortDate(refund.createdAt)}</time>{refund.reason ? `, ${refund.reason}` : ""}</span>
-                </span>
-                <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flex: "0 0 auto" }}>
-                  <span style={{ fontSize: 15, fontWeight: 700 }}>{price(refund.amount)}</span>
-                  <span className="sj-badge">{REFUND_STATUS_LABELS[refund.status] ?? refund.status}</span>
-                </span>
-              </li>
-            ))}
+          <ul className="sj-list" aria-label="환불 요청 목록" style={{ borderTop: "1px solid var(--sj-line)" }}>
+            {refunds.map((refund) => {
+              const status = REFUND_STATUS_LABELS[refund.status] ?? { label: refund.status, tone: "plain" as const };
+              return (
+                <li key={refund.id} className="sj-row" style={{ cursor: "default" }}>
+                  <span className="sj-row-main">
+                    <span className="sj-row-title">{productName(refund)}</span>
+                    <span className="sj-row-sub"><time dateTime={refund.createdAt}>{shortDate(refund.createdAt)}</time> 요청{refund.orderNumber ? `, 주문번호 ${refund.orderNumber}` : ""}</span>
+                    {refund.reason && <span className="sj-row-sub">{refund.reason}</span>}
+                  </span>
+                  <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flex: "0 0 auto" }}>
+                    <span style={{ fontSize: 15, fontWeight: 700 }}>{price(refund.amount)}</span>
+                    <span className={badgeClass(status.tone)}>{status.label}</span>
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>

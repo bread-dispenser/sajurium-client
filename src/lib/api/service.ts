@@ -44,9 +44,17 @@ export type LiveOrder = {
   product_id: string;
   product_name: string;
   created_at: string;
+  /** Reference profile the order was bought for. Null for credit packs, or once the profile was deleted. */
+  profile_id: string | null;
+  profile_display_name: string | null;
+  partner_profile_id: string | null;
+  partner_profile_display_name: string | null;
+  relation_type: string | null;
 };
 
 export type LiveRefund = { id: string; orderId: string; amount: number; reason: string | null; status: string; createdAt: string };
+/** A row of `GET /refunds`: my refund requests across all orders, with the order number and product name. */
+export type LiveRefundListItem = LiveRefund & { orderNumber: string | null; productName: string | null };
 
 export type CreditSnapshot = { balance: { balance: number }; ledger: { items: CreditLedgerEntry[] } };
 export type ServerProfile = { id: string; nickname: string; isSelf: boolean; relationship: string | null; birthYear: number; birthTimeUnknown: boolean; birthLocation: string | null; createdAt: string };
@@ -968,13 +976,77 @@ function consultationTopic(value: string) {
   return value === "love" || value === "career" || value === "wealth" ? value : "general";
 }
 
-export async function createOrder(productId: string): Promise<LiveOrder> {
+export type CompatibilityRelation = "couple" | "friend" | "colleague" | "family";
+
+/** Which reference profiles an order needs: none for credit packs, one for reports, two for compatibility. */
+export type OrderProfileRequirement = "none" | "single" | "pair";
+
+/** What the buyer picked in checkout. Ids are the string ids from `listProfiles()`. */
+export type OrderProfileSelection = {
+  profileId?: string | null;
+  partnerProfileId?: string | null;
+  relationType?: CompatibilityRelation | null;
+};
+
+export function orderProfileRequirement(productId: string): OrderProfileRequirement {
+  const code = PRODUCT_CODES[productId];
+  if (!code || code.startsWith("credit_pack")) return "none";
+  return code.startsWith("compatibility") ? "pair" : "single";
+}
+
+/** Korean copy for a selection the server would reject, or null when the selection can be sent. */
+export function validateOrderSelection(productId: string, selection: OrderProfileSelection): string | null {
+  const requirement = orderProfileRequirement(productId);
+  if (requirement === "none") return null;
+  if (!selection.profileId) return requirement === "pair" ? "기준이 될 사람을 골라 주세요." : "어느 명식으로 볼지 골라 주세요.";
+  if (requirement === "single") return null;
+  if (!selection.partnerProfileId) return "함께 볼 사람을 골라 주세요.";
+  if (selection.partnerProfileId === selection.profileId) return "서로 다른 두 사람을 골라 주세요.";
+  return null;
+}
+
+/**
+ * Body for `POST /orders`. Reports carry `profile_id`; compatibility carries both profiles and the
+ * relation; credit packs carry neither (the server would ignore them anyway). Throws the Korean
+ * validation copy when the selection is incomplete so an invalid body is never sent.
+ */
+export function buildOrderRequest(productId: string, selection: OrderProfileSelection, idempotencyKey: string): Schema<"OrderCreate"> {
   const productCode = PRODUCT_CODES[productId];
   if (!productCode) throw new Error("이 상품은 실제 카탈로그에 없습니다.");
-  const order = (await request<ApiOrder>("/api/v1/orders", {
-    method: "POST",
-    body: { product_code: productCode, idempotency_key: newIdempotencyKey("order") },
-  })).data;
+  const invalid = validateOrderSelection(productId, selection);
+  if (invalid) throw new Error(invalid);
+  const body: Schema<"OrderCreate"> = { product_code: productCode, idempotency_key: idempotencyKey };
+  const requirement = orderProfileRequirement(productId);
+  if (requirement === "none") return body;
+  body.profile_id = Number(selection.profileId);
+  if (requirement === "pair") {
+    body.partner_profile_id = Number(selection.partnerProfileId);
+    body.relation_type = selection.relationType ?? "couple";
+  }
+  return body;
+}
+
+const ORDER_ERROR_COPY: Record<string, string> = {
+  PROFILE_REQUIRED: "어느 명식으로 볼지 골라 주세요.",
+  PROFILE_NOT_FOUND: "고른 사람을 찾을 수 없어요. 사람 보관함에서 지워졌을 수 있으니 목록을 새로 불러와 다시 골라 주세요.",
+  CHART_REQUIRED: "고른 사람의 명식이 아직 없어요. 사람 보관함에서 명식을 계산한 뒤 다시 시도해 주세요.",
+  SAME_PROFILE: "서로 다른 두 사람을 골라 주세요.",
+  PAYMENTS_DISABLED: "결제와 주문은 준비 중이에요. 지금은 구매할 수 없어요.",
+  PRODUCT_NOT_FOUND: "지금 판매하지 않는 상품이에요. 상품 목록에서 다시 골라 주세요.",
+};
+
+/** Korean copy for a failed `POST /orders`, covering the server's profile ownership and validation codes. */
+export function formatOrderError(error: unknown): string {
+  if (error instanceof ApiRequestError && !isCredentialRejection(error)) {
+    const copy = ORDER_ERROR_COPY[error.error.code];
+    if (copy) return `${copy}${error.error.request_id ? ` (문의 시 참조 ID: ${error.error.request_id})` : ""}`;
+  }
+  return formatApiRequestError(error, "주문을 만들지 못했어요. 잠시 후 다시 시도해 주세요.");
+}
+
+export async function createOrder(productId: string, selection: OrderProfileSelection = {}): Promise<LiveOrder> {
+  const body = buildOrderRequest(productId, selection, newIdempotencyKey("order"));
+  const order = (await request<ApiOrder>("/api/v1/orders", { method: "POST", body })).data;
   return toLiveOrder(order);
 }
 
@@ -989,6 +1061,11 @@ function toLiveOrder(order: ApiOrder): LiveOrder {
     product_id: PRODUCT_IDS[order.product_code] ?? order.product_code,
     product_name: order.product_name,
     created_at: toIso(order.created_at)!,
+    profile_id: order.profile_id != null ? String(order.profile_id) : null,
+    profile_display_name: order.profile_display_name ?? null,
+    partner_profile_id: order.partner_profile_id != null ? String(order.partner_profile_id) : null,
+    partner_profile_display_name: order.partner_profile_display_name ?? null,
+    relation_type: order.relation_type ?? null,
   };
 }
 
@@ -996,9 +1073,19 @@ export async function listOrders(): Promise<LiveOrder[]> {
   return (await request<ApiOrder[]>("/api/v1/orders")).data.map(toLiveOrder);
 }
 
-export async function listOrderRefunds(orderId: string): Promise<LiveRefund[]> {
-  const refunds = (await request<Schema<"Refund">[]>(`/api/v1/orders/${orderId}/refunds`)).data;
-  return refunds.map((refund) => ({ id: String(refund.id), orderId: String(refund.order_id), amount: refund.amount, reason: refund.reason ?? null, status: refund.status, createdAt: toIso(refund.created_at)! }));
+/** All of my refund requests in one call (`GET /refunds`, newest first). Works while payments are paused. */
+export async function listRefunds(): Promise<LiveRefundListItem[]> {
+  const refunds = (await request<Schema<"RefundListItem">[]>("/api/v1/refunds?skip=0&limit=50")).data;
+  return refunds.map((refund) => ({
+    id: String(refund.id),
+    orderId: String(refund.order_id),
+    orderNumber: refund.order_number ?? null,
+    productName: refund.product_name ?? null,
+    amount: refund.amount,
+    reason: refund.reason ?? null,
+    status: refund.status,
+    createdAt: toIso(refund.created_at)!,
+  }));
 }
 
 export async function getOrder(orderId: string): Promise<LiveOrder> {
