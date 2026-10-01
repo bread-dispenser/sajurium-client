@@ -419,7 +419,7 @@ function toSections(value: unknown[]): SharedSection[] {
   });
 }
 
-function PublicHeader({ expires }: { expires?: Date | null }) {
+export function PublicHeader({ expires }: { expires?: Date | null }) {
   return (
     <header className="sj-public-header" style={{ borderBottom: "1px solid var(--sj-line)", margin: "0 calc(-1 * var(--sj-gutter))", padding: "0 var(--sj-gutter)" }}>
       <Link className="sj-wordmark" href="/" style={{ minHeight: 44, display: "inline-flex", alignItems: "center" }}>사주리움</Link>
@@ -539,6 +539,24 @@ function SharedBody({ view }: { view: SharedView }) {
   );
 }
 
+export const MALFORMED_SHARE_LINK_MESSAGE = "링크 주소가 잘렸거나 올바르지 않아요. 공유한 사람에게 링크를 다시 보내 달라고 부탁해 주세요.";
+
+/** Shared failure state for every way a share link can fail to open: expired, closed, missing or malformed. */
+export function SharedResultUnavailable({ message }: { message: string }) {
+  return (
+    <div className="sj-public">
+      <PublicHeader />
+      <main className="sj-page" aria-labelledby="shared-title" style={{ flex: "1 1 auto", paddingTop: 28 }}>
+        <section className="sj-section">
+          <h1 id="shared-title" className="sj-h1">공유 결과를 열 수 없어요</h1>
+          <p className="sj-lead" role="alert">{message}</p>
+        </section>
+        <div style={{ marginTop: "auto" }}><StartOwnChart /></div>
+      </main>
+    </div>
+  );
+}
+
 export function LiveSharedResultScreen({ token }: { token: string }) {
   const [content, setContent] = useState<SharedView | null>(null);
   const [error, setError] = useState("");
@@ -562,20 +580,7 @@ export function LiveSharedResultScreen({ token }: { token: string }) {
     );
   }
 
-  if (!content) {
-    return (
-      <div className="sj-public">
-        <PublicHeader />
-        <main className="sj-page" aria-labelledby="shared-title" style={{ flex: "1 1 auto", paddingTop: 28 }}>
-          <section className="sj-section">
-            <h1 id="shared-title" className="sj-h1">공유 결과를 열 수 없어요</h1>
-            <p className="sj-lead" role="alert">{error}</p>
-          </section>
-          <div style={{ marginTop: "auto" }}><StartOwnChart /></div>
-        </main>
-      </div>
-    );
-  }
+  if (!content) return <SharedResultUnavailable message={error} />;
 
   const birthShown = Boolean(content.birthDate) || Boolean(content.birthTime) || content.birthTimeUnknown;
   return (
