@@ -12,7 +12,6 @@ test.beforeEach(async ({ page }) => {
 
 test("keeps unsupported production surfaces explicitly unavailable", async ({ page }) => {
   const cases = [
-    ["/profile", "출생 정보 수정은 준비 중이에요"],
     ["/platform-labs", "플랫폼 랩은 아직 제공되지 않아요"],
     ["/admin/operations", "운영 작업은 아직 제공되지 않아요"],
     ["/admin/analytics", "운영 분석은 아직 제공되지 않아요"],

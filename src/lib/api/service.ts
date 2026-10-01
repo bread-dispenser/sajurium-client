@@ -375,6 +375,80 @@ export async function createProfile(profile: ProfileInput): Promise<ServerProfil
   return toServerProfile(item);
 }
 
+/* ---------- Profile birth edit ---------- */
+
+export type ServerProfileDetail = {
+  id: string;
+  nickname: string;
+  isSelf: boolean;
+  relationship: string | null;
+  birthYear: number;
+  birthMonth: number;
+  birthDay: number;
+  birthTimeHour: number | null;
+  birthTimeMinute: number | null;
+  birthTimeUnknown: boolean;
+  calendar: "solar" | "lunar";
+  leapMonth: boolean;
+  birthLocation: string | null;
+  gender: "female" | "male";
+};
+
+export type ProfileBirthUpdate = Omit<ServerProfileDetail, "id" | "isSelf" | "relationship">;
+
+function toProfileDetail(profile: Schema<"SajuProfileDetail">): ServerProfileDetail {
+  return {
+    id: String(profile.id),
+    nickname: profile.nickname,
+    isSelf: profile.is_self,
+    relationship: profile.relationship_type ?? null,
+    birthYear: profile.birth_year,
+    birthMonth: profile.birth_month,
+    birthDay: profile.birth_day,
+    birthTimeHour: profile.birth_time_unknown ? null : profile.birth_time_hour ?? null,
+    birthTimeMinute: profile.birth_time_unknown ? null : profile.birth_time_minute ?? null,
+    birthTimeUnknown: profile.birth_time_unknown,
+    calendar: profile.calendar_type === "lunar" ? "lunar" : "solar",
+    leapMonth: profile.is_leap_month,
+    birthLocation: profile.birth_location ?? null,
+    gender: profile.gender_for_calculation === "male" ? "male" : "female",
+  };
+}
+
+export async function getProfile(profileId: string): Promise<ServerProfileDetail> {
+  return toProfileDetail((await request<Schema<"SajuProfileDetail">>(`/api/v1/profiles/${profileId}`)).data);
+}
+
+/**
+ * Saves edited birth information, then calculates a new chart snapshot. The server never
+ * overwrites earlier charts or reports, so they stay in the library. When the edited profile is
+ * the one this browser's journey points at, a new basic report is made for the new chart and the
+ * journey moves to it so the chart and report screens show the same snapshot.
+ */
+export async function updateProfileBirth(profileId: string, update: ProfileBirthUpdate): Promise<{ profile: ServerProfileDetail; chartId: string; journey: ServerJourney | null }> {
+  const body: Schema<"SajuProfileUpdate"> = {
+    nickname: update.nickname,
+    birth_year: update.birthYear,
+    birth_month: update.birthMonth,
+    birth_day: update.birthDay,
+    birth_time_unknown: update.birthTimeUnknown,
+    birth_time_hour: update.birthTimeUnknown ? null : update.birthTimeHour,
+    birth_time_minute: update.birthTimeUnknown ? null : update.birthTimeMinute ?? 0,
+    calendar_type: update.calendar,
+    is_leap_month: update.calendar === "lunar" && update.leapMonth,
+    birth_location: update.birthLocation,
+    gender_for_calculation: update.gender,
+  };
+  const profile = toProfileDetail((await request<Schema<"SajuProfileDetail">>(`/api/v1/profiles/${profileId}`, { method: "PATCH", body })).data);
+  const chart = (await request<ApiChart>(`/api/v1/profiles/${profileId}/chart`, { method: "POST", body: {} })).data;
+  const current = readServerJourney();
+  if (!current || current.profileId !== profileId) return { profile, chartId: String(chart.id), journey: null };
+  const report = (await request<ApiReport>(`/api/v1/charts/${chart.id}/reports/basic`, { method: "POST", body: {} })).data;
+  const journey = { profileId, chartId: String(chart.id), reportId: String(report.id) };
+  window.localStorage.setItem(JOURNEY_KEY, JSON.stringify(journey));
+  return { profile, chartId: journey.chartId, journey };
+}
+
 export async function deleteProfile(profileId: string) {
   await request(`/api/v1/profiles/${profileId}`, { method: "DELETE" });
 }
@@ -513,6 +587,53 @@ function toLiveReport(report: ApiReport, journey?: ServerJourney | null): LiveRe
     created_at: toIso(report.created_at)!,
     updated_at: toIso(report.updated_at ?? report.created_at)!,
   };
+}
+
+/* ---------- Compatibility results ---------- */
+
+export type ServerCompatibilityDetail = {
+  id: string;
+  relation: "couple" | "friend" | "colleague" | "family" | string;
+  summary: string;
+  limitedByUnknownTime: boolean;
+  profileAId: string;
+  profileBId: string;
+  snapshotAId: string;
+  snapshotBId: string;
+  status: string;
+  lockedSections: string[];
+  createdAt: string;
+};
+
+function compatibilityPreview(result: ApiCompatibility) {
+  const value = (result.result ?? {}) as { free_preview?: { summary?: string; limited_by_unknown_time?: boolean }; paid_detail?: { sections?: Array<{ title?: unknown; locked?: unknown }> } };
+  return {
+    summary: value.free_preview?.summary ?? "관계 결과를 준비했습니다.",
+    limited: value.free_preview?.limited_by_unknown_time ?? false,
+    locked: (value.paid_detail?.sections ?? []).filter((section) => section.locked === true && typeof section.title === "string").map((section) => section.title as string),
+  };
+}
+
+export async function getCompatibility(id: string): Promise<ServerCompatibilityDetail> {
+  const result = (await request<ApiCompatibility>(`/api/v1/compatibilities/${id}`)).data;
+  const preview = compatibilityPreview(result);
+  return {
+    id: String(result.id),
+    relation: result.relation_type,
+    summary: preview.summary,
+    limitedByUnknownTime: preview.limited,
+    profileAId: String(result.profile_a_id),
+    profileBId: String(result.profile_b_id),
+    snapshotAId: String(result.snapshot_a_id),
+    snapshotBId: String(result.snapshot_b_id),
+    status: result.generation_status,
+    lockedSections: preview.locked,
+    createdAt: toIso(result.created_at)!,
+  };
+}
+
+export async function getChart(chartId: string): Promise<ChartView> {
+  return toChartView((await request<ApiChart>(`/api/v1/charts/${chartId}`)).data);
 }
 
 export async function createBasicReading(profile: ProfileInput): Promise<{ journey: ServerJourney; report: LiveReport }> {

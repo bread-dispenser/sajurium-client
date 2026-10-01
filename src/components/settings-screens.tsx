@@ -7,6 +7,7 @@ import { parseBirthDate } from "@/lib/contracts";
 import type { FeedbackEntry, FeedbackReason } from "@/lib/domain";
 import { FEEDBACK_OPTIONS, INITIAL_BIRTH, getTopic } from "@/lib/fixtures";
 import { useHydrated } from "@/hooks/use-hydrated";
+import { readServerJourney } from "@/lib/api/service";
 import {
   birthDraftStore,
   clearAllOwnedStorage,
@@ -94,6 +95,8 @@ export function SettingsScreen() {
   const birthYear = /^\d{4}/.exec(birth.birthDate)?.[0];
   const birthSummary = `${birthYear ? `${birthYear}년생` : "생년 확인 필요"}, ${calendarLabel(birth.calendar, birth.leapMonth)}, ${birth.birthTimeUnknown || !birth.birthTime ? "태어난 시간 모름" : "태어난 시간 입력함"}`;
   const deviceExpanded = deviceOpen || hasStorageProblem;
+  // 서버에 계산한 명식이 있으면 출생 정보는 서버 프로필에서 고친다. 없으면 이 기기 프로필만 고친다.
+  const hasServerProfile = readServerJourney() !== null;
 
   function clearConsultations() {
     const inspection = libraryStore.inspect();
@@ -177,8 +180,12 @@ export function SettingsScreen() {
       <section className="sj-section" style={{ gap: 0 }} aria-labelledby="settings-me-title">
         <h2 id="settings-me-title" className="sj-group-title">내 정보</h2>
         <div className="sj-group">
-          <DisclosureRow title="출생 정보 수정" sub="이 기기에 저장된 프로필" expanded={birthOpen} controls="settings-birth-panel" onToggle={() => setBirthOpen((value) => !value)} />
-          {birthOpen && (
+          {hasServerProfile ? (
+            <GroupRowLink href="/profile" title="출생 정보 수정" sub="바꾸면 새 명식으로 다시 계산해요" />
+          ) : (
+            <DisclosureRow title="출생 정보 수정" sub="이 기기에 저장된 프로필" expanded={birthOpen} controls="settings-birth-panel" onToggle={() => setBirthOpen((value) => !value)} />
+          )}
+          {!hasServerProfile && birthOpen && (
             <div id="settings-birth-panel" style={{ padding: "4px 16px 20px", borderTop: "1px solid var(--sj-track)" }}>
               <form className="sj-section" style={{ gap: 18, paddingTop: 12 }} onSubmit={saveBirth} noValidate>
                 <p className="sj-help">핵심 값만 여기서 바꿀 수 있어요. 양력/음력, 윤달, 출생지, 시간대, 계산 기준과 관심사는 전체 프로필에서 관리하세요.</p>

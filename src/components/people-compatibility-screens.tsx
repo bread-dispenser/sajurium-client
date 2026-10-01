@@ -13,7 +13,8 @@ import { useHydrated } from "@/hooks/use-hydrated";
 import type { ChartView } from "@/lib/saju";
 import { CorruptState, EmptyState, LoadingState } from "./page-state";
 import { InfoIcon, PlusIcon } from "./ui/icons";
-import { createCompatibility, createProfile, deleteProfile, formatApiRequestError, getCurrentChart, isAccountSessionExpired, listProfiles, type ServerProfile } from "@/lib/api/service";
+import { createCompatibility, createProfile, deleteProfile, formatApiRequestError, getChart, getCompatibility, getCurrentChart, isAccountSessionExpired, listProfiles, type ServerCompatibilityDetail, type ServerProfile } from "@/lib/api/service";
+import { ApiRequestError } from "@/lib/api/client";
 
 const PEOPLE_LIMIT = 20;
 
@@ -148,7 +149,10 @@ export function LivePeopleScreen() {
                   <span className="sj-row-sub">{profileSub(profile)}</span>
                 </span>
                 {pendingDeleteId !== profile.id && (
-                  <button className="sj-text-button" type="button" style={{ color: "var(--sj-muted)", padding: "0 4px" }} aria-label={`${profile.nickname} 삭제`} onClick={() => { setPendingDeleteId(profile.id); setMessage(""); setError(""); }}>삭제</button>
+                  <>
+                    <Link className="sj-text-button" href={`/people/${profile.id}/edit`} style={{ padding: "0 4px" }} aria-label={`${profile.nickname} 출생 정보 수정`}>수정</Link>
+                    <button className="sj-text-button" type="button" style={{ color: "var(--sj-muted)", padding: "0 4px" }} aria-label={`${profile.nickname} 삭제`} onClick={() => { setPendingDeleteId(profile.id); setMessage(""); setError(""); }}>삭제</button>
+                  </>
                 )}
               </div>
               {pendingDeleteId === profile.id && (
@@ -334,7 +338,7 @@ function PersonForm() {
   );
 }
 
-function DeepReportCard() {
+function DeepReportCard({ sections = [] }: { sections?: string[] }) {
   return (
     <section className="sj-card" aria-labelledby="compat-deep-title">
       <div style={{ display: "flex", gap: 14 }}>
@@ -344,6 +348,14 @@ function DeepReportCard() {
           <p className="sj-meta" style={{ color: "var(--sj-ink-strong-muted)" }}>관계 유형에 맞춘 분석과 두 사람의 소통 방식을 더 깊게 살펴봐요.</p>
         </div>
       </div>
+      {sections.length > 0 && (
+        <div className="sj-section" style={{ gap: 6 }}>
+          <p className="sj-meta">결제하면 열리는 내용</p>
+          <ul className="sj-chips" style={{ margin: 0, padding: 0, listStyle: "none" }}>
+            {sections.map((title) => <li key={title} className="sj-chip">{title}</li>)}
+          </ul>
+        </div>
+      )}
       <button className="sj-button" type="button" disabled style={{ minHeight: 48, fontSize: 15 }}>결제 준비 중</button>
       <Link className="sj-text-button" href="/products/compatibility-report" style={{ alignSelf: "center" }}>리포트 구성 보기</Link>
     </section>
@@ -363,7 +375,7 @@ export function LiveCompatibilityScreen() {
   const { profiles, chart, loadError } = useProfilesWithChart();
   const [partnerId, setPartnerId] = useState("");
   const [relation, setRelation] = useState<(typeof COMPAT_RELATIONS)[number]["id"]>("couple");
-  const [result, setResult] = useState<{ summary: string; limited: boolean; partner: string; relation: string } | null>(null);
+  const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   if (!profiles && !loadError) return <LoadingState title="궁합 볼 사람을 불러오고 있어요" />;
@@ -372,8 +384,6 @@ export function LiveCompatibilityScreen() {
   const me = profiles.find((profile) => profile.isSelf) ?? profiles[0];
   const candidates = profiles.filter((profile) => profile.id !== me?.id);
   const partner = candidates.find((profile) => profile.id === partnerId) ?? candidates[0];
-  const relationText = COMPAT_RELATIONS.find((item) => item.id === relation)?.label ?? "연인";
-
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!me || !partner || me.id === partner.id) return setError("서로 다른 두 사람을 골라 주세요.");
@@ -381,10 +391,9 @@ export function LiveCompatibilityScreen() {
     setError("");
     try {
       const value = await createCompatibility(me.id, partner.id, relation);
-      setResult({ summary: value.summary, limited: value.limitedByUnknownTime, partner: partner.nickname, relation: relationText });
+      router.push(`/compatibility/result/${value.id}`);
     } catch (reason) {
       setError(formatApiRequestError(reason, "궁합을 만들지 못했어요. 잠시 후 다시 시도해 주세요."));
-    } finally {
       setPending(false);
     }
   }
@@ -426,7 +435,7 @@ export function LiveCompatibilityScreen() {
               <div style={{ borderTop: "1px solid var(--sj-line)" }}>
                 {candidates.map((person) => (
                   <label key={person.id} style={{ display: "flex", alignItems: "center", gap: 12, minHeight: 60, padding: "8px 0", borderBottom: "1px solid var(--sj-line)", cursor: "pointer" }}>
-                    <input className="sj-check-input" type="radio" name="compat-partner" value={person.id} checked={partner?.id === person.id} onChange={() => { setPartnerId(person.id); setResult(null); }} style={{ margin: 0 }} />
+                    <input className="sj-check-input" type="radio" name="compat-partner" value={person.id} checked={partner?.id === person.id} onChange={() => setPartnerId(person.id)} style={{ margin: 0 }} />
                     <span className="sj-row-main">
                       <span className="sj-row-title">{person.nickname}</span>
                       <span className="sj-row-sub">{relationLabel(person)}, {profileSub(person)}</span>
@@ -440,7 +449,7 @@ export function LiveCompatibilityScreen() {
               <legend className="sj-label" style={{ marginBottom: 8 }}>어떤 관계로 볼까요</legend>
               <div className="sj-segmented">
                 {COMPAT_RELATIONS.map((item) => (
-                  <button key={item.id} type="button" className="sj-segment" aria-pressed={relation === item.id} onClick={() => { setRelation(item.id); setResult(null); }}>{item.label}</button>
+                  <button key={item.id} type="button" className="sj-segment" aria-pressed={relation === item.id} onClick={() => setRelation(item.id)}>{item.label}</button>
                 ))}
               </div>
               {partner?.birthTimeUnknown && <p className="sj-help">{partner.nickname}님은 태어난 시간을 몰라서 시주를 뺀 범위로 살펴봐요.</p>}
@@ -453,28 +462,98 @@ export function LiveCompatibilityScreen() {
         )}
       </div>
 
-      <aside className="sj-aside" aria-label="궁합 결과">
-        {result ? (
-          <section className="sj-page" aria-labelledby="compat-result-title" style={{ gap: 20, paddingTop: 28 }}>
-            <div className="sj-section" style={{ gap: 6 }}>
-              <h2 id="compat-result-title" className="sj-h2">관계 요약</h2>
-              <p className="sj-meta">{me?.nickname}님과 {result.partner}님, {result.relation} 관계로 봤어요</p>
-              <p className="sj-h1" style={{ fontSize: 22 }}>{result.summary}</p>
-            </div>
-            {result.limited && <UnknownTimeNote subject="두 사람 중 한 명이" />}
-            <DeepReportCard />
-            <p className="sj-fine">두 명식의 계산 요소를 바탕으로 한 관점이에요. 관계의 좋고 나쁨을 정하지 않아요.</p>
-          </section>
-        ) : (
-          <p className="sj-fine sj-desktop-only">결과는 두 사람의 명식을 계산해 고정한 뒤 만들어요. 같은 두 사람과 관계로 다시 보면 같은 결과를 보여드려요.</p>
-        )}
+      <aside className="sj-aside" aria-label="궁합 안내">
+        <p className="sj-fine sj-desktop-only">결과는 두 사람의 명식을 계산해 고정한 뒤 만들어요. 같은 두 사람과 관계로 다시 보면 같은 결과를 보여드려요.</p>
       </aside>
     </main>
   );
 }
 
-/** 이 기기에 저장된 예전 관계 결과. 서버 조회 함수가 생기면 서버 결과로 바꾼다. */
+function DayPillarCard({ name, chart }: { name: string; chart: ChartView | null }) {
+  const day = chart?.pillars.day ?? null;
+  return (
+    <div className="sj-card" style={{ alignItems: "center", gap: 8, padding: 16 }}>
+      <span className="sj-meta">{name}님의 일주</span>
+      {day ? (
+        <span aria-label={`${day.stem.ko}${day.branch.ko}`} lang="zh-Hant" style={{ display: "flex", gap: 2, fontSize: 36 }}>
+          <span className={`sj-hanja sj-el-${day.stem.element}`} aria-hidden="true">{day.stem.hanja}</span>
+          <span className={`sj-hanja sj-el-${day.branch.element}`} aria-hidden="true">{day.branch.hanja}</span>
+        </span>
+      ) : <span className="sj-meta">불러오지 못했어요</span>}
+      {day && <span className="sj-fine">일간 {day.stem.ko}{day.stem.element}</span>}
+    </div>
+  );
+}
+
+type ServerResultView = { result: ServerCompatibilityDetail; names: [string, string]; charts: [ChartView | null, ChartView | null] };
+
+function ServerCompatibilityResult({ resultId }: { resultId: string }) {
+  const [view, setView] = useState<ServerResultView | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const result = await getCompatibility(resultId);
+        // 이름과 일주는 곁들이는 정보라, 불러오지 못해도 결과는 보여준다.
+        const [profiles, chartA, chartB] = await Promise.all([
+          listProfiles().catch(() => [] as ServerProfile[]),
+          getChart(result.snapshotAId).catch(() => null),
+          getChart(result.snapshotBId).catch(() => null),
+        ]);
+        const nameOf = (id: string, fallback: string) => profiles.find((profile) => profile.id === id)?.nickname ?? fallback;
+        if (active) setView({ result, names: [nameOf(result.profileAId, "첫 번째 사람"), nameOf(result.profileBId, "두 번째 사람")], charts: [chartA, chartB] });
+      } catch (reason) {
+        if (active) setError(reason ?? new Error("load failed"));
+      }
+    })();
+    return () => { active = false; };
+  }, [resultId]);
+
+  if (error) {
+    if (isAccountSessionExpired(error)) return <EmptyState title="다시 로그인해 주세요" description="로그인 세션이 만료됐어요. 다시 로그인하면 궁합 결과를 이어볼 수 있어요." action={{ href: "/login", label: "로그인하기" }} />;
+    if (error instanceof ApiRequestError && error.status === 404) return <EmptyState title="궁합 결과를 찾을 수 없어요" description="삭제됐거나 다른 계정에서 만든 결과예요. 궁합 화면에서 다시 볼 수 있어요." action={{ href: "/compatibility", label: "궁합 다시 보기" }} />;
+    return <EmptyState title="궁합 결과를 불러오지 못했어요" description={formatApiRequestError(error, "연결 상태를 확인한 뒤 다시 시도해 주세요.")} action={{ href: "/compatibility", label: "궁합 화면으로" }} />;
+  }
+  if (!view) return <LoadingState title="궁합 결과를 불러오고 있어요" />;
+
+  const { result, names, charts } = view;
+  const relation = COMPAT_RELATIONS.find((item) => item.id === result.relation)?.label ?? "저장한";
+  const unknown = charts.map((chart) => chart !== null && chart.pillars.hour === null);
+  const unknownSubject = unknown[0] && unknown[1] ? "두 사람 모두" : unknown[0] ? `${names[0]}님은` : unknown[1] ? `${names[1]}님은` : "두 사람 중 한 명이";
+
+  return (
+    <main className="sj-page" aria-labelledby="compatibility-result-title">
+      <div className="sj-section" style={{ gap: 6 }}>
+        <p className="sj-meta">{relation} 관계로 봤어요</p>
+        <h1 id="compatibility-result-title" className="sj-h1" style={{ fontSize: 24 }}>{names[0]}님과 {names[1]}님</h1>
+      </div>
+      <section className="sj-section" aria-labelledby="compat-summary-title" style={{ gap: 6 }}>
+        <h2 id="compat-summary-title" className="sj-h2">관계 요약</h2>
+        <p className="sj-lead">{result.summary}</p>
+      </section>
+      <section className="sj-section" aria-labelledby="compat-daymaster-title">
+        <h2 id="compat-daymaster-title" className="sj-h2">두 사람의 일주</h2>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <DayPillarCard name={names[0]} chart={charts[0]} />
+          <DayPillarCard name={names[1]} chart={charts[1]} />
+        </div>
+        {result.limitedByUnknownTime && <UnknownTimeNote subject={unknownSubject} />}
+      </section>
+      <DeepReportCard sections={result.lockedSections} />
+      <Link className="sj-button-secondary" href="/compatibility">다른 사람과 궁합 보기</Link>
+      <p className="sj-fine">두 명식의 계산 요소를 바탕으로 한 관점이에요. 관계의 좋고 나쁨을 정하지 않아요.</p>
+    </main>
+  );
+}
+
+/** 서버 결과(숫자 id)는 서버에서 읽고, 예전에 이 기기에 저장한 결과는 그대로 보여준다. */
 export function CompatibilityResultScreen({ resultId }: { resultId: string }) {
+  if (/^\d+$/.test(resultId)) return <ServerCompatibilityResult resultId={resultId} />;
+  return <LocalCompatibilityResult resultId={resultId} />;
+}
+
+function LocalCompatibilityResult({ resultId }: { resultId: string }) {
   const hydrated = useHydrated();
   const raw = useSyncExternalStore(compatibilityStore.subscribe, compatibilityStore.rawSnapshot, () => null);
   if (!hydrated) return <LoadingState title="궁합 결과를 불러오고 있어요" />;
