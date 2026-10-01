@@ -47,10 +47,34 @@ describe("share link service", () => {
     expect(calls[1].body).toEqual({ target_type: "report", target_id: 33, expires_in_hours: 72, include: ["summary", "day_pillar", "five_elements"] });
   });
 
+  it("creates a compatibility link with summary and dimensions only, defaulting to both", async () => {
+    const { calls } = mockApi([{ method: "POST", path: "/api/v1/share-links", respond: (body) => json({ id: 2, target_type: "compatibility", target_id: 5, share_url: "/api/v1/shared/xyz", include: (body as { include: string[] }).include, expires_at: "2026-10-08T00:00:00", is_active: true, access_count: 0, created_at: "2026-10-01T00:00:00" }, 201) }]);
+    const { createCompatibilityShare } = await import("@/lib/api/service");
+
+    await createCompatibilityShare("5", 168, ["dimensions", "birth_date", "summary"]);
+    await createCompatibilityShare("5");
+    await createCompatibilityShare("5", 24, ["dimensions"]);
+
+    expect(calls.map((call) => call.body)).toEqual([
+      { target_type: "compatibility", target_id: 5, expires_in_hours: 168, include: ["summary", "dimensions"] },
+      { target_type: "compatibility", target_id: 5, expires_in_hours: 72, include: ["summary", "dimensions"] },
+      { target_type: "compatibility", target_id: 5, expires_in_hours: 24, include: ["dimensions"] },
+    ]);
+  });
+
+  it("never sends compatibility keys on a report link", async () => {
+    const { calls } = mockApi([{ method: "POST", path: "/api/v1/share-links", respond: () => json({ id: 1, target_type: "report", target_id: 33, share_url: "/api/v1/shared/abc", include: ["summary"], expires_at: "2026-10-01T00:00:00", is_active: true, access_count: 0, created_at: "2026-09-28T00:00:00" }, 201) }]);
+    const { createReportShare } = await import("@/lib/api/service");
+    await createReportShare(72, ["summary", "dimensions"]);
+    expect(calls[0].body).toEqual({ target_type: "report", target_id: 33, expires_in_hours: 72, include: ["summary"] });
+  });
+
   it("refuses an empty selection before calling the server", async () => {
     const { fetchMock } = mockApi([]);
     const { createReportShare } = await import("@/lib/api/service");
     await expect(createReportShare(72, [])).rejects.toThrow("하나 이상");
+    const { createCompatibilityShare } = await import("@/lib/api/service");
+    await expect(createCompatibilityShare("5", 72, ["birth_date"])).rejects.toThrow("하나 이상");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

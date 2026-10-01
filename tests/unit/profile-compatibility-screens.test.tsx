@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 import { ProfileEditScreen, validateProfileForm } from "@/components/profile-edit-screen";
-import { CompatibilityResultScreen, LiveCompatibilityScreen, LivePeopleScreen } from "@/components/people-compatibility-screens";
+import { CompatibilityResultScreen, LiveCompatibilityScreen, LivePeopleScreen, formatEvidence } from "@/components/people-compatibility-screens";
 
 const push = vi.fn();
 
@@ -205,9 +205,105 @@ describe("compatibility result from the server", () => {
     expect(screen.getByLabelText("을축")).toBeInTheDocument();
     expect(screen.getByLabelText("계해")).toBeInTheDocument();
     expect(screen.getByRole("note")).toHaveTextContent("민준님은 태어난 시간을 몰라서");
-    const locked = screen.getByRole("list");
-    expect(within(locked).getAllByRole("listitem").map((item) => item.textContent)).toEqual(["관계 유형별 분석", "소통 패턴 분석"]);
+    expect(screen.getByText("일간 계수, 태어난 시간 모름")).toBeInTheDocument();
+    const locked = screen.getByRole("list", { name: "결제하면 열리는 내용" });
+    expect(within(locked).getAllByRole("listitem").map((item) => item.textContent)).toEqual(["관계 유형별 분석, 잠겨 있어요", "소통 패턴 분석, 잠겨 있어요"]);
+    expect(screen.getByRole("button", { name: "결제 준비 중" })).toBeDisabled();
     expect(screen.queryByText("40")).toBeNull();
+  });
+
+  const withDimensions = {
+    ...result,
+    result: {
+      free_preview: {
+        score: 33, summary: "두 원국의 오행 분포 차이를 근거로 계산한 궁합 지표입니다.", limited_by_unknown_time: true,
+        notice: "출생 시간을 모르는 분이 있어 시주는 빼고 살폈어요.",
+        dimensions: [
+          { key: "communication", title: "대화 방식", summary: "계수 일간인 분의 수 기운이 을목 일간인 분의 목 기운을 북돋는 관계예요.", evidence: [
+            { type: "day_gan", person: "a", gan: "을", element: "목" },
+            { type: "day_gan", person: "b", gan: "계", element: "수" },
+            { type: "day_gan_relation", relation: "b_generates_a" },
+          ] },
+          { key: "friction", title: "갈등이 생기는 지점", summary: "목 기운이 가장 크게 차이 나요.", evidence: [{ type: "five_elements", element: "목", a: 1, b: 3 }] },
+          { key: "support", title: "서로에게 힘이 되는 부분", summary: "금 기운을 채워 줄 수 있어요.", evidence: [{ type: "five_elements", element: "금", a: 2, b: 0 }, { type: "unknown_kind", key: "raw_value" }] },
+        ],
+      },
+      paid_detail: { sections: [{ title: "관계 유형별 분석", body: null, locked: true }, { title: "소통 패턴 분석", body: null, locked: true }] },
+    },
+  };
+
+  function serveResult(body: unknown, extra?: (method: string, path: string, payload: unknown) => Response | null) {
+    return mockApi((method, path, payload) => {
+      const handled = extra?.(method, path, payload);
+      if (handled) return handled;
+      if (path === "/api/v1/compatibilities/5") return json(body);
+      if (path === "/api/v1/profiles/") return json([{ ...profile }, { ...profile, id: 12, nickname: "민준", is_self: false }]);
+      if (path === "/api/v1/charts/22") return json(chart(22, 11, ["을", "축"], ["계", "미"]));
+      if (path === "/api/v1/charts/50") return json(chart(50, 12, ["계", "해"], null));
+      return json({}, 404);
+    });
+  }
+
+  it("shows each perspective with its title, summary and evidence in Korean, never raw keys", async () => {
+    serveResult(withDimensions);
+    render(<CompatibilityResultScreen resultId="5" />);
+
+    expect(await screen.findByRole("heading", { name: "관점별로 보면" })).toBeInTheDocument();
+    for (const title of ["대화 방식", "갈등이 생기는 지점", "서로에게 힘이 되는 부분"]) expect(screen.getByRole("heading", { name: title, level: 3 })).toBeInTheDocument();
+    expect(screen.getByText("목 기운이 가장 크게 차이 나요.")).toBeInTheDocument();
+    const talk = screen.getByRole("list", { name: "대화 방식의 근거" });
+    expect(within(talk).getAllByRole("listitem").map((item) => item.textContent)).toEqual(["서연님 일간 을목", "민준님 일간 계수", "민준님 일간이 서연님 일간을 북돋아요"]);
+    expect(within(screen.getByRole("list", { name: "갈등이 생기는 지점의 근거" })).getByRole("listitem")).toHaveTextContent("목 기운 서연님 1개, 민준님 3개");
+    expect(within(screen.getByRole("list", { name: "서로에게 힘이 되는 부분의 근거" })).getAllByRole("listitem")).toHaveLength(1);
+    const text = document.body.textContent ?? "";
+    for (const raw of ["communication", "friction", "support", "day_gan", "five_elements", "b_generates_a", "unknown_kind", "raw_value"]) expect(text).not.toContain(raw);
+  });
+
+  it("shows the server's unknown birth time notice", async () => {
+    serveResult(withDimensions);
+    render(<CompatibilityResultScreen resultId="5" />);
+    expect(await screen.findByRole("note")).toHaveTextContent("출생 시간을 모르는 분이 있어 시주는 빼고 살폈어요.");
+  });
+
+  it("opens the paid sections after purchase and drops the payment button", async () => {
+    serveResult({ ...withDimensions, purchased: true, result: { ...withDimensions.result, paid_detail: { sections: [{ title: "관계 유형별 분석", body: "연인 관계 기준 심층 분석이에요.", locked: false }, { title: "소통 패턴 분석", body: "십성 조합으로 본 소통이에요.", locked: false }] } } });
+    render(<CompatibilityResultScreen resultId="5" />);
+
+    expect(await screen.findByText("연인 관계 기준 심층 분석이에요.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "소통 패턴 분석" })).toBeInTheDocument();
+    expect(screen.getByText("십성 조합으로 본 소통이에요.")).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "결제하면 열리는 내용" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "결제 준비 중" })).toBeNull();
+  });
+
+  it("creates a compatibility share link with the chosen fields and expiry and shows it to copy", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    const calls = serveResult(withDimensions, (method, path, payload) => {
+      if (method !== "POST" || path !== "/api/v1/share-links") return null;
+      return json({ id: 3, target_type: "compatibility", target_id: 5, share_url: "/api/v1/shared/compatlinktoken1234", include: (payload as { include: string[] }).include, expires_at: "2026-10-02T00:00:00", is_active: true, access_count: 0, created_at: "2026-10-01T00:00:00" }, 201);
+    });
+    render(<CompatibilityResultScreen resultId="5" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "결과 공유하기" }));
+    expect(screen.getByRole("heading", { name: "결과를 링크로 보내요" })).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: /^관계 요약/ })).toBeChecked();
+    expect(screen.getByRole("switch", { name: /^관점별 요약/ })).toBeChecked();
+    expect(screen.queryByRole("switch", { name: /^출생일/ })).toBeNull();
+    // The fieldset and its segmented control both carry this name; the inner group holds the buttons.
+    const expiry = screen.getAllByRole("group", { name: "링크를 열어둘 기간" }).at(-1)!;
+    expect(within(expiry).getAllByRole("button").map((button) => button.textContent)).toEqual(["24시간", "72시간", "7일"]);
+
+    fireEvent.click(screen.getByRole("switch", { name: /^관계 요약/ }));
+    fireEvent.click(within(expiry).getByRole("button", { name: "24시간" }));
+    fireEvent.click(screen.getByRole("button", { name: "링크 만들기" }));
+
+    const url = `${window.location.origin}/shared/compatlinktoken1234`;
+    expect(await screen.findByLabelText("공유 링크")).toHaveValue(url);
+    expect(calls.filter((call) => call.path === "/api/v1/share-links").map((call) => call.body)).toEqual([{ target_type: "compatibility", target_id: 5, expires_in_hours: 24, include: ["dimensions"] }]);
+    fireEvent.click(screen.getByRole("button", { name: "링크 복사" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(url));
+    expect(await screen.findByText("링크를 복사했어요.")).toBeInTheDocument();
   });
 
   it("says when the result does not exist", async () => {
@@ -253,5 +349,24 @@ describe("settings entry to the birth edit", () => {
     render(<SettingsScreen />);
     fireEvent.click(await screen.findByRole("button", { name: /출생 정보 수정/ }));
     expect(screen.getByRole("button", { name: "출생 정보 저장" })).toBeInTheDocument();
+  });
+});
+
+describe("compatibility evidence wording", () => {
+  const people = ["서연님", "민준님"] as const;
+
+  it("phrases each evidence shape in Korean", () => {
+    expect(formatEvidence({ type: "day_gan", person: "b", gan: "병", element: "화" }, people)).toBe("민준님 일간 병화");
+    expect(formatEvidence({ type: "day_gan_relation", relation: "same" }, people)).toBe("두 일간의 오행이 같아요");
+    expect(formatEvidence({ type: "day_gan_relation", relation: "a_generates_b" }, people)).toBe("서연님 일간이 민준님 일간을 북돋아요");
+    expect(formatEvidence({ type: "day_gan_relation", relation: "a_controls_b" }, people)).toBe("서연님 일간이 민준님 일간을 다잡아요");
+    expect(formatEvidence({ type: "day_gan_relation", relation: "b_controls_a" }, people)).toBe("민준님 일간이 서연님 일간을 다잡아요");
+    expect(formatEvidence({ type: "five_elements", element: "수", a: 0, b: 2 }, people)).toBe("수 기운 서연님 0개, 민준님 2개");
+  });
+
+  it("drops what it cannot phrase instead of printing it", () => {
+    expect(formatEvidence({ type: "five_elements", element: "water", a: 1, b: 2 }, people)).toBeNull();
+    expect(formatEvidence({ type: "day_gan_relation", relation: "mystery" } as never, people)).toBeNull();
+    expect(formatEvidence({ type: "other" } as never, people)).toBeNull();
   });
 });

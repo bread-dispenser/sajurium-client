@@ -135,6 +135,36 @@ describe("public shared page", () => {
     expect(screen.getByText("태어난 시간 모름")).toBeInTheDocument();
   });
 
+  it("shows a shared compatibility result with its relation, summary and perspectives and no birth data", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(json({
+      title: "연인 궁합", people: [{ nickname: "하늘" }, { nickname: "바다" }], relation_type: "couple", include: ["summary", "dimensions"],
+      summary: "두 원국의 오행 분포 차이를 근거로 계산한 궁합 지표입니다.",
+      sections: [{ title: "한 줄 요약", body: "두 원국의 오행 분포 차이를 근거로 계산한 궁합 지표입니다." }],
+      dimensions: [
+        { key: "communication", title: "대화 방식", summary: "대화 요약이에요." },
+        { key: "friction", title: "갈등이 생기는 지점", summary: "갈등 요약이에요." },
+        { key: "support", title: "서로에게 힘이 되는 부분", summary: "힘이 되는 부분 요약이에요." },
+      ],
+      // Not part of the compatibility contract; the page must not show it even if it arrived.
+      birth_date: { calendar_type: "solar", is_leap_month: false, date: "1992-06-18" }, birth_time: "14:30",
+      expires_at: "2026-10-04T00:00:00",
+    }));
+    render(<LiveSharedResultScreen token="abcdefghijklmnop" />);
+
+    expect(await screen.findByRole("heading", { name: "연인 궁합", level: 1 })).toBeInTheDocument();
+    expect(screen.getByText("하늘님과 바다님의 관계를 연인 관계로 살펴보고 공유한 요약이에요.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "관계 요약" })).toBeInTheDocument();
+    expect(screen.getAllByText("두 원국의 오행 분포 차이를 근거로 계산한 궁합 지표입니다.")).toHaveLength(1);
+    const views = screen.getByRole("region", { name: "관점별 요약" });
+    expect(within(views).getAllByRole("heading").map((heading) => heading.textContent)).toEqual(["대화 방식", "갈등이 생기는 지점", "서로에게 힘이 되는 부분"]);
+    expect(screen.getByText("갈등 요약이에요.")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "출생 정보" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "한 줄 요약" })).toBeNull();
+    const text = document.body.textContent ?? "";
+    expect(text).not.toMatch(/1992|6월 18일|오후 2시|14:30|communication/);
+    expect(screen.getByText(/출생 정보와 계산 근거는 공유되지 않아요/)).toBeInTheDocument();
+  });
+
   it("keeps links made before include lists to their free sections", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(json({ title: "기본 사주 리포트", sections: [{ title: "성격 경향", body: "섬세해요." }] }));
     render(<LiveSharedResultScreen token="abcdefghijklmnop" />);

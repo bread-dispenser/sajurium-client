@@ -109,10 +109,44 @@ describe("compatibility service", () => {
 
     const result = await getCompatibility("5");
     expect(result).toEqual({
-      id: "5", relation: "friend", summary: "요약", limitedByUnknownTime: true, profileAId: "11", profileBId: "12", snapshotAId: "22", snapshotBId: "50",
-      status: "READY", lockedSections: ["관계 유형별 분석", "소통 패턴 분석"], createdAt: "2026-09-28T00:00:00Z",
+      id: "5", relation: "friend", summary: "요약", limitedByUnknownTime: true, notice: null, dimensions: [], profileAId: "11", profileBId: "12", snapshotAId: "22", snapshotBId: "50",
+      status: "READY", paidSections: [{ title: "관계 유형별 분석", body: null, locked: true }, { title: "소통 패턴 분석", body: null, locked: true }], createdAt: "2026-09-28T00:00:00Z",
     });
     expect(result).not.toHaveProperty("score");
+  });
+
+  it("reads perspective summaries with their structured evidence, the unknown-time notice and opened paid sections", async () => {
+    mockApi([{
+      method: "GET", path: "/api/v1/compatibilities/6", respond: () => json({
+        id: 6, user_id: 1, profile_a_id: 11, profile_b_id: 12, snapshot_a_id: 22, snapshot_b_id: 50, relation_type: "couple",
+        generation_status: "READY", requires_payment: true, purchased: true, created_at: "2026-09-28T00:00:00",
+        result: {
+          free_preview: {
+            score: 33, summary: "요약", limited_by_unknown_time: true, notice: "출생 시간을 모르는 분이 있어 시주는 빼고 살폈어요.",
+            dimensions: [
+              { key: "communication", title: "대화 방식", summary: "대화 요약", evidence: [
+                { type: "day_gan", person: "a", gan: "신", element: "금" },
+                { type: "day_gan_relation", relation: "b_controls_a" },
+                { type: "mystery", value: 1 },
+              ] },
+              { key: "friction", title: "갈등이 생기는 지점", summary: "갈등 요약", evidence: [{ type: "five_elements", element: "목", a: 1, b: 3 }] },
+              { key: "support", title: "서로에게 힘이 되는 부분", summary: "", evidence: [] },
+            ],
+          },
+          paid_detail: { sections: [{ title: "관계 유형별 분석", body: "심층 본문", locked: false }, { title: "소통 패턴 분석", body: null, locked: false }] },
+        },
+      }),
+    }]);
+    const { getCompatibility } = await import("@/lib/api/service");
+
+    const result = await getCompatibility("6");
+    expect(result.notice).toBe("출생 시간을 모르는 분이 있어 시주는 빼고 살폈어요.");
+    expect(result.dimensions).toEqual([
+      { key: "communication", title: "대화 방식", summary: "대화 요약", evidence: [{ type: "day_gan", person: "a", gan: "신", element: "금" }, { type: "day_gan_relation", relation: "b_controls_a" }] },
+      { key: "friction", title: "갈등이 생기는 지점", summary: "갈등 요약", evidence: [{ type: "five_elements", element: "목", a: 1, b: 3 }] },
+    ]);
+    // A section the server marks open but sends without a body stays locked.
+    expect(result.paidSections).toEqual([{ title: "관계 유형별 분석", body: "심층 본문", locked: false }, { title: "소통 패턴 분석", body: null, locked: true }]);
   });
 
   it("surfaces a missing result as a 404", async () => {

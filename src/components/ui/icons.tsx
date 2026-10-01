@@ -24,4 +24,4 @@ export const ShareIcon = (props: IconProps) => <Svg size={20} strokeWidth={1.8} 
 export const SendIcon = (props: IconProps) => <Svg size={20} strokeWidth={2} {...props}><path d="M12 19V5M6 11l6-6 6 6" /></Svg>;
 export const PlusIcon = (props: IconProps) => <Svg size={20} strokeWidth={1.8} {...props}><path d="M12 5v14M5 12h14" /></Svg>;
 export const CheckIcon = (props: IconProps) => <Svg size={18} strokeWidth={2} {...props}><path d="M5 12l5 5 9-10" /></Svg>;
-export const LockIcon = (props: IconProps) => <Svg size={20} strokeWidth={1.8} {...props}><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></Svg>;
+export const LockIcon = (props: IconProps) => <Svg size={16} strokeWidth={1.8} {...props}><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></Svg>;
