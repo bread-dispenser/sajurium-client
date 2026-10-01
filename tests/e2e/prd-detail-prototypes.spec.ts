@@ -64,16 +64,17 @@ test("shows server notifications without linking to an external deep link", asyn
   await page.setViewportSize({ width: 320, height: 720 });
   await page.route("**/api/v1/notifications", async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([
-      { id: 1, topic: "report_ready", title: "리포트가 준비됐어요", body: "결과를 확인해 주세요.", status: "SENT", created_at: "2026-09-23T10:00:00Z", deep_link: "/report" },
-      { id: 2, topic: "notice", title: "외부 링크는 열지 않아요", status: "SENT", created_at: "2026-09-23T10:00:00Z", deep_link: "https://example.org" },
+      { id: 1, topic: "report_ready", title: "리포트가 준비됐어요", body: "결과를 확인해 주세요.", status: "SENT", is_marketing: false, created_at: "2026-09-23T10:00:00Z", deep_link: "/report", read_at: null },
+      { id: 2, topic: "notice", title: "외부 링크는 열지 않아요", status: "SENT", is_marketing: false, created_at: "2026-09-23T10:00:00Z", deep_link: "https://example.org", read_at: "2026-09-23T11:00:00Z" },
     ]) });
   });
   await page.goto("/notifications");
-  await expect(page.getByRole("heading", { name: "리포트가 준비됐어요" })).toBeVisible();
-  await expect(page.getByText("리포트 완성, 9월 23일")).toBeVisible();
-  await expect(page.getByRole("link", { name: "내용 보기" })).toHaveAttribute("href", "/report");
-  await expect(page.getByRole("heading", { name: "외부 링크는 열지 않아요" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "내용 보기" })).toHaveCount(1);
+  const unread = page.getByRole("region", { name: "읽지 않음 1개" });
+  await expect(unread.getByRole("link", { name: /리포트가 준비됐어요/ })).toHaveAttribute("href", "/report");
+  await expect(unread.getByText("리포트 완성, 9월 23일")).toBeVisible();
+  const read = page.getByRole("region", { name: "읽음" });
+  await expect(read.getByText("외부 링크는 열지 않아요")).toBeVisible();
+  await expect(read.getByRole("link")).toHaveCount(0);
   await expect(page.locator("html")).toHaveJSProperty("scrollWidth", 320);
   await page.screenshot({ path: testInfo.outputPath("notifications.png"), fullPage: true });
 });

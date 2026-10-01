@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import type { ComponentType, ReactNode } from "react";
+import { getUnreadNotificationCount, UNREAD_COUNT_EVENT } from "@/lib/api/service";
 import { ArchiveIcon, BackIcon, BellIcon, ChartIcon, ConsultIcon, HomeIcon, PairIcon, SettingsIcon } from "./ui/icons";
 
 type Tab = { href: string; label: string; Icon: ComponentType<{ size?: number }>; match: (path: string) => boolean };
@@ -62,10 +64,45 @@ function subRoute(pathname: string) {
   return SUB_ROUTES.find((route) => route.pattern.test(pathname)) ?? { title: "사주리움", back: "/home" };
 }
 
-function HeaderActions() {
+/**
+ * Unread inbox count for the bell. Refreshed on every route change and whenever the inbox reports
+ * a change. Any failure keeps the bell without a badge: the count is a hint, never a reason to
+ * break the shell.
+ */
+function useUnreadCount(pathname: string) {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    let active = true;
+    getUnreadNotificationCount()
+      .then((value) => { if (active) setCount(value); })
+      .catch(() => { if (active) setCount(0); });
+    return () => { active = false; };
+  }, [pathname]);
+  useEffect(() => {
+    const onChange = (event: Event) => {
+      const value = (event as CustomEvent<number>).detail;
+      if (typeof value === "number" && Number.isFinite(value)) setCount(Math.max(0, value));
+    };
+    window.addEventListener(UNREAD_COUNT_EVENT, onChange);
+    return () => window.removeEventListener(UNREAD_COUNT_EVENT, onChange);
+  }, []);
+  return count;
+}
+
+export function NotificationBell({ count }: { count: number }) {
+  const label = count > 0 ? `알림, 읽지 않은 알림 ${count}개` : "알림";
+  return (
+    <Link className="sj-icon-button sj-icon-button-with-count" href="/notifications" aria-label={label}>
+      <BellIcon size={21} />
+      {count > 0 && <span className="sj-count-badge" aria-hidden="true">{count > 99 ? "99+" : count}</span>}
+    </Link>
+  );
+}
+
+function HeaderActions({ unread }: { unread: number }) {
   return (
     <>
-      <Link className="sj-icon-button" href="/notifications" aria-label="알림"><BellIcon size={21} /></Link>
+      <NotificationBell count={unread} />
       <Link className="sj-icon-button" href="/settings" aria-label="설정"><SettingsIcon size={21} /></Link>
     </>
   );
@@ -101,6 +138,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const isTabRoot = TAB_ROOTS.has(pathname);
   const route = subRoute(pathname);
+  const unread = useUnreadCount(pathname);
 
   return (
     <div className="sj-shell">
@@ -117,8 +155,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           )}
           <DesktopNav pathname={pathname} />
           <span className="sj-topbar-spacer" />
-          {(isTabRoot || pathname === "/notifications" || pathname === "/settings") && <span className="sj-desktop-only" style={{ display: "contents" }}><HeaderActions /></span>}
-          {isTabRoot && <span className="sj-mobile-only" style={{ display: "contents" }}><HeaderActions /></span>}
+          {(isTabRoot || pathname === "/notifications" || pathname === "/settings") && <span className="sj-desktop-only" style={{ display: "contents" }}><HeaderActions unread={unread} /></span>}
+          {isTabRoot && <span className="sj-mobile-only" style={{ display: "contents" }}><HeaderActions unread={unread} /></span>}
         </div>
       </header>
       <div className={`sj-content${isTabRoot ? " sj-content-with-tabs sj-content-wide" : ""}`}>{children}</div>

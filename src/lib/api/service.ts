@@ -407,6 +407,34 @@ export async function listNotifications(): Promise<ServerNotification[]> {
   return (await request<ServerNotification[]>("/api/v1/notifications")).data;
 }
 
+/* ---------- Notification read state ---------- */
+
+/** Window event the inbox dispatches with the new unread count, so the header bell follows along. */
+export const UNREAD_COUNT_EVENT = "sajurium:unread-notifications";
+
+export function announceUnreadCount(count: number) {
+  window.dispatchEvent(new CustomEvent(UNREAD_COUNT_EVENT, { detail: count }));
+}
+
+/**
+ * Unread inbox count for the header badge. Without a stored session there is no inbox yet, and
+ * asking the server would mint an anonymous user just to learn the answer is zero.
+ */
+export async function getUnreadNotificationCount(): Promise<number> {
+  if (!readAccessToken()) return 0;
+  return (await request<Schema<"NotificationUnreadCount">>("/api/v1/notifications/unread-count")).data.unread_count;
+}
+
+/** Marks one notification read; the server answers with the updated row (`read_at` set). */
+export async function markNotificationRead(id: number): Promise<ServerNotification> {
+  return (await request<ServerNotification>(`/api/v1/notifications/${id}/read`, { method: "POST", body: {} })).data;
+}
+
+export async function markAllNotificationsRead(): Promise<{ updatedCount: number; unreadCount: number }> {
+  const result = (await request<Schema<"NotificationReadAllResult">>("/api/v1/notifications/read-all", { method: "POST", body: {} })).data;
+  return { updatedCount: result.updated_count, unreadCount: result.unread_count };
+}
+
 export async function registerPushToken(token: string) {
   return (await request<{ push_token_id: number; status: string }>("/api/v1/push-tokens", {
     method: "POST", body: { token, platform: "web" },
