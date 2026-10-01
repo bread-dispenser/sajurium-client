@@ -5,7 +5,7 @@ import { expect, test } from "@playwright/test";
 test("a malformed or truncated share link shows the Korean share failure state with a way out", async ({ page }) => {
   await page.goto("/shared/abc");
   await expect(page.getByRole("heading", { name: "공유 결과를 열 수 없어요" })).toBeVisible();
-  await expect(page.getByRole("alert")).toContainText("링크 주소가 잘렸거나 올바르지 않아요");
+  await expect(page.getByRole("main").getByRole("alert")).toContainText("링크 주소가 잘렸거나 올바르지 않아요");
   await expect(page.getByText("This page could not be found.")).toHaveCount(0);
   await page.getByRole("link", { name: "나도 명식 보기" }).click();
   await expect(page).toHaveURL(/\/$/);
