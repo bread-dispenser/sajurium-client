@@ -129,7 +129,7 @@ test("confirms individual settings and feedback deletion", async ({ page }) => {
   await page.getByRole("button", { name: "취소" }).click();
   await page.getByRole("button", { name: "삭제" }).click();
   await page.getByRole("button", { name: "피드백 삭제 확정" }).click();
-  await expect(page.getByRole("heading", { name: "저장된 피드백이 없어요" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "아직 보낸 피드백이 없어요" })).toBeVisible();
 
 });
 

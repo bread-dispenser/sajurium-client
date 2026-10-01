@@ -30,6 +30,7 @@ import {
   isAccountSessionExpired,
   listConsultations,
   sendConsultationMessage,
+  submitFeedback,
   type ApiConsultation,
 } from "@/lib/api/service";
 
@@ -466,6 +467,40 @@ function ConsultationComposer({ initialDraft, failFirstResponse }: { initialDraf
   );
 }
 
+/** Quick rating under one answer. A problem report opens the full form so a reason can be chosen. */
+export function AnswerFeedback({ sessionId, messageId, topic }: { sessionId: string; messageId: string; topic: TopicId }) {
+  const [sent, setSent] = useState<"helpful" | "unclear" | null>(null);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+
+  async function send(rating: "helpful" | "unclear") {
+    if (pending || sent) return;
+    setPending(true);
+    setError("");
+    try {
+      await submitFeedback({ type: "consultation_message", messageId }, { rating });
+      setSent(rating);
+    } catch (reason) {
+      setError(formatApiRequestError(reason, "의견을 보내지 못했어요. 잠시 후 다시 시도해 주세요."));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  const reportHref = `/report/feedback?targetType=consultation&sessionId=${sessionId}&messageId=${messageId}&topic=${topic}&report=1`;
+  return (
+    <div className="sj-section" style={{ gap: 6, paddingTop: 10, borderTop: "1px solid var(--sj-track)" }}>
+      <div className="sj-chips" role="group" aria-label="이 답변 평가">
+        <button className="sj-chip-button" type="button" style={{ minHeight: 44 }} aria-pressed={sent === "helpful"} disabled={pending || Boolean(sent)} onClick={() => void send("helpful")}>도움됐어요</button>
+        <button className="sj-chip-button" type="button" style={{ minHeight: 44 }} aria-pressed={sent === "unclear"} disabled={pending || Boolean(sent)} onClick={() => void send("unclear")}>잘 모르겠어요</button>
+        <Link className="sj-chip-button" href={reportHref} style={{ minHeight: 44, textDecoration: "none", color: "var(--sj-accent)" }}>문제 신고</Link>
+      </div>
+      {error && <p className="sj-error" role="alert">{error}</p>}
+      {sent && <p className="sj-fine" role="status">의견을 보냈어요. 처리 상태는 설정의 피드백과 신고에서 볼 수 있어요.</p>}
+    </div>
+  );
+}
+
 export function LiveConsultationSessionScreen({ sessionId }: { sessionId: string }) {
   const router = useRouter();
   const [session, setSession] = useState<ApiConsultation | null>(null);
@@ -552,6 +587,7 @@ export function LiveConsultationSessionScreen({ sessionId }: { sessionId: string
               <span className="sj-wordmark" style={{ fontSize: 14 }}>사주리움</span>
               {lead && <p className="sj-answer-lead">{lead}</p>}
               {rest.map((paragraph, index) => <p key={index} className="sj-body" style={{ fontSize: 14 }}>{paragraph}</p>)}
+              <AnswerFeedback sessionId={sessionId} messageId={String(message.id)} topic={topic} />
             </article>
           );
         })}

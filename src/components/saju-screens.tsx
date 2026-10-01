@@ -13,7 +13,7 @@ import type { FeedbackProvenance, FeedbackTarget, OwnerRelationship, TopicId as 
 import { hasValidLeapMonthSemantics, parseBirthDate } from "@/lib/contracts";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { FEEDBACK_OPTIONS, INITIAL_BIRTH, TOPICS, getTopicPreview } from "@/lib/fixtures";
-import { createBasicReading, formatApiRequestError, getCurrentChart, getCurrentReport, submitReportFeedback, type LiveReport } from "@/lib/api/service";
+import { createBasicReading, formatApiRequestError, getCurrentChart, getCurrentReport, submitFeedback, type LiveReport } from "@/lib/api/service";
 import { ELEMENTS, currentDaeun, ganjiGlyphs, ganjiHanja, type ChartView, type Pillar } from "@/lib/saju";
 import {
   birthDraftStore,
@@ -906,26 +906,44 @@ const FEEDBACK_REASONS: ReadonlyArray<{ code: FeedbackReason; label: string }> =
   { code: "other", label: "기타" },
 ];
 
-export function FeedbackScreen({ target, topicId, initialRating = null, initialReported = false }: { target: Extract<FeedbackTarget, { type: "report" }>; topicId: TopicId; initialRating?: FeedbackId | null; initialReported?: boolean }) {
+type FeedbackScreenTarget = Extract<FeedbackTarget, { type: "report" } | { type: "consultation_message" }>;
+
+/** Server-backed targets are sent to `POST /feedback`; the server list is then the record. */
+function isServerFeedbackTarget(target: FeedbackScreenTarget) {
+  return target.type === "consultation_message" || /^\d+$/.test(target.reportId);
+}
+
+export function FeedbackScreen({ target, topicId, initialRating = null, initialReported = false }: { target: FeedbackScreenTarget; topicId: TopicId; initialRating?: FeedbackId | null; initialReported?: boolean }) {
   const router = useRouter();
   const [feedback, setFeedback] = useState<FeedbackId | null>(initialRating);
   const [reason, setReason] = useState<FeedbackReason | "">("");
   const [comment, setComment] = useState("");
   const [reported, setReported] = useState(initialReported);
   const [error, setError] = useState("");
-  const serverReport = /^\d+$/.test(target.reportId);
+  const [sending, setSending] = useState(false);
+  const serverTarget = isServerFeedbackTarget(target);
+  const targetLabel = target.type === "consultation_message" ? "상담 답변" : serverTarget ? "기본 사주 리포트" : `${TOPIC_NAMES[topicId]} 미리보기`;
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!feedback) return setError("가장 가까운 평가 하나를 골라 주세요.");
     if (!reason) return setError("어떤 점이 그랬는지 하나를 골라 주세요.");
-    if (serverReport) {
+    if (serverTarget) {
+      setSending(true);
       try {
-        await submitReportFeedback(target.reportId, feedback, comment.trim() || reason, reported);
+        const reasonLabel = FEEDBACK_REASONS.find((item) => item.code === reason)?.label ?? null;
+        await submitFeedback(
+          target.type === "report" ? { type: "report", reportId: target.reportId } : { type: "consultation_message", messageId: target.messageId },
+          { rating: feedback, reported, reason: reasonLabel, comment },
+        );
       } catch (requestError) {
-        return setError(requestError instanceof Error ? requestError.message : "서버에 피드백을 저장하지 못했어요.");
+        setSending(false);
+        return setError(formatApiRequestError(requestError, "서버에 피드백을 저장하지 못했어요. 잠시 후 다시 시도해 주세요."));
       }
+      router.push("/settings/feedback?sent=1");
+      return;
     }
+    if (target.type !== "report") return;
     const listInspection = feedbackListStore.inspect();
     if (listInspection.status === "corrupt" || listInspection.status === "unavailable") return setError("손상된 피드백 기록을 설정에서 확인해 주세요.");
     const now = new Date().toISOString();
@@ -969,8 +987,8 @@ export function FeedbackScreen({ target, topicId, initialRating = null, initialR
   return (
     <form className="sj-page" onSubmit={submit} noValidate aria-labelledby="feedback-title">
       <section className="sj-card" aria-label="피드백 대상" style={{ gap: 6, padding: 16 }}>
-        <p className="sj-meta">{serverReport ? "기본 사주 리포트" : `${TOPIC_NAMES[topicId]} 미리보기`}</p>
-        {!serverReport && <p className="sj-body" style={{ fontSize: 14 }}>{getTopicPreview(topicId).introduction}</p>}
+        <p className="sj-meta">{targetLabel}</p>
+        {!serverTarget && <p className="sj-body" style={{ fontSize: 14 }}>{getTopicPreview(topicId).introduction}</p>}
       </section>
 
       <fieldset className="sj-field">
@@ -1010,7 +1028,7 @@ export function FeedbackScreen({ target, topicId, initialRating = null, initialR
 
       <div className="sj-sticky-cta">
         {error && <p className="sj-error" role="alert">{error}</p>}
-        <button className="sj-button sj-button-block" type="submit">피드백 보내기</button>
+        <button className="sj-button sj-button-block" type="submit" disabled={sending}>{sending ? "보내고 있어요" : "피드백 보내기"}</button>
         <p className="sj-fine sj-center">보낸 내용은 피드백과 신고 목록에서 다시 볼 수 있어요.</p>
       </div>
     </form>
