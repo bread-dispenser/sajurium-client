@@ -1167,12 +1167,22 @@ html:has(.sj-topbar) { scroll-padding-top: 80px; }
   overflow-wrap: anywhere;
 }
 
+/* globals.css removes list markers everywhere; answer lists need them back. */
 .sj-md-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding-left: 20px;
+  display: block;
+  padding-left: 1.6em;
+  list-style-position: outside;
 }
+
+ul.sj-md-list { list-style-type: disc; }
+
+ol.sj-md-list { list-style-type: decimal; }
+
+.sj-md-item { display: list-item; }
+
+.sj-md-item:not(:first-child) { margin-top: 4px; }
+
+.sj-md-item::marker { color: var(--sj-muted); }
 
 .sj-md-rule {
   width: 100%;
