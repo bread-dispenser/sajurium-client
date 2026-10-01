@@ -93,7 +93,7 @@ test("chooses the reference profile in a paused report and compatibility checkou
 
 test("lists the family and decade reports with their server prices among the deep reports", async ({ page }) => {
   await page.goto("/products");
-  const reports = page.getByRole("region", { name: "심층 리포트" });
+  const reports = page.getByRole("region", { name: "심층 리포트", exact: true });
   const family = reports.getByRole("link", { name: /가족 심층 리포트/ });
   await expect(family).toBeVisible({ timeout: 15_000 });
   await expect(family).toContainText("4,900원");
@@ -103,7 +103,7 @@ test("lists the family and decade reports with their server prices among the dee
   await expect(decade).toHaveAttribute("href", "/products/decade-report");
   // Six deep reports and two credit packs; the free basic report is not for sale.
   await expect(reports.getByRole("link")).toHaveCount(6);
-  await expect(page.getByRole("region", { name: "상담 이용권" }).getByRole("link")).toHaveCount(2);
+  await expect(page.getByRole("region", { name: "상담 이용권", exact: true }).getByRole("link")).toHaveCount(2);
 
   await family.click();
   await expect(page.getByRole("heading", { level: 1, name: "가족 심층 리포트" })).toBeVisible();
