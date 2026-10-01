@@ -587,8 +587,9 @@ export function LiveConsultationSessionScreen({ sessionId }: { sessionId: string
         <p className="sj-meta">{serverTypeLabel(session.consultation_type)} 상담, {formatShortDate(session.created_at)}{credits !== null ? `. 남은 이용권 ${credits}회` : ""}</p>
       </div>
 
+      {/* 답변 안 제목은 h3라서 아웃라인용 h2를 둔다. .sj-chat 자식은 말풍선·답변만 두려고 바깥에 둔다. */}
+      <h2 id="consult-chat-title" className="sj-visually-hidden">상담 대화</h2>
       <section className="sj-chat" aria-labelledby="consult-chat-title">
-        <h2 id="consult-chat-title" className="sj-visually-hidden">상담 대화</h2>
         {session.messages.map((message) => {
           if (message.role === "user") {
             return <div key={message.id} className="sj-bubble-me"><span className="sj-visually-hidden">내 질문: </span>{message.content}</div>;
