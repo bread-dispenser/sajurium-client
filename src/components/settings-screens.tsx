@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { parseBirthDate } from "@/lib/contracts";
-import type { FeedbackEntry, FeedbackReason } from "@/lib/domain";
+import type { BirthInfo, FeedbackEntry, FeedbackReason } from "@/lib/domain";
 import { FEEDBACK_OPTIONS, INITIAL_BIRTH, getTopic } from "@/lib/fixtures";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { readServerJourney } from "@/lib/api/service";
@@ -35,7 +35,7 @@ import { CorruptState, EmptyState, LoadingState } from "./page-state";
 import { NotificationPreferencesGroup } from "./account-notification-screens";
 import { ChevronIcon } from "./ui/icons";
 import { GroupRowLink } from "./ui/layout";
-import { downloadPrivacyExport, formatApiRequestError, getSessionKind, listFeedback, requestPrivacyJob, type ServerFeedbackItem } from "@/lib/api/service";
+import { downloadPrivacyExport, formatApiRequestError, getProfile, getSessionKind, listFeedback, listProfiles, requestPrivacyJob, type ServerFeedbackItem, type ServerProfileDetail } from "@/lib/api/service";
 
 type InventoryStatus = "ok" | "empty" | "corrupt" | "unavailable";
 
@@ -55,6 +55,82 @@ function DisclosureRow({ title, sub, value, expanded, controls, onToggle }: { ti
 function calendarLabel(calendar: string, leapMonth: boolean) {
   if (calendar === "solar") return "양력";
   return leapMonth ? "음력 윤달" : "음력";
+}
+
+function birthSummaryText(year: string | number | undefined, calendar: string, leapMonth: boolean, timeKnown: boolean) {
+  return `${year ? `${year}년생` : "생년 확인 필요"}, ${calendarLabel(calendar, leapMonth)}, ${timeKnown ? "태어난 시간 입력함" : "태어난 시간 모름"}`;
+}
+
+/** The server's own profile: the one this browser's chart points at, or the account's self profile. */
+async function loadServerSelfProfile(): Promise<ServerProfileDetail | null> {
+  const journey = readServerJourney();
+  if (journey) return getProfile(journey.profileId);
+  const self = (await listProfiles()).find((profile) => profile.isSelf);
+  return self ? getProfile(self.id) : null;
+}
+
+function ProfileSummaryCard({ name, summary }: { name: string; summary: string }) {
+  return (
+    <div className="sj-card" style={{ flexDirection: "row", alignItems: "center", gap: 14, padding: 16 }}>
+      <span className="sj-initial-tile" aria-hidden="true">{Array.from(name)[0] ?? "나"}</span>
+      <div className="sj-row-main">
+        <span className="sj-h2">{name}</span>
+        <span className="sj-meta">{summary}</span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Top-of-settings profile card. With a server session it shows the server's own profile;
+ * otherwise the birth information stored on this device. When neither exists it says so
+ * instead of showing the example profile.
+ */
+function SettingsProfileCard({ deviceBirth }: { deviceBirth: BirthInfo | null }) {
+  const serverSession = getSessionKind() !== "none";
+  const [server, setServer] = useState<{ status: "loading" } | { status: "error"; message: string } | { status: "ok"; profile: ServerProfileDetail | null }>({ status: "loading" });
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    if (!serverSession) return;
+    let active = true;
+    void loadServerSelfProfile()
+      .then((profile) => { if (active) setServer({ status: "ok", profile }); })
+      .catch((reason) => { if (active) setServer({ status: "error", message: formatApiRequestError(reason, "프로필을 불러오지 못했어요.") }); });
+    return () => { active = false; };
+  }, [serverSession, attempt]);
+
+  if (serverSession && server.status === "loading") {
+    return (
+      <div className="sj-card" aria-busy="true" style={{ padding: 16 }}>
+        <p className="sj-meta">프로필을 불러오고 있어요.</p>
+      </div>
+    );
+  }
+  if (serverSession && server.status === "error") {
+    return (
+      <div className="sj-card" style={{ gap: 12, padding: 16 }}>
+        <p className="sj-error" role="alert">{server.message}</p>
+        <button className="sj-button-secondary" type="button" onClick={() => { setServer({ status: "loading" }); setAttempt((value) => value + 1); }}>프로필 다시 불러오기</button>
+      </div>
+    );
+  }
+  const profile = serverSession && server.status === "ok" ? server.profile : null;
+  if (profile) {
+    return <ProfileSummaryCard name={profile.nickname ?? ""} summary={birthSummaryText(profile.birthYear, profile.calendar, profile.leapMonth, !profile.birthTimeUnknown)} />;
+  }
+  if (deviceBirth) {
+    const year = /^\d{4}/.exec(deviceBirth.birthDate)?.[0];
+    return <ProfileSummaryCard name={deviceBirth.displayName} summary={birthSummaryText(year, deviceBirth.calendar, deviceBirth.leapMonth, !deviceBirth.birthTimeUnknown && Boolean(deviceBirth.birthTime))} />;
+  }
+  return (
+    <div className="sj-card" style={{ gap: 12, padding: 16 }}>
+      <div className="sj-row-main">
+        <span className="sj-h2">아직 입력한 출생 정보가 없어요</span>
+        <span className="sj-meta">출생 정보를 입력하면 내 명식과 리포트를 볼 수 있어요.</span>
+      </div>
+      <Link className="sj-button-secondary" href="/birth">출생 정보 입력하기</Link>
+    </div>
+  );
 }
 
 export function SettingsScreen() {
@@ -92,8 +168,8 @@ export function SettingsScreen() {
   const hasUnavailableStorage = inventory.some((item) => item.status === "unavailable");
   const hasStorageProblem = hasUnavailableStorage || inventory.some((item) => item.status === "corrupt");
   const storedCount = inventory.filter((item) => item.status === "ok").length;
-  const birthYear = /^\d{4}/.exec(birth.birthDate)?.[0];
-  const birthSummary = `${birthYear ? `${birthYear}년생` : "생년 확인 필요"}, ${calendarLabel(birth.calendar, birth.leapMonth)}, ${birth.birthTimeUnknown || !birth.birthTime ? "태어난 시간 모름" : "태어난 시간 입력함"}`;
+  // inspectCurrentBirth falls back to the example when nothing is stored; the card must not show it as the user.
+  const deviceBirth = birth === INITIAL_BIRTH ? null : birth;
   const deviceExpanded = deviceOpen || hasStorageProblem;
   // 서버에 계산한 명식이 있으면 출생 정보는 서버 프로필에서 고친다. 없으면 이 기기 프로필만 고친다.
   const hasServerProfile = readServerJourney() !== null;
@@ -167,13 +243,7 @@ export function SettingsScreen() {
       <h1 id="settings-title" className="sj-visually-hidden">설정과 데이터</h1>
 
       <section className="sj-section" aria-label="내 프로필">
-        <div className="sj-card" style={{ flexDirection: "row", alignItems: "center", gap: 14, padding: 16 }}>
-          <span className="sj-initial-tile" aria-hidden="true">{Array.from(birth.displayName)[0] ?? "나"}</span>
-          <div className="sj-row-main">
-            <span className="sj-h2">{birth.displayName}</span>
-            <span className="sj-meta">{birthSummary}</span>
-          </div>
-        </div>
+        <SettingsProfileCard deviceBirth={deviceBirth} />
         <Link className="sj-button-secondary" href="/login">계정 만들고 기록 옮기기</Link>
       </section>
 

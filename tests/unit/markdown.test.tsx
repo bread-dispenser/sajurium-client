@@ -63,6 +63,19 @@ describe("markdown renderer", () => {
     expect([...ol.querySelectorAll("li")].map((li) => li.textContent)).toEqual(["셋째", "넷째"]);
   });
 
+  it("marks list containers and items with the classes that carry bullets and numbers", () => {
+    const root = renderMarkdown("- 하나\n- 둘\n\n1. 첫째\n2. 둘째\n\n문단\n\n5. 다섯째\n6. 여섯째");
+    const ul = root.querySelector("ul")!;
+    const [first, second] = [...root.querySelectorAll("ol")];
+    for (const list of [ul, first, second]) {
+      expect(list).toHaveClass("sj-md-list");
+      for (const item of list.querySelectorAll("li")) expect(item).toHaveClass("sj-md-item");
+    }
+    // A list that starts at 1 needs no attribute; any other start number is kept.
+    expect(first).not.toHaveAttribute("start");
+    expect(second).toHaveAttribute("start", "5");
+  });
+
   it("renders a rule, splits paragraphs on blank lines and keeps single line breaks", () => {
     const root = renderMarkdown("첫 문단 첫 줄\n첫 문단 둘째 줄\n\n---\n\n둘째 문단");
     const paragraphs = root.querySelectorAll("p");
