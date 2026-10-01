@@ -423,6 +423,26 @@ function formatLinkedDate(iso: string) {
   return `${date.getFullYear()}년 ${date.getMonth() + 1}월 ${date.getDate()}일`;
 }
 
+/**
+ * Moves keyboard focus to an element by id after the next render. Confirmation steps swap
+ * buttons in and out, and the browser drops focus to the page body when the focused button
+ * unmounts, so each step names where focus should land instead.
+ */
+function useFocusAfterRender() {
+  const target = useRef<string | null>(null);
+  const [request, setRequest] = useState(0);
+  useEffect(() => {
+    if (!target.current) return;
+    const element = document.getElementById(target.current);
+    target.current = null;
+    element?.focus();
+  }, [request]);
+  return (id: string) => {
+    target.current = id;
+    setRequest((value) => value + 1);
+  };
+}
+
 /** Login methods of a signed-in account: list, unlink with confirmation, and link enabled providers. */
 export function LoginMethodsSection() {
   const [methods, setMethods] = useState<AccountIdentities | null>(null);
@@ -433,6 +453,7 @@ export function LoginMethodsSection() {
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState("");
   const [status, setStatus] = useState("");
+  const focusAfterRender = useFocusAfterRender();
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
@@ -466,17 +487,22 @@ export function LoginMethodsSection() {
     setBusy(provider);
     setActionError("");
     setStatus("");
+    let succeeded = false;
     try {
       await unlinkIdentity(provider);
       if (!mounted.current) return;
       setStatus(`${providerLabel(provider)} 연결을 해제했어요.`);
+      succeeded = true;
     } catch (reason) {
       if (!mounted.current) return;
       setActionError(formatIdentityError(reason, "연결을 해제하지 못했어요. 잠시 후 다시 시도해 주세요."));
     }
     setConfirming(null);
     await refresh();
-    if (mounted.current) setBusy(null);
+    if (!mounted.current) return;
+    setBusy(null);
+    // The row's buttons are gone or replaced, so focus lands on the result message.
+    focusAfterRender(succeeded ? "account-methods-status" : "account-methods-error");
   }
 
   async function link(provider: SocialProvider, idToken: string) {
@@ -535,15 +561,24 @@ export function LoginMethodsSection() {
                   {!canUnlink && <span id={noteId} className="sj-row-sub">남은 로그인 수단이 이것뿐이라 해제할 수 없어요.</span>}
                 </span>
                 {confirming !== identity.provider && (
-                  <button className="sj-text-button" type="button" aria-label={`${label} 연결 해제`} aria-describedby={canUnlink ? undefined : noteId}
-                          disabled={!canUnlink || busy !== null} onClick={() => { setStatus(""); setActionError(""); setConfirming(identity.provider); }}>연결 해제</button>
+                  <button id={`identity-${identity.provider}-unlink`} className="sj-text-button" type="button" aria-label={`${label} 연결 해제`} aria-describedby={canUnlink ? undefined : noteId}
+                          disabled={!canUnlink || busy !== null} onClick={() => {
+                            setStatus("");
+                            setActionError("");
+                            setConfirming(identity.provider);
+                            focusAfterRender(`identity-${identity.provider}-confirm`);
+                          }}>연결 해제</button>
                 )}
                 {confirming === identity.provider && (
-                  <div className="sj-section" style={{ flexBasis: "100%", gap: 8, paddingBottom: 6 }}>
-                    <p className="sj-meta">{label} 연결을 해제할까요? 해제하면 {label}로는 이 계정에 로그인할 수 없어요.</p>
+                  <div className="sj-section" role="group" aria-labelledby={`identity-${identity.provider}-question`} style={{ flexBasis: "100%", gap: 8, paddingBottom: 6 }}>
+                    <p id={`identity-${identity.provider}-question`} className="sj-meta">{label} 연결을 해제할까요? 해제하면 {label}로는 이 계정에 로그인할 수 없어요.</p>
                     <div className="sj-actions-row">
-                      <button className="sj-button-danger" type="button" disabled={busy !== null} onClick={() => { void unlink(identity.provider); }}>{busy === identity.provider ? "해제하고 있어요" : "연결 해제 확정"}</button>
-                      <button className="sj-button-secondary" type="button" disabled={busy !== null} onClick={() => setConfirming(null)}>취소</button>
+                      <button id={`identity-${identity.provider}-confirm`} className="sj-button-danger" type="button" disabled={busy !== null} aria-describedby={`identity-${identity.provider}-question`}
+                              onClick={() => { void unlink(identity.provider); }}>{busy === identity.provider ? "해제하고 있어요" : "연결 해제 확정"}</button>
+                      <button className="sj-button-secondary" type="button" disabled={busy !== null} onClick={() => {
+                        setConfirming(null);
+                        focusAfterRender(`identity-${identity.provider}-unlink`);
+                      }}>취소</button>
                     </div>
                   </div>
                 )}
@@ -567,8 +602,8 @@ export function LoginMethodsSection() {
         <p className="sj-fine" style={{ margin: "4px 4px 0" }}>다른 로그인 수단은 준비되면 여기에서 연결할 수 있어요.</p>
       ))}
 
-      {actionError && <p className="sj-error" role="alert" style={{ marginTop: 8 }}>{actionError}</p>}
-      {status && <p className="sj-meta" role="status" style={{ marginTop: 8 }}>{status}</p>}
+      {actionError && <p id="account-methods-error" className="sj-error" role="alert" tabIndex={-1} style={{ marginTop: 8 }}>{actionError}</p>}
+      {status && <p id="account-methods-status" className="sj-meta" role="status" tabIndex={-1} style={{ marginTop: 8 }}>{status}</p>}
     </section>
   );
 }
@@ -584,6 +619,7 @@ export function LiveAccountScreen() {
   const [deleteMessage, setDeleteMessage] = useState<{ tone: "status" | "error"; text: string } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [pending, setPending] = useState<"logout" | "delete" | null>(null);
+  const focusAfterRender = useFocusAfterRender();
 
   function logout() {
     setPending("logout");
@@ -601,7 +637,12 @@ export function LiveAccountScreen() {
         ? { tone: "status", text: "계정과 서버 기록을 삭제했어요. 이 기기의 저장 정보는 설정에서 따로 지울 수 있어요." }
         : { tone: "status", text: "삭제 요청을 받았어요. 처리가 끝나면 알려드려요." }))
       .catch((error) => setDeleteMessage({ tone: "error", text: formatApiRequestError(error, "계정 삭제 요청을 보내지 못했어요. 잠시 후 다시 시도해 주세요.") }))
-      .finally(() => { setPending(null); setConfirmDelete(false); });
+      .finally(() => {
+        setPending(null);
+        setConfirmDelete(false);
+        // The confirm button unmounts here; focus the message that says what happened.
+        focusAfterRender("account-delete-result");
+      });
   }
 
   return (
@@ -661,19 +702,26 @@ export function LiveAccountScreen() {
           <textarea id="account-delete-reason" className="sj-textarea" style={{ minHeight: 88 }} rows={2} value={reason} onChange={(event) => setReason(event.target.value)} />
         </div>
         {confirmDelete ? (
-          <div className="sj-section" style={{ gap: 8 }}>
-            <p className="sj-meta">정말 계정을 삭제할까요?</p>
+          <div className="sj-section" role="group" aria-labelledby="account-delete-question" style={{ gap: 8 }}>
+            <p id="account-delete-question" className="sj-meta">정말 계정을 삭제할까요?</p>
             <div className="sj-actions-row">
-              <button className="sj-button-danger" type="button" disabled={pending !== null} onClick={deleteAccount}>{pending === "delete" ? "삭제하고 있어요" : "계정 삭제 확정"}</button>
-              <button className="sj-button-secondary" type="button" onClick={() => setConfirmDelete(false)}>취소</button>
+              <button id="account-delete-confirm" className="sj-button-danger" type="button" disabled={pending !== null} aria-describedby="account-delete-question" onClick={deleteAccount}>{pending === "delete" ? "삭제하고 있어요" : "계정 삭제 확정"}</button>
+              <button className="sj-button-secondary" type="button" onClick={() => {
+                setConfirmDelete(false);
+                focusAfterRender("account-delete-start");
+              }}>취소</button>
             </div>
           </div>
         ) : (
-          <button className="sj-button-danger" type="button" disabled={pending !== null} onClick={() => setConfirmDelete(true)}>계정 삭제</button>
+          <button id="account-delete-start" className="sj-button-danger" type="button" disabled={pending !== null} onClick={() => {
+            setDeleteMessage(null);
+            setConfirmDelete(true);
+            focusAfterRender("account-delete-confirm");
+          }}>계정 삭제</button>
         )}
         {deleteMessage && (deleteMessage.tone === "error"
-          ? <p className="sj-error" role="alert">{deleteMessage.text}</p>
-          : <p className="sj-meta" role="status">{deleteMessage.text}</p>)}
+          ? <p id="account-delete-result" className="sj-error" role="alert" tabIndex={-1}>{deleteMessage.text}</p>
+          : <p id="account-delete-result" className="sj-meta" role="status" tabIndex={-1}>{deleteMessage.text}</p>)}
       </section>
     </main>
   );
