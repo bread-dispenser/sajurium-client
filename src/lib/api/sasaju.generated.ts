@@ -744,7 +744,14 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Register Push Token */
+        /**
+         * Register Push Token
+         * @description 기기 토큰을 등록한다.
+         *
+         *     다른 계정에 활성 상태로 묶인 토큰은 소유자를 바꾸지 않고 409로 거부한다. 같은 기기에서
+         *     계정을 바꿀 때는 이전 계정이 로그아웃하면서 `DELETE /push-tokens`로 폐기해야 하고, 폐기된
+         *     토큰만 새 계정이 다시 등록할 수 있다. 토큰 원문은 로그·오류 응답에 남기지 않는다.
+         */
         post: operations["register_push_token_api_v1_push_tokens_post"];
         /** Revoke Push Token */
         delete: operations["revoke_push_token_api_v1_push_tokens_delete"];
@@ -773,7 +780,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/feedback": {
+    "/api/v1/notifications/unread-count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Unread Notification Count
+         * @description 헤더 알림 배지용 읽지 않은 개수.
+         */
+        get: operations["read_unread_notification_count_api_v1_notifications_unread_count_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/read-all": {
         parameters: {
             query?: never;
             header?: never;
@@ -781,6 +808,47 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
+        put?: never;
+        /** Mark All Notifications Read */
+        post: operations["mark_all_notifications_read_api_v1_notifications_read_all_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/{notification_id}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark Notification Read
+         * @description 알림 한 건을 읽음 처리한다. 이미 읽은 알림은 처음 읽은 시각을 유지한다.
+         */
+        post: operations["mark_notification_read_api_v1_notifications__notification_id__read_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read My Feedback
+         * @description 내가 남긴 피드백·신고와 처리 상태 (§3.10).
+         */
+        get: operations["read_my_feedback_api_v1_feedback_get"];
         put?: never;
         /**
          * Create Feedback
@@ -1198,6 +1266,8 @@ export interface components {
             consultation_message_id?: number | null;
             /** Rating */
             rating?: string | null;
+            /** Status */
+            status: string;
             /**
              * Created At
              * Format: date-time
@@ -1216,6 +1286,37 @@ export interface components {
             detail_reason?: string | null;
             /** Report Reason */
             report_reason?: string | null;
+        };
+        /**
+         * FeedbackListItem
+         * @description 내 피드백·신고 목록 항목.
+         */
+        FeedbackListItem: {
+            /** Id */
+            id: number;
+            /** Target Type */
+            target_type: string;
+            /** Target Title */
+            target_title?: string | null;
+            /** Report Id */
+            report_id?: number | null;
+            /** Consultation Message Id */
+            consultation_message_id?: number | null;
+            /** Consultation Session Id */
+            consultation_session_id?: number | null;
+            /** Rating */
+            rating?: string | null;
+            /** Detail Reason */
+            detail_reason?: string | null;
+            /** Report Reason */
+            report_reason?: string | null;
+            /** Status */
+            status: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -1294,6 +1395,25 @@ export interface components {
             quiet_hours_end?: number | null;
             /** Timezone */
             timezone?: string | null;
+        };
+        /** NotificationReadAllResult */
+        NotificationReadAllResult: {
+            /** Updated Count */
+            updated_count: number;
+            /** Unread Count */
+            unread_count: number;
+            /** Request Id */
+            request_id?: string | null;
+            /**
+             * Server Time
+             * Format: date-time
+             */
+            server_time: string;
+        };
+        /** NotificationUnreadCount */
+        NotificationUnreadCount: {
+            /** Unread Count */
+            unread_count: number;
         };
         /** Order */
         Order: {
@@ -1780,6 +1900,8 @@ export interface components {
             target_id: number;
             /** Share Url */
             share_url?: string | null;
+            /** Include */
+            include?: string[] | null;
             /**
              * Expires At
              * Format: date-time
@@ -1803,6 +1925,8 @@ export interface components {
             target_id: number;
             /** Expires In Hours */
             expires_in_hours?: number | null;
+            /** Include */
+            include?: ("summary" | "day_pillar" | "five_elements" | "birth_date" | "birth_time")[] | null;
         };
         /**
          * SharedContent
@@ -1816,6 +1940,26 @@ export interface components {
              * @default []
              */
             sections: unknown[];
+            /** Include */
+            include?: string[] | null;
+            /** Summary */
+            summary?: string | null;
+            /** Day Pillar */
+            day_pillar?: {
+                [key: string]: string;
+            } | null;
+            /** Five Elements */
+            five_elements?: {
+                [key: string]: number;
+            } | null;
+            /** Birth Date */
+            birth_date?: {
+                [key: string]: unknown;
+            } | null;
+            /** Birth Time */
+            birth_time?: string | null;
+            /** Birth Time Unknown */
+            birth_time_unknown?: boolean | null;
             /** Created At */
             created_at?: string | null;
             /** Expires At */
@@ -3451,6 +3595,109 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NotificationDelivery"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_unread_notification_count_api_v1_notifications_unread_count_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationUnreadCount"];
+                };
+            };
+        };
+    };
+    mark_all_notifications_read_api_v1_notifications_read_all_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationReadAllResult"];
+                };
+            };
+        };
+    };
+    mark_notification_read_api_v1_notifications__notification_id__read_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                notification_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationDelivery"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_my_feedback_api_v1_feedback_get: {
+        parameters: {
+            query?: {
+                skip?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedbackListItem"][];
                 };
             };
             /** @description Validation Error */
