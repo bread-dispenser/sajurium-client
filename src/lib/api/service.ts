@@ -1,5 +1,6 @@
 import type { components } from "@/lib/api/sasaju.generated";
 import type { CreditLedgerEntry, LibraryAction, LibraryItemView, ProductView, ProfileInput } from "@/lib/contracts";
+import type { ProductId } from "@/lib/domain";
 import { ApiRequestError, apiRequest } from "@/lib/api/client";
 import { toChartView, type ChartView } from "@/lib/saju";
 import { markdownPreview, markdownTitle } from "@/lib/markdown";
@@ -82,13 +83,25 @@ export type ServerNotification = Schema<"NotificationDelivery">;
 
 export type LogoutResult = "complete" | "local-only";
 
-const PRODUCT_IDS: Record<string, string> = {
+/**
+ * Server product code -> client product id. Every active server product must be either mapped here
+ * or listed in `UNLISTED_PRODUCT_CODES`; `tests/unit/product-catalog.test.ts` checks this against the
+ * server seed so a new server product cannot silently vanish from the product list.
+ */
+export const PRODUCT_IDS: Readonly<Record<string, ProductId>> = {
   report_love_deep: "love-report",
   report_career_deep: "career-report",
   report_wealth_deep: "money-report",
   compatibility_deep: "compatibility-report",
   credit_pack_5: "consult-5",
+  credit_pack_1: "consult-1",
 };
+
+/**
+ * Active server products the product list deliberately does not show. `report_basic` is the free
+ * basic report every user gets from `/report`; it is not something to buy.
+ */
+export const UNLISTED_PRODUCT_CODES: ReadonlySet<string> = new Set(["report_basic"]);
 
 const PRODUCT_CODES: Record<string, string> = Object.fromEntries(
   Object.entries(PRODUCT_IDS).map(([code, id]) => [id, code]),
@@ -829,7 +842,12 @@ export async function getFlow(scope: "today" | "month" | "year"): Promise<LiveRe
 
 function toProductView(product: ApiProduct): ProductView | null {
   const id = PRODUCT_IDS[product.code];
-  if (!id) return null;
+  if (!id) {
+    if (!UNLISTED_PRODUCT_CODES.has(product.code) && process.env.NODE_ENV !== "production") {
+      console.warn(`[sajurium] Server product "${product.code}" has no client mapping and is hidden from the product list. Add it to PRODUCT_IDS or UNLISTED_PRODUCT_CODES.`);
+    }
+    return null;
+  }
   const kind = product.product_type === "credit_pack" ? "consultation_credit" : "report";
   return {
     id,

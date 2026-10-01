@@ -336,6 +336,13 @@ export const COMPATIBILITY_DIMENSIONS: readonly CompatibilityDimension[] = [
 
 export const PRODUCTS: readonly Product[] = [
   {
+    id: "consult-1", slug: "consult-1", version: "1", status: "active", kind: "consultation_credit", title: "상담 1회 이용권",
+    description: "필요할 때 한 번 이용하는 상담 이용권", answersQuestions: ["지금 고민에서 먼저 확인할 현실 조건은 무엇인가요?"],
+    requiredInputs: ["현재 프로필", "상담 주제", "질문 또는 상황"], requiresBirthTime: false, includedSections: ["질문 1회 표시", "상담 보관함"],
+    generationMethod: "저장된 프로필과 사용자가 입력한 상담 맥락을 바탕으로 답변을 생성합니다.", priceAmount: 2500, priceCurrency: "KRW",
+    refundPolicy: "생성 전에는 환불할 수 있고, 생성 실패 시 재시도 또는 이용권 복구를 제공합니다.", preview: "선택한 고민 주제와 질문 맥락을 바탕으로 답변 구성을 미리 보여드려요.",
+  },
+  {
     id: "consult-5", slug: "consult-5", version: "1", status: "active", kind: "consultation_credit", title: "상담 5회 이용권",
     description: "고민별 질문과 답변을 이어서 살펴보는 상담 상품", answersQuestions: ["지금 고민에서 먼저 확인할 현실 조건은 무엇인가요?", "후속 질문으로 어떤 관점을 더 살펴볼 수 있나요?"],
     requiredInputs: ["현재 프로필", "상담 주제", "질문 또는 상황"], requiresBirthTime: false, includedSections: ["질문 5회 표시", "상담 보관함", "후속 질문"],
