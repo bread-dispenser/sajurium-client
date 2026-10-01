@@ -70,4 +70,16 @@ test("renders the server decade report with the current period highlighted", asy
   const locked = page.getByRole("list", { name: "구매하면 열리는 내용" });
   await expect(locked).toContainText("다음 대운 준비");
   await expect(locked).toContainText("구간별 심층 해설");
+  await expect(page.getByRole("button", { name: "결제 준비 중" })).toBeDisabled();
+  await expect(page.getByRole("link", { name: "리포트 구성 보기" })).toHaveAttribute("href", "/products/decade-report");
+});
+
+test("links the family topic's locked sections to the family report product", async ({ page }) => {
+  await createServerReport(page, "가족 리포트");
+  await page.goto("/report/topics/family");
+
+  await expect(page.getByRole("heading", { level: 1, name: "가족 리포트" })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("list", { name: "구매하면 열리는 내용" })).toContainText("가족 관계에서 반복되는 패턴");
+  await expect(page.getByRole("button", { name: "결제 준비 중" })).toBeDisabled();
+  await expect(page.getByRole("link", { name: "리포트 구성 보기" })).toHaveAttribute("href", "/products/family-report");
 });

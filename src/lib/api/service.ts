@@ -100,7 +100,9 @@ export const PRODUCT_IDS: Readonly<Record<string, ProductId>> = {
   report_love_deep: "love-report",
   report_career_deep: "career-report",
   report_wealth_deep: "money-report",
+  report_family_deep: "family-report",
   compatibility_deep: "compatibility-report",
+  report_decade_deep: "decade-report",
   credit_pack_5: "consult-5",
   credit_pack_1: "consult-1",
 };
@@ -1086,8 +1088,14 @@ function toProductView(product: ApiProduct): ProductView | null {
   };
 }
 
+/** Client display order: the `PRODUCT_IDS` order, so topic reports stay together whatever order the server seeded them in. */
+const PRODUCT_ORDER: readonly string[] = Object.values(PRODUCT_IDS);
+
 export async function listProducts(): Promise<ProductView[]> {
-  return (await request<ApiProduct[]>("/api/v1/products")).data.map(toProductView).filter((product): product is ProductView => product !== null);
+  return (await request<ApiProduct[]>("/api/v1/products")).data
+    .map(toProductView)
+    .filter((product): product is ProductView => product !== null)
+    .sort((a, b) => PRODUCT_ORDER.indexOf(a.id) - PRODUCT_ORDER.indexOf(b.id));
 }
 
 export async function getProduct(productId: string) {

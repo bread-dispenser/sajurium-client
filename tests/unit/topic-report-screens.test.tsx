@@ -90,6 +90,28 @@ describe("topic report screens", () => {
     expect(screen.queryByText(getTopicPreview("career").strength)).toBeNull();
   });
 
+  it("links the family topic's locked sections to the family report product while payment stays paused", async () => {
+    serverReading();
+    const familySections = [
+      { key: "family_strength", title: "강점", body: "가족 안에서 균형을 잡는 힘이 있어요.", is_free: true, locked: false, evidence: ["월간 정인"], requires_birth_time: false },
+      { key: "family_pattern", title: "가족 관계에서 반복되는 패턴", body: null, is_free: false, locked: true, evidence: [], requires_birth_time: false },
+      { key: "family_hour_insight", title: "시주로 보는 자녀·후배와의 관계", body: null, is_free: false, locked: true, evidence: [], requires_birth_time: true },
+    ];
+    const paths = mockTopic([() => json({ ...topicReport("family", { sections: familySections }), title: "가족 리포트" }, 201)]);
+
+    render(<TopicPreviewScreen topicId="family" />);
+
+    expect(await screen.findByRole("heading", { level: 1, name: "가족 리포트" })).toBeDefined();
+    expect(paths).toEqual(["POST /api/v1/charts/22/reports/topics/family"]);
+    const locked = screen.getByRole("list", { name: "구매하면 열리는 내용" });
+    expect(within(locked).getAllByRole("listitem").map((item) => item.textContent)).toEqual(["가족 관계에서 반복되는 패턴", "시주로 보는 자녀·후배와의 관계"]);
+    expect(screen.getByText("가족 심층 리포트")).toBeDefined();
+    expect(screen.getByRole("link", { name: "리포트 구성 보기" }).getAttribute("href")).toBe("/products/family-report");
+    expect(screen.queryByRole("link", { name: "리포트 상품 보기" })).toBeNull();
+    expect(screen.getByRole("button", { name: "결제 준비 중" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByText(/지금은 결제를 받지 않고 있어요/)).toBeDefined();
+  });
+
   it("asks the server for the wealth topic on the money screen", async () => {
     serverReading();
     const paths = mockTopic([() => json({ ...topicReport("wealth", { sections: KNOWN_TIME_SECTIONS }), title: "재물 리포트" }, 201)]);
