@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { announceUnreadCount, formatApiRequestError, getNotificationPreferences, getSessionKind, listNotifications, markAllNotificationsRead, markNotificationRead, loginAccount, loginSocialAccount, logoutAccount, registerAccount, requestAccountDeletion, type AnonymousMigrationStatus, type ServerNotification, type SocialProvider, updateNotificationPreferences } from "@/lib/api/service";
+import { announceUnreadCount, formatApiRequestError, formatIdentityError, getNotificationPreferences, getSessionKind, linkIdentity, listEnabledSocialProviders, listIdentities, listNotifications, markAllNotificationsRead, markNotificationRead, loginAccount, loginSocialAccount, logoutAccount, registerAccount, requestAccountDeletion, unlinkIdentity, type AccountIdentities, type AnonymousMigrationStatus, type ServerNotification, type SocialProvider, updateNotificationPreferences } from "@/lib/api/service";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { pushEnabled } from "@/lib/feature-availability";
-import { SocialLoginOptions } from "./social-login-options";
+import { clientSocialProviders, SocialLoginOptions, SocialProviderButtons } from "./social-login-options";
 import { EmptyState, LoadingState } from "./page-state";
 import { CheckIcon } from "./ui/icons";
 import { Banner, GroupRowLink } from "./ui/layout";
@@ -397,6 +397,168 @@ export function LiveLoginScreen() {
 
 /* ---------- Account ---------- */
 
+const PROVIDER_LABELS: Record<string, string> = { google: "Google", apple: "Apple", kakao: "카카오" };
+
+function providerLabel(provider: string) {
+  return PROVIDER_LABELS[provider] ?? provider;
+}
+
+function formatLinkedDate(iso: string) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso.slice(0, 10);
+  return `${date.getFullYear()}년 ${date.getMonth() + 1}월 ${date.getDate()}일`;
+}
+
+/** Login methods of a signed-in account: list, unlink with confirmation, and link enabled providers. */
+export function LoginMethodsSection() {
+  const [methods, setMethods] = useState<AccountIdentities | null>(null);
+  const [loadError, setLoadError] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  const [enabledProviders, setEnabledProviders] = useState<SocialProvider[] | null>(null);
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [actionError, setActionError] = useState("");
+  const [status, setStatus] = useState("");
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+
+  useEffect(() => {
+    let active = true;
+    void listIdentities()
+      .then((value) => { if (active) setMethods(value); })
+      .catch((reason) => { if (active) setLoadError(formatIdentityError(reason, "로그인 수단을 불러오지 못했어요.")); });
+    return () => { active = false; };
+  }, [attempt]);
+
+  useEffect(() => {
+    let active = true;
+    // 서버가 켜 둔 제공자만 연결 버튼을 그린다. 목록을 못 받으면 버튼 없이 안내만 남긴다.
+    void listEnabledSocialProviders()
+      .then((value) => { if (active) setEnabledProviders(value); })
+      .catch(() => { if (active) setEnabledProviders([]); });
+    return () => { active = false; };
+  }, []);
+
+  async function refresh() {
+    try {
+      const value = await listIdentities();
+      if (mounted.current) setMethods(value);
+    } catch {
+      // 방금 받은 목록을 그대로 두고, 작업 결과 안내만 보여 준다.
+    }
+  }
+
+  async function unlink(provider: string) {
+    setBusy(provider);
+    setActionError("");
+    setStatus("");
+    try {
+      await unlinkIdentity(provider);
+      if (!mounted.current) return;
+      setStatus(`${providerLabel(provider)} 연결을 해제했어요.`);
+    } catch (reason) {
+      if (!mounted.current) return;
+      setActionError(formatIdentityError(reason, "연결을 해제하지 못했어요. 잠시 후 다시 시도해 주세요."));
+    }
+    setConfirming(null);
+    await refresh();
+    if (mounted.current) setBusy(null);
+  }
+
+  async function link(provider: SocialProvider, idToken: string) {
+    if (busy) return;
+    setBusy("link");
+    setActionError("");
+    setStatus("");
+    try {
+      await linkIdentity(provider, idToken);
+      if (!mounted.current) return;
+      const label = providerLabel(provider);
+      setStatus(`${label} 계정을 연결했어요. 이제 ${label}로 로그인해도 이 계정이 열려요.`);
+    } catch (reason) {
+      if (!mounted.current) return;
+      setActionError(formatIdentityError(reason, "소셜 계정을 연결하지 못했어요. 잠시 후 다시 시도해 주세요."));
+    }
+    await refresh();
+    if (mounted.current) setBusy(null);
+  }
+
+  const linked = new Set(methods?.identities.map((item) => item.provider));
+  const linkable = enabledProviders && methods ? clientSocialProviders().filter((provider) => enabledProviders.includes(provider) && !linked.has(provider)) : [];
+  const canUnlink = methods ? methods.hasPassword || methods.identities.length > 1 : false;
+  const rowStyle = { cursor: "default", flexWrap: "wrap" } as const;
+
+  return (
+    <section className="sj-section" style={{ gap: 0 }} aria-labelledby="account-methods-title">
+      <h2 id="account-methods-title" className="sj-group-title">로그인 수단</h2>
+      {loadError ? (
+        <div className="sj-card">
+          <p className="sj-error" role="alert">{loadError}</p>
+          <button className="sj-button-secondary" type="button" onClick={() => { setLoadError(""); setMethods(null); setAttempt((value) => value + 1); }}>로그인 수단 다시 불러오기</button>
+        </div>
+      ) : !methods ? (
+        <div className="sj-card" aria-busy="true">
+          <p className="sj-meta">로그인 수단을 불러오고 있어요.</p>
+        </div>
+      ) : (
+        <ul className="sj-group" style={{ margin: 0, padding: 0, listStyle: "none" }} aria-label="연결된 로그인 수단">
+          {methods.hasPassword && (
+            <li className="sj-row-in-group" style={rowStyle}>
+              <span className="sj-row-main">
+                <span className="sj-row-title">이메일과 비밀번호</span>
+                {methods.email && <span className="sj-row-sub">{methods.email}</span>}
+              </span>
+            </li>
+          )}
+          {methods.identities.map((identity) => {
+            const label = providerLabel(identity.provider);
+            const noteId = `identity-${identity.provider}-note`;
+            return (
+              <li key={identity.provider} className="sj-row-in-group" style={rowStyle}>
+                <span className="sj-row-main">
+                  <span className="sj-row-title">{label}</span>
+                  <span className="sj-row-sub">{formatLinkedDate(identity.linkedAt)}에 연결했어요</span>
+                  {!canUnlink && <span id={noteId} className="sj-row-sub">남은 로그인 수단이 이것뿐이라 해제할 수 없어요.</span>}
+                </span>
+                {confirming !== identity.provider && (
+                  <button className="sj-text-button" type="button" aria-label={`${label} 연결 해제`} aria-describedby={canUnlink ? undefined : noteId}
+                          disabled={!canUnlink || busy !== null} onClick={() => { setStatus(""); setActionError(""); setConfirming(identity.provider); }}>연결 해제</button>
+                )}
+                {confirming === identity.provider && (
+                  <div className="sj-section" style={{ flexBasis: "100%", gap: 8, paddingBottom: 6 }}>
+                    <p className="sj-meta">{label} 연결을 해제할까요? 해제하면 {label}로는 이 계정에 로그인할 수 없어요.</p>
+                    <div className="sj-actions-row">
+                      <button className="sj-button-danger" type="button" disabled={busy !== null} onClick={() => { void unlink(identity.provider); }}>{busy === identity.provider ? "해제하고 있어요" : "연결 해제 확정"}</button>
+                      <button className="sj-button-secondary" type="button" disabled={busy !== null} onClick={() => setConfirming(null)}>취소</button>
+                    </div>
+                  </div>
+                )}
+              </li>
+            );
+          })}
+          {!methods.hasPassword && methods.identities.length === 0 && (
+            <li className="sj-row-in-group" style={rowStyle}><span className="sj-row-sub">연결된 로그인 수단이 없어요.</span></li>
+          )}
+        </ul>
+      )}
+      <p className="sj-fine" style={{ margin: "8px 4px 0" }}>같은 이메일이라도 계정을 자동으로 합치지 않아요. 여기에서 연결한 수단으로 로그인하면 지금 이 계정이 열려요.</p>
+
+      {methods && enabledProviders && (linkable.length > 0 ? (
+        <div className="sj-section" style={{ gap: 10, marginTop: 16 }}>
+          <h3 className="sj-group-title" style={{ margin: "0 4px" }}>다른 로그인 수단 연결</h3>
+          <SocialProviderButtons providers={linkable} onCredential={link} pending={busy !== null} appleLabel="Apple 계정 연결"
+                                 onError={(text) => { setStatus(""); setActionError(text); }} />
+        </div>
+      ) : (
+        <p className="sj-fine" style={{ margin: "4px 4px 0" }}>다른 로그인 수단은 준비되면 여기에서 연결할 수 있어요.</p>
+      ))}
+
+      {actionError && <p className="sj-error" role="alert" style={{ marginTop: 8 }}>{actionError}</p>}
+      {status && <p className="sj-meta" role="status" style={{ marginTop: 8 }}>{status}</p>}
+    </section>
+  );
+}
+
 const MOVED_RECORDS = ["프로필과 명식", "리포트", "상담 기록", "사람 보관함", "상담 이용권"];
 
 export function LiveAccountScreen() {
@@ -455,6 +617,8 @@ export function LiveAccountScreen() {
         <p className="sj-fine">옮기는 도중 연결이 끊기면 다음에 로그인할 때 이어서 옮겨요.</p>
       </section>
       )}
+
+      {signedIn && <LoginMethodsSection />}
 
       {signedIn && (
       <section className="sj-section" style={{ gap: 0 }} aria-labelledby="account-session-title">

@@ -528,6 +528,8 @@ html:has(.sj-topbar) { scroll-padding-top: 80px; }
   cursor: pointer;
 }
 
+.sj-text-button:disabled { color: var(--sj-muted); cursor: not-allowed; }
+
 .sj-button:disabled,
 .sj-button[aria-disabled="true"],
 .sj-button-secondary:disabled,

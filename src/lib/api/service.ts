@@ -219,6 +219,71 @@ export async function loginSocialAccount(provider: SocialProvider, idToken: stri
   return { token, migration };
 }
 
+/* ---------- Login methods (account linking) ---------- */
+
+export type LinkedIdentity = { provider: string; linkedAt: string };
+export type AccountIdentities = { hasPassword: boolean; email: string | null; identities: LinkedIdentity[] };
+export type IdentityLinkResult = { provider: string; linkedAt: string | null; status: string };
+
+const SOCIAL_PROVIDERS: readonly SocialProvider[] = ["google", "apple", "kakao"];
+
+/**
+ * Providers the backend currently accepts (`GET /auth/social/providers`, public). A provider is
+ * enabled only when the global switch and its own switch are both on. Unknown names are dropped.
+ */
+export async function listEnabledSocialProviders(): Promise<SocialProvider[]> {
+  const result = (await apiRequest<Schema<"SocialProvidersResponse">>("/api/v1/auth/social/providers", { baseUrl: API_BASE_URL, credentials: "omit" })).data;
+  if (!result.enabled) return [];
+  return result.providers
+    .filter((item) => item.enabled)
+    .map((item) => item.provider)
+    .filter((provider): provider is SocialProvider => (SOCIAL_PROVIDERS as readonly string[]).includes(provider));
+}
+
+export async function listIdentities(): Promise<AccountIdentities> {
+  const data = (await request<Schema<"IdentitiesResponse">>("/api/v1/auth/identities")).data;
+  return {
+    hasPassword: data.has_password,
+    email: data.email ?? null,
+    identities: data.identities.map((item) => ({ provider: item.provider, linkedAt: toIso(item.linked_at)! })),
+  };
+}
+
+/** Links a provider identity to the signed-in account. The id_token comes from the same provider button the login screen uses. */
+export async function linkIdentity(provider: SocialProvider, idToken: string): Promise<IdentityLinkResult> {
+  if (!idToken.trim()) throw new Error("소셜 계정 응답에 인증 토큰이 없어요. 다시 연결해 주세요.");
+  const body: Schema<"IdentityLinkRequest"> = { provider, id_token: idToken };
+  const data = (await request<{ provider: string; linked_at?: string | null; status: string }>("/api/v1/auth/identities", { method: "POST", body })).data;
+  return { provider: data.provider, linkedAt: toIso(data.linked_at ?? null), status: data.status };
+}
+
+export async function unlinkIdentity(provider: string): Promise<{ provider: string; status: string }> {
+  return (await request<{ provider: string; status: string }>(`/api/v1/auth/identities/${encodeURIComponent(provider)}`, { method: "DELETE" })).data;
+}
+
+const IDENTITY_ERROR_MESSAGES: Record<string, string> = {
+  ACCOUNT_REQUIRED: "로그인 수단은 회원 계정에서만 관리할 수 있어요. 먼저 로그인하거나 계정을 만들어 주세요.",
+  IDENTITY_ALREADY_LINKED: "이 소셜 계정은 이미 다른 회원 계정에 연결되어 있어요. 그 계정을 쓰려면 이 소셜 계정으로 로그인해 주세요.",
+  PROVIDER_ALREADY_LINKED: "이 계정에는 같은 서비스의 다른 소셜 계정이 이미 연결되어 있어요. 기존 연결을 해제한 뒤 다시 연결해 주세요.",
+  LAST_LOGIN_METHOD: "남은 로그인 수단이 이것뿐이라 해제할 수 없어요. 다른 로그인 수단을 먼저 연결해 주세요.",
+  IDENTITY_NOT_FOUND: "이미 해제됐거나 연결되지 않은 로그인 수단이에요.",
+  SOCIAL_LOGIN_DISABLED: "지금은 소셜 계정을 연결할 수 없어요. 나중에 다시 확인해 주세요.",
+  SOCIAL_PROVIDER_DISABLED: "이 소셜 계정은 지금 연결할 수 없어요.",
+  SOCIAL_PROVIDER_NOT_CONFIGURED: "이 소셜 계정 연결은 아직 준비 중이에요.",
+  SOCIAL_PROVIDER_UNAVAILABLE: "소셜 계정 서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.",
+  INVALID_SOCIAL_TOKEN: "소셜 계정 인증을 확인하지 못했어요. 처음부터 다시 연결해 주세요.",
+  SOCIAL_LOGIN_RATE_LIMITED: "연결 시도가 많았어요. 잠시 후 다시 시도해 주세요.",
+};
+
+/** Korean copy for identity list/link/unlink failures; other errors fall back to `formatApiRequestError`. */
+export function formatIdentityError(error: unknown, fallback = "로그인 수단을 바꾸지 못했어요. 잠시 후 다시 시도해 주세요."): string {
+  if (error instanceof ApiRequestError && !isCredentialRejection(error)) {
+    const message = IDENTITY_ERROR_MESSAGES[error.error.code];
+    if (message) return error.error.request_id ? `${message} (문의 시 참조 ID: ${error.error.request_id})` : message;
+  }
+  return formatApiRequestError(error, fallback);
+}
+
 export async function logoutAccount(): Promise<LogoutResult> {
   const accessToken = readAccessToken();
   let result: LogoutResult = "complete";
