@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { FormEvent } from "react";
 import { CorruptState, EmptyState, LoadingState } from "./page-state";
-import { BackIcon, CheckIcon, ShareIcon } from "./ui/icons";
+import { BackIcon, ShareIcon } from "./ui/icons";
 import { Banner, RowLink } from "./ui/layout";
 import { DaeunStrip, ElementBalance, PillarGrid, PillarStrip } from "./ui/chart-display";
 import type { BirthInfo, FeedbackData, FeedbackId, FeedbackReason, TopicId } from "@/lib/domain";
@@ -14,6 +14,7 @@ import { hasValidLeapMonthSemantics, parseBirthDate } from "@/lib/contracts";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { FEEDBACK_OPTIONS, INITIAL_BIRTH, TOPICS, getTopicPreview } from "@/lib/fixtures";
 import { createBasicReading, formatApiRequestError, getCurrentChart, getCurrentReport, submitFeedback, type LiveReport } from "@/lib/api/service";
+import { getSessionKind, readServerJourney } from "@/lib/api/service";
 import { ELEMENTS, currentDaeun, ganjiGlyphs, ganjiHanja, type ChartView, type Pillar } from "@/lib/saju";
 import {
   birthDraftStore,
@@ -1037,6 +1038,56 @@ export function FeedbackScreen({ target, topicId, initialRating = null, initialR
 
 /* ---------- Save (/report/save) ---------- */
 
+type SaveStorageMode = "server-anonymous" | "server-account" | "device-only";
+
+/**
+ * Where the reading actually lives. `createBasicReading` stores the profile, chart and basic report
+ * on the server and remembers their ids in the server journey, so with a journey the device copy is
+ * only an extra. Without one (fixture previews) nothing was sent and the copy stays on this browser.
+ */
+function saveStorageMode(): SaveStorageMode {
+  if (!readServerJourney()) return "device-only";
+  return getSessionKind() === "account" ? "server-account" : "server-anonymous";
+}
+
+function SaveStorageCard({ mode, localSaved }: { mode: SaveStorageMode; localSaved: boolean }) {
+  const server = mode !== "device-only";
+  const deviceCopy = localSaved ? "출생 정보와 고른 관심 주제 사본이 남아 있어요" : "저장하면 출생 정보와 고른 관심 주제 사본이 남아요";
+  return (
+    <section className="sj-section" style={{ gap: 0 }} aria-labelledby="save-where-title">
+      <h2 id="save-where-title" className="sj-group-title">어디에 저장되나요</h2>
+      <div className="sj-group">
+        {server && (
+          <div style={{ padding: 16 }}>
+            <h3 className="sj-h3">사주리움 서버</h3>
+            <p className="sj-meta">
+              {mode === "server-account"
+                ? "입력한 출생 정보와 계산한 명식, 기본 리포트가 로그인한 계정에 저장돼 있어요. 다른 기기에서 로그인해도 볼 수 있어요."
+                : "입력한 출생 정보와 계산한 명식, 기본 리포트가 이 익명 세션에 저장돼 있어요. 이 기기에 저장하지 않아도 서버 기록은 남아요."}
+            </p>
+          </div>
+        )}
+        <div style={{ padding: 16, borderTop: server ? "1px solid var(--sj-track)" : undefined }}>
+          <h3 className="sj-h3">이 브라우저</h3>
+          <p className="sj-meta">
+            {server
+              ? `다시 들어올 때 쓰는 로그인 정보가 있고, ${deviceCopy}.`
+              : `아직 서버에서 계산한 결과가 없어요. ${deviceCopy}. 서버로는 보내지 않아요.`}
+          </p>
+        </div>
+      </div>
+      {server ? (
+        <>
+          {mode === "server-anonymous" && <p className="sj-fine" style={{ margin: "8px 4px 0" }}>가입하면 이 기록을 계정으로 옮겨 다른 기기에서도 이어 볼 수 있어요.</p>}
+          <p className="sj-fine" style={{ margin: "8px 4px 0" }}>브라우저 데이터나 이 기기의 저장 정보를 지워도 서버 기록은 지워지지 않아요. 서버 기록은 <Link href="/settings/privacy">내 데이터 관리</Link>에서 지우거나 계정을 삭제하면 지워져요.</p>
+        </>
+      ) : (
+        <p className="sj-fine" style={{ margin: "8px 4px 0" }}>브라우저 데이터나 설정의 이 기기 저장 정보를 지우면 함께 지워져요.</p>
+      )}
+    </section>
+  );
+}
+
 export function SaveScreen({ topicId, feedback }: { topicId: TopicId; feedback: FeedbackId | null }) {
   const hydrated = useHydrated();
   const [savedInSession, setSavedInSession] = useState(false);
@@ -1049,6 +1100,15 @@ export function SaveScreen({ topicId, feedback }: { topicId: TopicId; feedback: 
   if (reportInspection.status === "corrupt" || reportInspection.status === "unavailable") return <CorruptState title="저장한 리포트를 읽을 수 없어요" description="손상된 리포트를 확인 없이 덮어쓰지 않아요." unavailable={reportInspection.status === "unavailable"} onReset={reportStore.remove} />;
   const storedReport = reportInspection.status === "ok" ? reportInspection.value : null;
   const localSaved = savedInSession || Boolean(storedReport && storedReport.topic === topicId && storedReport.feedback === feedback && sameBirth(storedReport.birth, birth));
+  const mode = saveStorageMode();
+  const server = mode !== "device-only";
+  const lead = server
+    ? localSaved
+      ? "이 브라우저에 사본을 남겼어요. 서버에 저장된 출생 정보와 계산 결과는 그대로예요."
+      : "출생 정보와 계산 결과는 이미 서버에 저장돼 있어요. 이 브라우저에 빠르게 이어볼 사본을 따로 남길 수 있어요."
+    : localSaved
+      ? "이 브라우저에만 저장했어요. 같은 브라우저에서 다시 확인할 수 있어요."
+      : "저장하면 입력 정보가 이 브라우저에만 남아요.";
 
   function save() {
     const report = { version: 1 as const, savedAt: new Date().toISOString(), birth, topic: topicId, feedback };
@@ -1062,16 +1122,9 @@ export function SaveScreen({ topicId, feedback }: { topicId: TopicId; feedback: 
     <main className="sj-page" aria-labelledby="save-title">
       <section className="sj-section" style={{ gap: 8 }}>
         <h1 id="save-title" className="sj-h1">{localSaved ? "이 기기에 저장했어요" : "이 기기에 결과를 저장할까요?"}</h1>
-        <p className="sj-lead" role={localSaved ? "status" : undefined}>{localSaved ? "같은 브라우저에서 다시 확인할 수 있어요. 브라우저 데이터를 지우면 이 기기 사본은 삭제돼요." : "서버 계산 결과와 별도로, 이 브라우저에서 빠르게 이어볼 사본을 저장할 수 있어요."}</p>
+        <p className="sj-lead" role={localSaved ? "status" : undefined}>{lead}</p>
       </section>
-      <section className="sj-card" aria-labelledby="save-benefits-title">
-        <h2 id="save-benefits-title" className="sj-h3">기기에 저장하면 좋은 점</h2>
-        <ul className="sj-list" style={{ gap: 6 }}>
-          {["무료 사주 요약을 보관해요", "고른 관심 주제를 이어볼 수 있어요", "입력 정보는 이 기기 안에만 저장돼요"].map((item) => (
-            <li key={item} className="sj-body" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14 }}><CheckIcon style={{ color: "var(--sj-accent)" }} />{item}</li>
-          ))}
-        </ul>
-      </section>
+      <SaveStorageCard mode={mode} localSaved={localSaved} />
       {error && <p className="sj-error" role="alert">{error}</p>}
       <div className="sj-actions">
         {!localSaved && <button className="sj-button sj-button-block" type="button" onClick={save}>이 기기에 결과 저장</button>}
