@@ -12,8 +12,9 @@ import { compatibilityStore, peopleStore } from "@/lib/storage";
 import { useHydrated } from "@/hooks/use-hydrated";
 import type { ChartView } from "@/lib/saju";
 import { ConnectionErrorState, CorruptState, EmptyState, LoadingState } from "./page-state";
-import { InfoIcon, PlusIcon } from "./ui/icons";
-import { createCompatibility, createProfile, deleteProfile, formatApiRequestError, formatConnectionError, getChart, getCompatibility, getCurrentChart, isAccountSessionExpired, listProfiles, type ServerCompatibilityDetail, type ServerProfile } from "@/lib/api/service";
+import { InfoIcon, LockIcon, PlusIcon } from "./ui/icons";
+import { COMPATIBILITY_SHARE_OPTIONS, ShareLinkBuilder } from "./distribution-future-prototype";
+import { DEFAULT_SHARE_INCLUDE, createCompatibility, createCompatibilityShare, createProfile, deleteProfile, formatApiRequestError, formatConnectionError, getChart, getCompatibility, getCurrentChart, isAccountSessionExpired, listProfiles, type CompatibilityDimension, type CompatibilityEvidence, type CompatibilityPaidSection, type ServerCompatibilityDetail, type ServerProfile } from "@/lib/api/service";
 import { ApiRequestError } from "@/lib/api/client";
 
 const PEOPLE_LIMIT = 20;
@@ -338,35 +339,140 @@ function PersonForm() {
   );
 }
 
-function DeepReportCard({ sections = [] }: { sections?: string[] }) {
+function DeepReportCard({ sections = [] }: { sections?: CompatibilityPaidSection[] }) {
+  const locked = sections.filter((section) => section.locked);
+  const opened = sections.filter((section) => !section.locked && section.body);
+  const purchased = sections.length > 0 && locked.length === 0;
   return (
     <section className="sj-card" aria-labelledby="compat-deep-title">
       <div style={{ display: "flex", gap: 14 }}>
         <span className="sj-ganji-tile" aria-hidden="true" lang="zh-Hant" style={{ width: 48, height: 60, fontSize: 24 }}>合</span>
         <div className="sj-row-main" style={{ gap: 4 }}>
           <h2 id="compat-deep-title" className="sj-h2">궁합 심층 리포트</h2>
-          <p className="sj-meta" style={{ color: "var(--sj-ink-strong-muted)" }}>관계 유형에 맞춘 분석과 두 사람의 소통 방식을 더 깊게 살펴봐요.</p>
+          <p className="sj-meta" style={{ color: "var(--sj-ink-strong-muted)" }}>{purchased ? "구매한 심층 리포트예요. 관계 유형에 맞춘 분석과 두 사람의 소통 방식을 살펴봐요." : "관계 유형에 맞춘 분석과 두 사람의 소통 방식을 더 깊게 살펴봐요."}</p>
         </div>
       </div>
-      {sections.length > 0 && (
+      {opened.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          {opened.map((section, index) => (
+            <div key={section.title} style={{ display: "flex", flexDirection: "column", gap: 4, padding: "14px 0", borderTop: index === 0 ? "1px solid var(--sj-line)" : undefined, borderBottom: "1px solid var(--sj-line)" }}>
+              <h3 className="sj-h3">{section.title}</h3>
+              <p className="sj-body" style={{ whiteSpace: "pre-line" }}>{section.body}</p>
+            </div>
+          ))}
+        </div>
+      )}
+      {locked.length > 0 && (
         <div className="sj-section" style={{ gap: 6 }}>
-          <p className="sj-meta">결제하면 열리는 내용</p>
-          <ul className="sj-chips" style={{ margin: 0, padding: 0, listStyle: "none" }}>
-            {sections.map((title) => <li key={title} className="sj-chip">{title}</li>)}
+          <p className="sj-meta" id="compat-locked-title">결제하면 열리는 내용</p>
+          <ul className="sj-chips" aria-labelledby="compat-locked-title" style={{ margin: 0, padding: 0, listStyle: "none" }}>
+            {locked.map((section) => (
+              <li key={section.title} className="sj-chip" style={{ gap: 4 }}>
+                <LockIcon />
+                <span>{section.title}</span>
+                <span className="sj-visually-hidden">, 잠겨 있어요</span>
+              </li>
+            ))}
           </ul>
         </div>
       )}
-      <button className="sj-button" type="button" disabled style={{ minHeight: 48, fontSize: 15 }}>결제 준비 중</button>
-      <Link className="sj-text-button" href="/products/compatibility-report" style={{ alignSelf: "center" }}>리포트 구성 보기</Link>
+      {!purchased && (
+        <>
+          <button className="sj-button" type="button" disabled style={{ minHeight: 48, fontSize: 15 }}>결제 준비 중</button>
+          <Link className="sj-text-button" href="/products/compatibility-report" style={{ alignSelf: "center" }}>리포트 구성 보기</Link>
+        </>
+      )}
     </section>
   );
 }
 
-function UnknownTimeNote({ subject }: { subject: string }) {
+const ELEMENT_NAMES = new Set(["목", "화", "토", "금", "수"]);
+
+/**
+ * One readable Korean line for a structured evidence item. `people` are the two display labels for
+ * profile a and b (for example "서연님"). Returns null for anything it cannot phrase, so a raw key
+ * never reaches the screen.
+ */
+export function formatEvidence(evidence: CompatibilityEvidence, people: readonly [string, string]): string | null {
+  const [a, b] = people;
+  switch (evidence.type) {
+    case "day_gan":
+      if (!ELEMENT_NAMES.has(evidence.element)) return null;
+      return `${evidence.person === "a" ? a : b} 일간 ${evidence.gan}${evidence.element}`;
+    case "day_gan_relation":
+      switch (evidence.relation) {
+        case "same": return "두 일간의 오행이 같아요";
+        case "a_generates_b": return `${a} 일간이 ${b} 일간을 북돋아요`;
+        case "b_generates_a": return `${b} 일간이 ${a} 일간을 북돋아요`;
+        case "a_controls_b": return `${a} 일간이 ${b} 일간을 다잡아요`;
+        case "b_controls_a": return `${b} 일간이 ${a} 일간을 다잡아요`;
+        default: return null;
+      }
+    case "five_elements":
+      if (!ELEMENT_NAMES.has(evidence.element)) return null;
+      return `${evidence.element} 기운 ${a} ${evidence.a}개, ${b} ${evidence.b}개`;
+    default:
+      return null;
+  }
+}
+
+export function CompatibilityDimensions({ dimensions, people }: { dimensions: CompatibilityDimension[]; people: readonly [string, string] }) {
+  if (dimensions.length === 0) return null;
+  return (
+    <section aria-labelledby="compat-views-title" style={{ display: "flex", flexDirection: "column" }}>
+      <h2 id="compat-views-title" className="sj-h2" style={{ marginBottom: 4 }}>관점별로 보면</h2>
+      {dimensions.map((dimension, index) => {
+        const lines = dimension.evidence.map((item) => formatEvidence(item, people)).filter((line): line is string => Boolean(line));
+        return (
+          <div key={dimension.key} style={{ display: "flex", flexDirection: "column", gap: 8, padding: "16px 0", borderTop: index === 0 ? "1px solid var(--sj-line)" : undefined, borderBottom: "1px solid var(--sj-line)" }}>
+            <h3 className="sj-h3">{dimension.title}</h3>
+            <p className="sj-body">{dimension.summary}</p>
+            {lines.length > 0 && (
+              <ul className="sj-chips" aria-label={`${dimension.title}의 근거`} style={{ margin: 0, padding: 0, listStyle: "none" }}>
+                {lines.map((line) => <li key={line} className="sj-chip">{line}</li>)}
+              </ul>
+            )}
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
+function CompatibilityShare({ resultId }: { resultId: string }) {
+  const [open, setOpen] = useState(false);
+  if (!open) {
+    return (
+      <section className="sj-section" style={{ gap: 10 }} aria-label="결과 공유">
+        <button className="sj-button-secondary" type="button" onClick={() => setOpen(true)} style={{ minHeight: 52, borderColor: "var(--sj-ink)", fontWeight: 700 }}>결과 공유하기</button>
+        <p className="sj-fine sj-center">링크에는 출생 정보 없이 관계 요약과 관점별 요약만 담겨요.</p>
+      </section>
+    );
+  }
+  return (
+    <section className="sj-section" aria-labelledby="compat-share-title" style={{ gap: 20 }}>
+      <div className="sj-section" style={{ gap: 6 }}>
+        <h2 id="compat-share-title" className="sj-h2">결과를 링크로 보내요</h2>
+        <p className="sj-body">링크를 받은 사람은 로그인 없이 고른 내용만 볼 수 있어요. 두 사람의 출생 정보와 계산 근거는 담기지 않아요.</p>
+      </div>
+      <ShareLinkBuilder
+        options={COMPATIBILITY_SHARE_OPTIONS}
+        defaultInclude={DEFAULT_SHARE_INCLUDE.compatibility}
+        create={(hours, include) => createCompatibilityShare(resultId, hours, include)}
+        hint="두 사람의 이름과 관계는 함께 보여요. 출생 정보와 점수는 담을 수 없어요."
+        level={3}
+        sticky={false}
+      />
+    </section>
+  );
+}
+
+/** The server's own notice wins when it sent one; otherwise the note names who has no birth time. */
+function UnknownTimeNote({ subject, notice }: { subject: string; notice?: string | null }) {
   return (
     <div className="sj-banner" role="note">
       <InfoIcon className="sj-banner-icon" />
-      <p style={{ margin: 0 }}>{subject} 태어난 시간을 몰라서 시주를 빼고 여섯 글자로 비교했어요. 시주에 기대는 해석은 이 결과에 넣지 않았어요.</p>
+      <p style={{ margin: 0 }}>{notice ?? `${subject} 태어난 시간을 몰라서 시주를 빼고 여섯 글자로 비교했어요. 시주에 기대는 해석은 이 결과에 넣지 않았어요.`}</p>
     </div>
   );
 }
@@ -480,12 +586,12 @@ function DayPillarCard({ name, chart }: { name: string; chart: ChartView | null 
           <span className={`sj-hanja sj-el-${day.branch.element}`} aria-hidden="true">{day.branch.hanja}</span>
         </span>
       ) : <span className="sj-meta">불러오지 못했어요</span>}
-      {day && <span className="sj-fine">일간 {day.stem.ko}{day.stem.element}</span>}
+      {day && <span className="sj-fine">일간 {day.stem.ko}{day.stem.element}{chart?.pillars.hour === null ? ", 태어난 시간 모름" : ""}</span>}
     </div>
   );
 }
 
-type ServerResultView = { result: ServerCompatibilityDetail; names: [string, string]; charts: [ChartView | null, ChartView | null] };
+type ServerResultView = { result: ServerCompatibilityDetail; names: [string | null, string | null]; charts: [ChartView | null, ChartView | null] };
 
 function ServerCompatibilityResult({ resultId }: { resultId: string }) {
   const [view, setView] = useState<ServerResultView | null>(null);
@@ -501,8 +607,8 @@ function ServerCompatibilityResult({ resultId }: { resultId: string }) {
           getChart(result.snapshotAId).catch(() => null),
           getChart(result.snapshotBId).catch(() => null),
         ]);
-        const nameOf = (id: string, fallback: string) => profiles.find((profile) => profile.id === id)?.nickname ?? fallback;
-        if (active) setView({ result, names: [nameOf(result.profileAId, "첫 번째 사람"), nameOf(result.profileBId, "두 번째 사람")], charts: [chartA, chartB] });
+        const nameOf = (id: string) => profiles.find((profile) => profile.id === id)?.nickname ?? null;
+        if (active) setView({ result, names: [nameOf(result.profileAId), nameOf(result.profileBId)], charts: [chartA, chartB] });
       } catch (reason) {
         if (active) setError(reason ?? new Error("load failed"));
       }
@@ -517,7 +623,10 @@ function ServerCompatibilityResult({ resultId }: { resultId: string }) {
   }
   if (!view) return <LoadingState title="궁합 결과를 불러오고 있어요" />;
 
-  const { result, names, charts } = view;
+  const { result, charts } = view;
+  const names = [view.names[0] ?? "첫 번째 사람", view.names[1] ?? "두 번째 사람"] as const;
+  // Evidence refers to people as "서연님"; without a name it falls back to the server's own wording.
+  const people = [view.names[0] ? `${view.names[0]}님` : "첫 번째 분", view.names[1] ? `${view.names[1]}님` : "두 번째 분"] as const;
   const relation = COMPAT_RELATIONS.find((item) => item.id === result.relation)?.label ?? "저장한";
   const unknown = charts.map((chart) => chart !== null && chart.pillars.hour === null);
   const unknownSubject = unknown[0] && unknown[1] ? "두 사람 모두" : unknown[0] ? `${names[0]}님은` : unknown[1] ? `${names[1]}님은` : "두 사람 중 한 명이";
@@ -538,9 +647,11 @@ function ServerCompatibilityResult({ resultId }: { resultId: string }) {
           <DayPillarCard name={names[0]} chart={charts[0]} />
           <DayPillarCard name={names[1]} chart={charts[1]} />
         </div>
-        {result.limitedByUnknownTime && <UnknownTimeNote subject={unknownSubject} />}
+        {result.limitedByUnknownTime && <UnknownTimeNote subject={unknownSubject} notice={result.notice} />}
       </section>
-      <DeepReportCard sections={result.lockedSections} />
+      <CompatibilityDimensions dimensions={result.dimensions} people={people} />
+      <DeepReportCard sections={result.paidSections} />
+      <CompatibilityShare resultId={result.id} />
       <Link className="sj-button-secondary" href="/compatibility">다른 사람과 궁합 보기</Link>
       <p className="sj-fine">두 명식의 계산 요소를 바탕으로 한 관점이에요. 관계의 좋고 나쁨을 정하지 않아요.</p>
     </main>
