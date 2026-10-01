@@ -382,6 +382,19 @@ export interface FeedbackProvenance {
   templateVersion: string;
 }
 
+/**
+ * Provenance kept with feedback stored on this device. `null` means the client could not learn the
+ * value, which is recorded as unknown instead of being filled with example values. Entries written
+ * before unknowns existed always carry strings, so they still match this shape.
+ */
+export interface StoredFeedbackProvenance {
+  profileSnapshotId: string | null;
+  chartSnapshotIds: string[] | null;
+  modelVersion: string | null;
+  promptVersion: string | null;
+  templateVersion: string | null;
+}
+
 export interface FeedbackView {
   id: string;
   target: FeedbackTarget;

@@ -9,7 +9,7 @@ import { BackIcon, ShareIcon } from "./ui/icons";
 import { Banner, RowLink } from "./ui/layout";
 import { DaeunStrip, ElementBalance, PillarGrid, PillarStrip } from "./ui/chart-display";
 import type { BirthInfo, FeedbackData, FeedbackId, FeedbackReason, TopicId } from "@/lib/domain";
-import type { FeedbackProvenance, FeedbackTarget, OwnerRelationship, TopicId as ProfileTopicId } from "@/lib/contracts";
+import type { FeedbackTarget, OwnerRelationship, TopicId as ProfileTopicId } from "@/lib/contracts";
 import { hasValidLeapMonthSemantics, parseBirthDate } from "@/lib/contracts";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { FEEDBACK_OPTIONS, INITIAL_BIRTH, TOPICS, getTopicPreview } from "@/lib/fixtures";
@@ -27,6 +27,7 @@ import {
   runStorageTransaction,
   saveReportAndClearBirthDraft,
 } from "@/lib/storage";
+import { isServerReportId, reportFeedbackProvenance } from "@/lib/feedback-provenance";
 
 function sameBirth(left: BirthInfo, right: BirthInfo) {
   return left.displayName === right.displayName &&
@@ -889,14 +890,6 @@ export function TopicPreviewScreen({ topicId }: { topicId: TopicId }) {
 
 /* ---------- Feedback (/report/feedback) ---------- */
 
-const FIXTURE_FEEDBACK_PROVENANCE: FeedbackProvenance = {
-  profileSnapshotId: "profile_snapshot_fixture_primary",
-  chartSnapshotIds: ["chart_fixture_primary"],
-  modelVersion: null,
-  promptVersion: null,
-  templateVersion: "fixture-1",
-};
-
 const FEEDBACK_REASONS: ReadonlyArray<{ code: FeedbackReason; label: string }> = [
   { code: "too_generic", label: "내용이 너무 일반적이에요" },
   { code: "repetitive", label: "같은 말이 반복돼요" },
@@ -911,7 +904,7 @@ type FeedbackScreenTarget = Extract<FeedbackTarget, { type: "report" } | { type:
 
 /** Server-backed targets are sent to `POST /feedback`; the server list is then the record. */
 function isServerFeedbackTarget(target: FeedbackScreenTarget) {
-  return target.type === "consultation_message" || /^\d+$/.test(target.reportId);
+  return target.type === "consultation_message" || isServerReportId(target.reportId);
 }
 
 export function FeedbackScreen({ target, topicId, initialRating = null, initialReported = false }: { target: FeedbackScreenTarget; topicId: TopicId; initialRating?: FeedbackId | null; initialReported?: boolean }) {
@@ -941,6 +934,21 @@ export function FeedbackScreen({ target, topicId, initialRating = null, initialR
         setSending(false);
         return setError(formatApiRequestError(requestError, "서버에 피드백을 저장하지 못했어요. 잠시 후 다시 시도해 주세요."));
       }
+      // The server list is the record; the device keeps only the latest selection, labelled with this
+      // report's own lineage. A failed local write must not hide feedback the server already accepted.
+      if (target.type === "report") {
+        feedbackStore.write({
+          version: 1,
+          target,
+          topic: topicId,
+          rating: feedback,
+          reason,
+          comment: comment.trim(),
+          provenance: reportFeedbackProvenance(target.reportId),
+          reported,
+          createdAt: new Date().toISOString(),
+        });
+      }
       router.push("/settings/feedback?sent=1");
       return;
     }
@@ -949,6 +957,7 @@ export function FeedbackScreen({ target, topicId, initialRating = null, initialR
     if (listInspection.status === "corrupt" || listInspection.status === "unavailable") return setError("손상된 피드백 기록을 설정에서 확인해 주세요.");
     const now = new Date().toISOString();
     const current = listInspection.status === "ok" ? listInspection.value.entries : [];
+    const provenance = reportFeedbackProvenance(target.reportId);
     const selection = {
       version: 1 as const,
       target,
@@ -956,7 +965,7 @@ export function FeedbackScreen({ target, topicId, initialRating = null, initialR
       rating: feedback,
       reason,
       comment: comment.trim(),
-      provenance: FIXTURE_FEEDBACK_PROVENANCE,
+      provenance,
       reported,
       createdAt: now,
     };
@@ -970,7 +979,7 @@ export function FeedbackScreen({ target, topicId, initialRating = null, initialR
           rating: feedback,
           reason,
           comment: comment.trim(),
-          provenance: FIXTURE_FEEDBACK_PROVENANCE,
+          provenance,
           reported,
           createdAt: now,
         },

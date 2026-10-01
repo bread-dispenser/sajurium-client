@@ -135,14 +135,17 @@ function isFeedbackProvenance(value: unknown): boolean {
   return (
     isRecord(value) &&
     hasExactKeys(value, ["profileSnapshotId", "chartSnapshotIds", "modelVersion", "promptVersion", "templateVersion"]) &&
-    isNonEmptyString(value.profileSnapshotId) &&
-    Array.isArray(value.chartSnapshotIds) &&
-    value.chartSnapshotIds.length > 0 &&
-    value.chartSnapshotIds.every(isNonEmptyString) &&
-    new Set(value.chartSnapshotIds).size === value.chartSnapshotIds.length &&
+    // `null` records a value the client could not learn; a known value must still be well formed.
+    (value.profileSnapshotId === null || isNonEmptyString(value.profileSnapshotId)) &&
+    (value.chartSnapshotIds === null || (
+      Array.isArray(value.chartSnapshotIds) &&
+      value.chartSnapshotIds.length > 0 &&
+      value.chartSnapshotIds.every(isNonEmptyString) &&
+      new Set(value.chartSnapshotIds).size === value.chartSnapshotIds.length
+    )) &&
     (value.modelVersion === null || isNonEmptyString(value.modelVersion)) &&
     (value.promptVersion === null || isNonEmptyString(value.promptVersion)) &&
-    isNonEmptyString(value.templateVersion)
+    (value.templateVersion === null || isNonEmptyString(value.templateVersion))
   );
 }
 
