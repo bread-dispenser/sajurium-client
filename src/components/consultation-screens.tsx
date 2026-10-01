@@ -18,13 +18,14 @@ import { useHydrated } from "@/hooks/use-hydrated";
 import { ApiRequestError } from "@/lib/api/client";
 import { MarkdownBlocks, blockToPlainText, parseMarkdown, plainInline, type MarkdownBlock } from "@/lib/markdown";
 import type { ChartView } from "@/lib/saju";
-import { CorruptState, EmptyState, LoadingState } from "./page-state";
+import { ConnectionErrorState, CorruptState, EmptyState, LoadingState } from "./page-state";
 import { RowLink } from "./ui/layout";
 import { InfoIcon, SendIcon } from "./ui/icons";
 import {
   createConsultation,
   deleteConsultation,
   formatApiRequestError,
+  formatConnectionError,
   getConsultation,
   getCredits,
   getCurrentChart,
@@ -217,7 +218,7 @@ export function ConsultationHomeScreen() {
   if (!hydrated || (!liveData && !loadError)) return <LoadingState title="지난 상담을 불러오고 있어요" />;
   if (loadError || !liveData) {
     if (isAccountSessionExpired(loadError)) return <EmptyState title="다시 로그인해 주세요" description="로그인 세션이 만료됐어요. 다시 로그인하면 지난 상담을 이어볼 수 있어요." action={{ href: "/login", label: "로그인하기" }} />;
-    return <CorruptState title="상담 내역을 불러오지 못했어요" description="연결 상태를 확인한 뒤 다시 시도해 주세요." unavailable onReset={() => { window.location.reload(); return true; }} />;
+    return <ConnectionErrorState title="상담 내역을 불러오지 못했어요" description={formatConnectionError(loadError)} onRetry={() => window.location.reload()} />;
   }
   const sessions = liveData.sessions
     .filter((session) => session.status !== "DELETED")

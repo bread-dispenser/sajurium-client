@@ -11,9 +11,9 @@ import { INITIAL_BIRTH, INITIAL_PEOPLE_DATA } from "@/lib/fixtures";
 import { compatibilityStore, peopleStore } from "@/lib/storage";
 import { useHydrated } from "@/hooks/use-hydrated";
 import type { ChartView } from "@/lib/saju";
-import { CorruptState, EmptyState, LoadingState } from "./page-state";
+import { ConnectionErrorState, CorruptState, EmptyState, LoadingState } from "./page-state";
 import { InfoIcon, PlusIcon } from "./ui/icons";
-import { createCompatibility, createProfile, deleteProfile, formatApiRequestError, getChart, getCompatibility, getCurrentChart, isAccountSessionExpired, listProfiles, type ServerCompatibilityDetail, type ServerProfile } from "@/lib/api/service";
+import { createCompatibility, createProfile, deleteProfile, formatApiRequestError, formatConnectionError, getChart, getCompatibility, getCurrentChart, isAccountSessionExpired, listProfiles, type ServerCompatibilityDetail, type ServerProfile } from "@/lib/api/service";
 import { ApiRequestError } from "@/lib/api/client";
 
 const PEOPLE_LIMIT = 20;
@@ -94,7 +94,7 @@ function useProfilesWithChart() {
 
 function LoadFailure({ error, title }: { error: unknown; title: string }) {
   if (isAccountSessionExpired(error)) return <EmptyState title="다시 로그인해 주세요" description="로그인 세션이 만료됐어요. 다시 로그인하면 저장한 사람을 이어볼 수 있어요." action={{ href: "/login", label: "로그인하기" }} />;
-  return <CorruptState title={title} description={formatApiRequestError(error, "연결 상태를 확인한 뒤 다시 시도해 주세요.")} unavailable onReset={() => { window.location.reload(); return true; }} />;
+  return <ConnectionErrorState title={title} description={formatConnectionError(error)} onRetry={() => window.location.reload()} />;
 }
 
 export function LivePeopleScreen() {
