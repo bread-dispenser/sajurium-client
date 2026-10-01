@@ -9,13 +9,14 @@ type PageStateProps = {
   description: string;
   children?: ReactNode;
   action?: { href: string; label: string };
+  descriptionRole?: "alert" | "status";
 };
 
-function PageState({ title, description, children, action }: PageStateProps) {
+function PageState({ title, description, children, action, descriptionRole }: PageStateProps) {
   return (
     <section className="sj-state" aria-labelledby="page-state-title">
       <h1 id="page-state-title" className="sj-h1">{title}</h1>
-      <p className="sj-lead">{description}</p>
+      <p className="sj-lead" role={descriptionRole}>{description}</p>
       {children}
       {action && (
         <Link className="sj-button sj-button-block" href={action.href} style={{ marginTop: 16 }}>
@@ -48,6 +49,22 @@ export function UnavailableScreen({ title, description }: { title: string; descr
   return <PageState title={title} description={description} action={{ href: "/home", label: "홈으로 돌아가기" }} />;
 }
 
+export const CONNECTION_FAILURE_COPY = "연결 상태를 확인한 뒤 다시 시도해 주세요.";
+
+/**
+ * A server or network request failed. This is not a browser-storage problem, so it never
+ * shows storage copy or a destructive reset: it shows the request's own message (with its
+ * reference ID when the server sent one) and a retry that runs the request again.
+ */
+export function ConnectionErrorState({ title, description = CONNECTION_FAILURE_COPY, onRetry }: { title: string; description?: string; onRetry: () => void }) {
+  return (
+    <PageState title={title} description={description || CONNECTION_FAILURE_COPY} descriptionRole="alert">
+      <button className="sj-button sj-button-block" type="button" onClick={onRetry}>다시 불러오기</button>
+    </PageState>
+  );
+}
+
+/** Browser storage could not be read or holds corrupt data. Use `ConnectionErrorState` for request failures. */
 export function CorruptState({ title, description, unavailable = false, onReset }: { title: string; description: string; unavailable?: boolean; onReset: () => boolean }) {
   const [error, setError] = useState("");
 

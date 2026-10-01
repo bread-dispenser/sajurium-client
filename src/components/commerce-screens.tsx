@@ -9,10 +9,10 @@ import type { CreditLedgerEntry, OrderStatus, ProductView } from "@/lib/contract
 import { commerceStore } from "@/lib/storage";
 import { getProduct, INITIAL_COMMERCE_DATA, isProductId } from "@/lib/fixtures";
 import { useHydrated } from "@/hooks/use-hydrated";
-import { CorruptState, LoadingState } from "./page-state";
+import { ConnectionErrorState, CorruptState, LoadingState } from "./page-state";
 import { Banner } from "./ui/layout";
 import { ChevronIcon, InfoIcon } from "./ui/icons";
-import { createOrder, formatApiRequestError, getCredits, getOrder, getProduct as getServerProduct, isAccountSessionExpired, listOrderRefunds, listOrders, listProducts, type LiveOrder, type LiveRefund } from "@/lib/api/service";
+import { createOrder, formatApiRequestError, formatConnectionError, getCredits, getOrder, getProduct as getServerProduct, isAccountSessionExpired, listOrderRefunds, listOrders, listProducts, type LiveOrder, type LiveRefund } from "@/lib/api/service";
 
 const CURRENT_PROFILE_ID = "prf_01J62Z7M4Q8Y3T1K9A5C6N2R0X";
 const PAYMENTS_ENABLED = process.env.NEXT_PUBLIC_PAYMENTS_ENABLED === "true";
@@ -159,21 +159,28 @@ export function ProductListScreen() {
   const hydrated = useHydrated();
   const raw = useSyncExternalStore(commerceStore.subscribe, commerceStore.rawSnapshot, () => null);
   const [liveProducts, setLiveProducts] = useState<ProductView[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState("");
   const [balance, setBalance] = useState<number | null | undefined>(undefined);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     if (!hydrated) return;
     let active = true;
     void listProducts()
       .then((items) => active && setLiveProducts(items))
-      .catch(() => active && setLoadError(true));
+      .catch((reason) => active && setLoadError(formatConnectionError(reason)));
     void getCredits()
       .then((value) => active && setBalance(value.balance.balance))
       .catch(() => active && setBalance(null));
     return () => { active = false; };
-  }, [hydrated]);
+  }, [hydrated, attempt]);
+  function retry() {
+    setLoadError("");
+    setLiveProducts(null);
+    setBalance(undefined);
+    setAttempt((value) => value + 1);
+  }
   if (!hydrated || (!liveProducts && !loadError)) return <LoadingState title="리포트와 이용권을 불러오고 있어요" />;
-  if (loadError || !liveProducts) return <CorruptState title="상품 정보를 불러오지 못했어요" description="연결 상태를 확인한 뒤 다시 시도해 주세요." unavailable onReset={reload} />;
+  if (loadError || !liveProducts) return <ConnectionErrorState title="상품 정보를 불러오지 못했어요" description={loadError} onRetry={retry} />;
   void raw;
   const commerce = getCommerceData();
   if (!commerce) return commerceCorrupt();
@@ -257,15 +264,21 @@ export function ProductListScreen() {
 export function LiveProductDetailScreen({ productId }: { productId: ProductId }) {
   const [product, setProduct] = useState<ProductView | null>(null);
   const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let active = true;
     void getServerProduct(productId)
       .then((value) => active && setProduct(value))
-      .catch((reason) => active && setError(formatApiRequestError(reason, "상품을 불러오지 못했어요.")));
+      .catch((reason) => active && setError(formatConnectionError(reason)));
     return () => { active = false; };
-  }, [productId]);
+  }, [productId, attempt]);
+  function retry() {
+    setError("");
+    setProduct(null);
+    setAttempt((value) => value + 1);
+  }
   if (!product && !error) return <LoadingState title="상품 정보를 불러오고 있어요" />;
-  if (error || !product) return <CorruptState title="상품을 불러오지 못했어요" description={error} unavailable onReset={reload} />;
+  if (error || !product) return <ConnectionErrorState title="상품을 불러오지 못했어요" description={error} onRetry={retry} />;
   const isReport = product.kind === "report";
 
   return (
@@ -485,7 +498,7 @@ export function PaymentStatusScreen({ orderId, productId, status, server = false
     return () => { active = false; };
   }, [hydrated, orderId, productId, server]);
   if (!hydrated || (server && !serverOrder && !serverError)) return <LoadingState title="주문을 확인하고 있어요" />;
-  if (server && (serverError || !serverOrder)) return <CorruptState title="주문을 불러오지 못했어요" description="이 계정의 주문인지, 연결 상태가 괜찮은지 확인한 뒤 다시 시도해 주세요." unavailable onReset={reload} />;
+  if (server && (serverError || !serverOrder)) return <ConnectionErrorState title="주문을 불러오지 못했어요" description="이 계정의 주문인지, 연결 상태가 괜찮은지 확인한 뒤 다시 시도해 주세요." onRetry={reload} />;
   void raw;
   const product = getProduct(productId);
 
@@ -602,7 +615,7 @@ export function CreditsScreen() {
   }, [hydrated]);
   if (!hydrated || (!liveCredits && !loadError)) return <LoadingState title="이용권 내역을 불러오고 있어요" />;
   void raw;
-  if (loadError || !liveCredits) return <CorruptState title="이용권 내역을 불러오지 못했어요" description="연결 상태를 확인한 뒤 다시 시도해 주세요." unavailable onReset={reload} />;
+  if (loadError || !liveCredits) return <ConnectionErrorState title="이용권 내역을 불러오지 못했어요" onRetry={reload} />;
   return (
     <main className="sj-page" aria-labelledby="credits-title">
       <h1 id="credits-title" className="sj-visually-hidden">상담 이용권 {liveCredits.balance}회 남음</h1>

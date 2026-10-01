@@ -8,11 +8,11 @@ import { libraryStore } from "@/lib/storage";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { markdownPreview, markdownTitle } from "@/lib/markdown";
 import { BRANCHES, STEMS, currentDaeun, dayGanji, ganjiGlyphs, ganjiHanja, yearGanji, type ChartView, type DaeunPeriod, type Glyph } from "@/lib/saju";
-import { CorruptState, EmptyState, LoadingState } from "./page-state";
+import { ConnectionErrorState, EmptyState, LoadingState } from "./page-state";
 import { BackIcon, ChartIcon, ChevronIcon, ConsultIcon, PairIcon } from "./ui/icons";
 import { RowLink } from "./ui/layout";
 import { ElementBalance, PillarGrid } from "./ui/chart-display";
-import { deleteLibraryItem, formatApiRequestError, getCurrentChart, getFlow, isAccountSessionExpired, listLibrary, type LiveReport } from "@/lib/api/service";
+import { deleteLibraryItem, formatApiRequestError, formatConnectionError, getCurrentChart, getFlow, isAccountSessionExpired, listLibrary, type LiveReport } from "@/lib/api/service";
 
 /* ---------- Dates and period pillars (display only; charts come from the server) ---------- */
 
@@ -573,11 +573,11 @@ export function LibraryScreen() {
     let active = true;
     void listLibrary()
       .then((page) => active && setServerItems(page.items))
-      .catch((reason) => active && setServerError(formatApiRequestError(reason, "보관함을 불러오지 못했어요.")));
+      .catch((reason) => active && setServerError(formatConnectionError(reason)));
     return () => { active = false; };
   }, [hydrated]);
   if (!hydrated || (!serverItems && !serverError)) return <LoadingState title="보관함을 불러오고 있어요" />;
-  if (serverError || !serverItems) return <CorruptState title="보관함을 불러올 수 없어요" description={serverError || "연결 상태를 확인한 뒤 다시 시도해 주세요."} unavailable onReset={() => { window.location.reload(); return true; }} />;
+  if (serverError || !serverItems) return <ConnectionErrorState title="보관함을 불러올 수 없어요" description={serverError} onRetry={() => window.location.reload()} />;
   const source = serverItems;
   const hasHidden = source.some((item) => item.hidden);
   const items = source

@@ -400,6 +400,16 @@ export function formatApiRequestError(error: unknown, fallback = "요청을 처�
   return error instanceof Error && error.message ? error.message : fallback;
 }
 
+/**
+ * Copy for a failed read: server errors keep their message and reference ID, while a network
+ * failure (fetch rejects with `TypeError: Failed to fetch`, or the request was aborted) gets
+ * Korean connection copy instead of the browser's English message.
+ */
+export function formatConnectionError(error: unknown, fallback = "연결 상태를 확인한 뒤 다시 시도해 주세요."): string {
+  if (error instanceof Error && (error.name === "TypeError" || error.name === "AbortError")) return fallback;
+  return formatApiRequestError(error, fallback);
+}
+
 function profilePayload(profile: ProfileInput): Schema<"SajuProfileCreate"> {
   const [birthYear, birthMonth, birthDay] = profile.birthDate.split("-").map(Number);
   const [hour, minute] = profile.birthTime?.split(":").map(Number) ?? [undefined, undefined];
