@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 import { CalendarScreen, DecadeScreen, LiveFlowScreen, LiveHomeScreen } from "@/components/core-screens";
@@ -33,6 +33,29 @@ const chart = {
   },
 };
 
+const DECADE_PERIODS = [["을사", 4, "정재", "상관"], ["갑진", 14, "겁재", "정재"], ["계묘", 24, "편인", "비견"], ["임인", 34, "정인", "겁재"], ["신축", 44, "편관", "편재"]].map(([ganji, age, stem, branch], index) => ({
+  sequence: index + 1, ganji, start_age: age, end_age: Number(age) + 9, start_year: 1992 + Number(age), end_year: 2001 + Number(age),
+  stem_ten_god: stem, branch_ten_god: branch, is_current: ganji === "임인", evidence: [`${ganji} 대운`],
+}));
+
+function decadeReport() {
+  return {
+    id: 81, user_id: 1, chart_snapshot_id: 2, report_type: "decade", period_key: "2026", title: "대운 10년 리포트", content: "",
+    generation_status: "READY", is_free_section: true, requires_payment: true, purchased: false, is_hidden: false,
+    created_at: "2026-09-28T00:00:00Z",
+    content_json: {
+      reference_year: 2026, excluded_due_to_unknown_time: false, excluded_sections: [],
+      periods: DECADE_PERIODS, current_period: DECADE_PERIODS[3],
+      sections: [
+        { key: "decade_overview", title: "대운 흐름 한눈에 보기", body: "대운은 월주 병오에서 역행으로 이어져요.", is_free: true, locked: false, evidence: ["월주 병오", "대운 역행"] },
+        { key: "decade_current", title: "지금의 대운", body: "지금은 임인 대운(34–43세, 2026–2035년)에 있어요.", is_free: true, locked: false, evidence: ["임인 대운", "대운 천간 임 정인"] },
+        { key: "decade_next", title: "다음 대운 준비", body: null, is_free: false, locked: true, evidence: [] },
+        { key: "decade_detail", title: "구간별 심층 해설", body: null, is_free: false, locked: true, evidence: [] },
+      ],
+    },
+  };
+}
+
 function mockServer() {
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = String(input);
@@ -41,6 +64,7 @@ function mockServer() {
       const scope = url.split("/flow/")[1];
       return json(flowReport(scope, `${scope} 기준 순환과 휴식의 흐름입니다.`));
     }
+    if (url.includes("/reports/decade")) return json(decadeReport(), 201);
     if (url.includes("/charts/")) return json(chart);
     if (url.includes("/consultations")) return json([]);
     if (url.includes("/reports")) return json([]);
@@ -84,12 +108,58 @@ describe("core screens", () => {
     expect(screen.getByText(/서버에 저장된 명식과 기간 기준/)).toBeDefined();
   });
 
-  it("decade screen lists daeun periods in order and marks the current one", async () => {
+  it("decade screen lists the server's daeun periods in order and marks the current one", async () => {
     render(<DecadeScreen />);
     await waitFor(() => expect(screen.getByRole("heading", { level: 1, name: "지금은 34세부터 43세까지 이어지는 임인 대운이에요" })).toBeDefined());
-    const items = screen.getAllByRole("listitem");
+    const fetchMock = vi.mocked(globalThis.fetch);
+    expect(fetchMock.mock.calls.some(([input, init]) => String(input).endsWith("/api/v1/charts/2/reports/decade") && init?.method === "POST")).toBe(true);
+    const items = within(screen.getByRole("list", { name: "대운 구간" })).getAllByRole("listitem");
     expect(items).toHaveLength(5);
     expect(items[3].getAttribute("aria-current")).toBe("step");
+    expect(items[3].textContent).toContain("2026–2035년");
+    expect(items.filter((item) => item.getAttribute("aria-current") === "step")).toHaveLength(1);
+  });
+
+  it("decade screen shows the current-period commentary with evidence and locks the paid detail", async () => {
+    render(<DecadeScreen />);
+    expect(await screen.findByRole("heading", { level: 2, name: "임인 대운, 34–43세" })).toBeDefined();
+    expect(screen.getByText("천간 정인, 지지 겁재")).toBeDefined();
+    expect(screen.getByText("지금은 임인 대운(34–43세, 2026–2035년)에 있어요.")).toBeDefined();
+    const chips = screen.getAllByRole("list", { name: "이렇게 읽었어요" }).map((list) => within(list).getAllByRole("listitem").map((chip) => chip.textContent));
+    expect(chips).toContainEqual(["임인 대운", "대운 천간 임 정인"]);
+    expect(screen.getByRole("article", { name: "대운 흐름 한눈에 보기" })).toBeDefined();
+    const locked = screen.getByRole("list", { name: "구매하면 열리는 내용" });
+    expect(within(locked).getAllByRole("listitem").map((item) => item.textContent)).toEqual(["다음 대운 준비", "구간별 심층 해설"]);
+    expect(screen.getByRole("link", { name: "리포트 상품 보기" }).getAttribute("href")).toBe("/products");
+  });
+
+  it("decade screen offers a retry when the server fails", async () => {
+    let failed = false;
+    vi.mocked(globalThis.fetch).mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes("/auth/anonymous")) return json({ access_token: "jwt", token_type: "bearer", anonymous_token: "anon" }, 201);
+      if (url.includes("/reports/decade") && !failed) {
+        failed = true;
+        return json({ code: "INTERNAL_ERROR", message: "대운 리포트를 만들지 못했어요." }, 500);
+      }
+      return json(decadeReport(), 201);
+    });
+    render(<DecadeScreen />);
+    expect(await screen.findByRole("heading", { name: "대운을 불러오지 못했어요" })).toBeDefined();
+    expect(screen.getByRole("alert").textContent).toContain("대운 리포트를 만들지 못했어요.");
+    fireEvent.click(screen.getByRole("button", { name: "다시 불러오기" }));
+    expect(await screen.findByRole("heading", { level: 1, name: "지금은 34세부터 43세까지 이어지는 임인 대운이에요" })).toBeDefined();
+  });
+
+  it("decade screen explains when the server found no daeun periods", async () => {
+    vi.mocked(globalThis.fetch).mockImplementation(async (input) => {
+      if (String(input).includes("/auth/anonymous")) return json({ access_token: "jwt", token_type: "bearer", anonymous_token: "anon" }, 201);
+      const empty = decadeReport();
+      return json({ ...empty, content_json: { ...empty.content_json, periods: [], current_period: null } }, 201);
+    });
+    render(<DecadeScreen />);
+    expect(await screen.findByRole("heading", { name: "계산된 대운 구간이 없어요" })).toBeDefined();
+    expect(screen.queryByRole("list", { name: "대운 구간" })).toBeNull();
   });
 
   it("decade screen asks for birth details when there is no chart", async () => {

@@ -7,12 +7,13 @@ import type { LibraryItemType, LibraryItemView } from "@/lib/contracts";
 import { libraryStore } from "@/lib/storage";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { markdownPreview, markdownTitle } from "@/lib/markdown";
-import { BRANCHES, STEMS, currentDaeun, dayGanji, ganjiGlyphs, ganjiHanja, yearGanji, type ChartView, type DaeunPeriod, type Glyph } from "@/lib/saju";
+import { BRANCHES, STEMS, currentDaeun, dayGanji, ganjiGlyphs, ganjiHanja, yearGanji, type ChartView, type Glyph } from "@/lib/saju";
 import { ConnectionErrorState, EmptyState, LoadingState } from "./page-state";
+import { EvidenceChips, LockedSections, OpenSections } from "./ui/report-parts";
 import { BackIcon, ChartIcon, ChevronIcon, ConsultIcon, PairIcon } from "./ui/icons";
 import { RowLink } from "./ui/layout";
 import { ElementBalance, PillarGrid } from "./ui/chart-display";
-import { deleteLibraryItem, formatApiRequestError, formatConnectionError, getCurrentChart, getFlow, isAccountSessionExpired, listLibrary, type LiveReport } from "@/lib/api/service";
+import { deleteLibraryItem, formatApiRequestError, formatConnectionError, getCurrentChart, getDecadeReport, getFlow, isAccountSessionExpired, listLibrary, readServerJourney, type DaeunPeriodSummary, type DecadeReport, type LiveReport } from "@/lib/api/service";
 
 /* ---------- Dates and period pillars (display only; charts come from the server) ---------- */
 
@@ -351,51 +352,79 @@ export function LiveFlowScreen({ mode }: { mode: FlowMode }) {
 
 /* ---------- 10-year (대운) ---------- */
 
-function periodName(period: DaeunPeriod) {
-  return period.stem && period.branch ? `${period.stem.ko}${period.stem.element}, ${period.branch.ko}${period.branch.element}` : "";
+function periodName(ganji: string) {
+  const { stem, branch } = ganjiGlyphs(ganji);
+  return stem && branch ? `${stem.ko}${stem.element}, ${branch.ko}${branch.element}` : "";
 }
 
+function periodYears(period: DaeunPeriodSummary) {
+  return period.startYear !== null && period.endYear !== null ? `${period.startYear}–${period.endYear}년` : "";
+}
+
+type DecadeLoad =
+  | { status: "loading" }
+  | { status: "no-chart" }
+  | { status: "ready"; report: DecadeReport }
+  | { status: "error"; message: string; needsLogin: boolean };
+
+/**
+ * /reports/decade. The server decade report supplies the daeun periods (with the current one marked),
+ * the free commentary on the current period, and the paid per-period detail as locked titles.
+ */
 export function DecadeScreen() {
-  const [chart, setChart] = useState<ChartView | null | undefined>(undefined);
-  const [error, setError] = useState("");
-  const [needsLogin, setNeedsLogin] = useState(false);
+  const [load, setLoad] = useState<DecadeLoad>({ status: "loading" });
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
-    void getCurrentChart()
-      .then(setChart)
-      .catch((reason) => {
-        setNeedsLogin(isAccountSessionExpired(reason));
-        setError(formatApiRequestError(reason, "대운 정보를 불러오지 못했어요."));
+    let active = true;
+    const journey = readServerJourney();
+    if (!journey) {
+      queueMicrotask(() => { if (active) setLoad({ status: "no-chart" }); });
+      return () => { active = false; };
+    }
+    getDecadeReport(journey.chartId)
+      .then((report) => { if (active) setLoad({ status: "ready", report }); })
+      .catch((reason: unknown) => {
+        if (active) setLoad({ status: "error", message: formatConnectionError(reason), needsLogin: isAccountSessionExpired(reason) });
       });
-  }, []);
-  if (chart === undefined && !error) return <LoadingState title="대운 구간을 불러오고 있어요" />;
-  if (error) return <FlowError error={error} needsLogin={needsLogin} title="대운을 준비할 수 없어요" />;
-  if (!chart || chart.daeun.periods.length === 0) {
+    return () => { active = false; };
+  }, [attempt]);
+
+  if (load.status === "loading") return <LoadingState title="대운 구간을 불러오고 있어요" />;
+  if (load.status === "error") {
+    if (load.needsLogin) return <FlowError error={load.message} needsLogin title="대운을 준비할 수 없어요" />;
+    return <ConnectionErrorState title="대운을 불러오지 못했어요" description={load.message} onRetry={() => { setLoad({ status: "loading" }); setAttempt((value) => value + 1); }} />;
+  }
+  if (load.status === "no-chart") {
     return <EmptyState title="대운을 보려면 명식이 필요해요" description="출생 정보를 입력하고 명식을 계산하면 10년 단위 대운 구간을 볼 수 있어요." action={{ href: "/birth", label: "출생 정보 입력하기" }} />;
   }
+  const { report } = load;
+  if (report.periods.length === 0) {
+    return <EmptyState title="계산된 대운 구간이 없어요" description="이 명식에서는 대운 구간을 나누지 못했어요. 출생 정보를 확인한 뒤 다시 계산해 주세요." action={{ href: "/birth", label: "출생 정보 다시 입력하기" }} />;
+  }
 
-  const thisYear = new Date().getFullYear();
-  const now = currentDaeun(chart, thisYear);
-  const nowIndex = now ? chart.daeun.periods.indexOf(now) : -1;
-  const direction = chart.daeun.direction === "backward" ? "간지 순서를 거꾸로 따라 흘러요" : chart.daeun.direction === "forward" ? "간지 순서를 따라 흘러요" : "";
-  const startAge = chart.daeun.startAge ?? chart.daeun.periods[0]?.startAge;
+  const periods = report.periods;
+  const nowIndex = periods.findIndex((period) => period.isCurrent);
+  const now = nowIndex >= 0 ? periods[nowIndex] : report.currentPeriod;
+  const open = report.sections.filter((section) => !section.locked && section.body);
+  const current = open.find((section) => section.key === "decade_current");
+  const others = open.filter((section) => section !== current);
+  const locked = report.sections.filter((section) => section.locked);
 
   return (
     <main className="sj-page" aria-labelledby="decade-title">
       <section className="sj-section" style={{ gap: 8 }}>
         <h1 id="decade-title" className="sj-h1">{now ? `지금은 ${now.startAge}세부터 ${now.endAge}세까지 이어지는 ${now.ganji} 대운이에요` : "대운은 10년마다 바뀌어요"}</h1>
-        <p className="sj-lead">
-          {startAge !== undefined && startAge !== null ? `대운은 ${startAge}세에 시작해 10년마다 바뀌어요.` : "대운은 10년마다 바뀌어요."}
-          {direction ? ` 이 명식의 대운은 ${direction}.` : ""}
-        </p>
+        <p className="sj-lead">대운은 {periods[0].startAge}세에 시작해 10년마다 바뀌어요.</p>
       </section>
 
       <section aria-labelledby="decade-steps">
         <h2 id="decade-steps" className="sj-visually-hidden">대운 구간</h2>
-        <ol className="sj-steps">
-          {chart.daeun.periods.map((period, index) => {
+        <ol className="sj-steps" aria-label="대운 구간">
+          {periods.map((period, index) => {
             const isNow = index === nowIndex;
             const past = nowIndex >= 0 && index < nowIndex;
-            const last = index === chart.daeun.periods.length - 1;
+            const last = index === periods.length - 1;
+            const sub = [periodName(period.ganji), periodYears(period)].filter(Boolean).join(", ");
             return (
               <li key={`${period.ganji}-${period.startAge}`} className="sj-step" aria-current={isNow ? "step" : undefined}>
                 {!last && <span className="sj-step-line" aria-hidden="true" />}
@@ -404,7 +433,7 @@ export function DecadeScreen() {
                   <GanjiText ganji={period.ganji} size={24} />
                   <div className="sj-row-main">
                     <span className="sj-row-title" style={{ fontWeight: isNow ? 700 : 500 }}>{period.ganji} 대운, {period.startAge}–{period.endAge}세</span>
-                    {periodName(period) && <span className="sj-row-sub">{periodName(period)}</span>}
+                    {sub && <span className="sj-row-sub">{sub}</span>}
                   </div>
                   {isNow && <span className="sj-badge sj-badge-accent">지금</span>}
                 </div>
@@ -414,20 +443,32 @@ export function DecadeScreen() {
         </ol>
       </section>
 
-      {now && (
-        <section className="sj-section" aria-labelledby="decade-now">
+      <section className="sj-section" aria-labelledby="decade-now">
+        {now ? (
           <div className="sj-card-dark" style={{ flexDirection: "row", alignItems: "center", gap: 14, padding: "18px 20px" }}>
             <GanjiText ganji={now.ganji} size={36} dark />
             <div>
               <h2 id="decade-now" className="sj-h2" style={{ color: "var(--sj-canvas)" }}>{now.ganji} 대운, {now.startAge}–{now.endAge}세</h2>
-              {periodName(now) && <p className="sj-card-dark-text">{periodName(now)}</p>}
+              <p className="sj-card-dark-text">천간 {now.stemTenGod}, 지지 {now.branchTenGod}</p>
             </div>
           </div>
-          <Link className="sj-button-secondary" href="/reports/year">올해 흐름 보기</Link>
-        </section>
-      )}
+        ) : (
+          <h2 id="decade-now" className="sj-h2">{current?.title ?? "지금의 대운"}</h2>
+        )}
+        {current && (
+          <div className="sj-card" style={{ gap: 14 }}>
+            <p className="sj-body">{current.body}</p>
+            <EvidenceChips evidence={current.evidence} />
+          </div>
+        )}
+        <Link className="sj-button-secondary" href="/reports/year">올해 흐름 보기</Link>
+      </section>
 
-      <p className="sj-fine">대운의 방향과 시작 나이는 생년월일시와 계산 기준 성별로 정해져요. 계산으로 나눈 구간이며 특정 사건을 예측하지 않아요.</p>
+      {others.length > 0 && <OpenSections sections={others} label="대운 무료 해설" />}
+
+      <LockedSections sections={locked} heading="심층 해설에 이어지는 내용" productName={null} productHref={null} />
+
+      <p className="sj-fine">대운의 방향과 시작 나이는 생년월일시와 계산 기준 성별로 정해져요. 계산 요소를 바탕으로 한 일반적인 흐름이며 특정 사건을 예측하지 않아요.</p>
     </main>
   );
 }
