@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import type { LibraryItemType, LibraryItemView } from "@/lib/contracts";
 import { libraryStore } from "@/lib/storage";
 import { useHydrated } from "@/hooks/use-hydrated";
+import { markdownPreview, markdownTitle } from "@/lib/markdown";
 import { BRANCHES, STEMS, currentDaeun, dayGanji, ganjiGlyphs, ganjiHanja, yearGanji, type ChartView, type DaeunPeriod, type Glyph } from "@/lib/saju";
 import { CorruptState, EmptyState, LoadingState } from "./page-state";
 import { BackIcon, ChartIcon, ChevronIcon, ConsultIcon, PairIcon } from "./ui/icons";
@@ -541,13 +542,15 @@ function TypeTile({ type }: { type: LibraryItemType }) {
   return <span className="sj-initial-tile" aria-hidden="true"><Icon /></span>;
 }
 
-function LibraryRowContent({ item }: { item: LibraryItemView }) {
-  const sub = [TYPE_LABELS[item.type], item.purchased ? "구매한 리포트" : "", item.hidden ? "숨긴 기록" : "", item.subtitle].filter(Boolean).join(", ");
+export function LibraryRowContent({ item }: { item: LibraryItemView }) {
+  // Previews are already plain from listLibrary; stripping again keeps older or local items clean too.
+  const sub = [TYPE_LABELS[item.type], item.purchased ? "구매한 리포트" : "", item.hidden ? "숨긴 기록" : "", markdownPreview(item.subtitle)].filter(Boolean).join(", ");
+  const title = markdownTitle(item.title) || TYPE_LABELS[item.type];
   return (
     <>
       <TypeTile type={item.type} />
       <span className="sj-row-main">
-        <span className="sj-row-title">{item.title}</span>
+        <span className="sj-row-title sj-row-title-clamp">{title}</span>
         <span className="sj-row-sub" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub}</span>
       </span>
       <span className="sj-row-value">{formatShortDate(item.createdAt)}</span>
