@@ -1155,6 +1155,22 @@ html:has(.sj-topbar) { scroll-padding-top: 80px; }
   border: 1px solid var(--sj-line);
   border-radius: 14px 14px 14px 4px;
   background: var(--sj-surface);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.sj-md-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 20px;
+}
+
+.sj-md-rule {
+  width: 100%;
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--sj-track);
 }
 
 .sj-answer-lead {

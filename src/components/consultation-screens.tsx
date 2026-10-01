@@ -16,6 +16,7 @@ import {
 import { commerceStore, consultationStore, createTransactionStep, libraryStore, runStorageTransaction } from "@/lib/storage";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { ApiRequestError } from "@/lib/api/client";
+import { MarkdownBlocks, blockToPlainText, parseMarkdown, plainInline, type MarkdownBlock } from "@/lib/markdown";
 import type { ChartView } from "@/lib/saju";
 import { CorruptState, EmptyState, LoadingState } from "./page-state";
 import { RowLink } from "./ui/layout";
@@ -73,14 +74,24 @@ function isInsufficientCredits(error: unknown) {
   return error instanceof ApiRequestError && error.status === 402;
 }
 
-/** Splits an answer into a short bold lead and the rest, without changing the text. */
-function splitAnswer(content: string): { lead: string; rest: string[] } {
-  const paragraphs = content.split(/\n+/).map((paragraph) => paragraph.trim()).filter(Boolean);
-  if (paragraphs.length > 1) return { lead: paragraphs[0], rest: paragraphs.slice(1) };
-  const text = paragraphs[0] ?? "";
+/**
+ * Splits an answer into a short plain lead and the remaining markdown blocks.
+ * The lead never carries markdown syntax; the rest keeps headings, emphasis and lists.
+ */
+export function splitAnswer(content: string): { lead: string; rest: MarkdownBlock[] } {
+  const blocks = parseMarkdown(content);
+  const [first, ...others] = blocks;
+  if (!first) return { lead: "", rest: [] };
+  if (first.type === "heading") return { lead: blockToPlainText(first), rest: others };
+  if (first.type !== "paragraph") return { lead: "", rest: blocks };
+  if (first.lines.length > 1 || others.length) {
+    const [leadLine, ...restLines] = first.lines;
+    return { lead: plainInline(leadLine).trim(), rest: restLines.length ? [{ type: "paragraph", lines: restLines }, ...others] : others };
+  }
+  const text = plainInline(first.lines[0]).trim();
   const match = text.match(/^([^]+?[.!?。])\s+([^]+)$/);
-  if (match && match[1].length <= 90) return { lead: match[1], rest: [match[2]] };
-  return { lead: "", rest: text ? [text] : [] };
+  if (match && match[1].length <= 90) return { lead: match[1], rest: [{ type: "paragraph", lines: [[{ type: "text", value: match[2] }]] }] };
+  return { lead: "", rest: blocks };
 }
 
 function DayPillarTile({ chart }: { chart: ChartView }) {
@@ -576,7 +587,9 @@ export function LiveConsultationSessionScreen({ sessionId }: { sessionId: string
         <p className="sj-meta">{serverTypeLabel(session.consultation_type)} 상담, {formatShortDate(session.created_at)}{credits !== null ? `. 남은 이용권 ${credits}회` : ""}</p>
       </div>
 
-      <section className="sj-chat" aria-label="상담 대화">
+      {/* 답변 안 제목은 h3라서 아웃라인용 h2를 둔다. .sj-chat 자식은 말풍선·답변만 두려고 바깥에 둔다. */}
+      <h2 id="consult-chat-title" className="sj-visually-hidden">상담 대화</h2>
+      <section className="sj-chat" aria-labelledby="consult-chat-title">
         {session.messages.map((message) => {
           if (message.role === "user") {
             return <div key={message.id} className="sj-bubble-me"><span className="sj-visually-hidden">내 질문: </span>{message.content}</div>;
@@ -586,7 +599,7 @@ export function LiveConsultationSessionScreen({ sessionId }: { sessionId: string
             <article key={message.id} className="sj-answer" aria-label="사주리움의 답변">
               <span className="sj-wordmark" style={{ fontSize: 14 }}>사주리움</span>
               {lead && <p className="sj-answer-lead">{lead}</p>}
-              {rest.map((paragraph, index) => <p key={index} className="sj-body" style={{ fontSize: 14 }}>{paragraph}</p>)}
+              <MarkdownBlocks blocks={rest} headingLevel={3} textStyle={{ fontSize: 14 }} />
               <AnswerFeedback sessionId={sessionId} messageId={String(message.id)} topic={topic} />
             </article>
           );
