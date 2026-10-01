@@ -612,17 +612,38 @@ export async function revokePushToken(token: string) {
 
 /* ---------- Share links ---------- */
 
-/** Public fields a share link may expose; the server rejects anything else and an empty list. */
-export const SHARE_INCLUDE_KEYS = ["summary", "day_pillar", "five_elements", "birth_date", "birth_time"] as const;
-export type ShareIncludeKey = (typeof SHARE_INCLUDE_KEYS)[number];
-export const DEFAULT_SHARE_INCLUDE: readonly ShareIncludeKey[] = ["summary", "day_pillar", "five_elements"];
+export type ShareTargetType = "report" | "compatibility";
 
-export async function createReportShare(hours = 72, include: readonly ShareIncludeKey[] = DEFAULT_SHARE_INCLUDE) {
+/**
+ * Public fields a share link may expose, per target and in the server's order. The server rejects any
+ * other key, a report key on a compatibility link (and the reverse), and an empty list.
+ */
+export const SHARE_INCLUDE_KEYS = {
+  report: ["summary", "day_pillar", "five_elements", "birth_date", "birth_time"],
+  compatibility: ["summary", "dimensions"],
+} as const satisfies Record<ShareTargetType, readonly string[]>;
+export type ShareIncludeKey = (typeof SHARE_INCLUDE_KEYS)[ShareTargetType][number];
+/** What a new link carries when nothing was chosen: birth fields stay off for reports. */
+export const DEFAULT_SHARE_INCLUDE: Record<ShareTargetType, readonly ShareIncludeKey[]> = {
+  report: ["summary", "day_pillar", "five_elements"],
+  compatibility: ["summary", "dimensions"],
+};
+
+export async function createShareLink(target: { type: ShareTargetType; id: string | number }, hours = 72, include: readonly ShareIncludeKey[] = DEFAULT_SHARE_INCLUDE[target.type]) {
+  const allowed: readonly ShareIncludeKey[] = SHARE_INCLUDE_KEYS[target.type];
+  const selected = allowed.filter((key) => include.includes(key));
+  if (selected.length === 0) throw new Error("공유할 정보를 하나 이상 골라 주세요.");
+  return (await request<Schema<"ShareLink">>("/api/v1/share-links", { method: "POST", body: { target_type: target.type, target_id: Number(target.id), expires_in_hours: hours, include: selected } })).data;
+}
+
+export async function createReportShare(hours = 72, include: readonly ShareIncludeKey[] = DEFAULT_SHARE_INCLUDE.report) {
   const journey = readServerJourney();
   if (!journey) throw new Error("먼저 리포트를 생성해 주세요.");
-  const selected = SHARE_INCLUDE_KEYS.filter((key) => include.includes(key));
-  if (selected.length === 0) throw new Error("공유할 정보를 하나 이상 골라 주세요.");
-  return (await request<Schema<"ShareLink">>("/api/v1/share-links", { method: "POST", body: { target_type: "report", target_id: Number(journey.reportId), expires_in_hours: hours, include: selected } })).data;
+  return createShareLink({ type: "report", id: journey.reportId }, hours, include);
+}
+
+export async function createCompatibilityShare(compatibilityId: string, hours = 72, include: readonly ShareIncludeKey[] = DEFAULT_SHARE_INCLUDE.compatibility) {
+  return createShareLink({ type: "compatibility", id: compatibilityId }, hours, include);
 }
 
 export async function listShareLinks() {
@@ -766,26 +787,79 @@ function toLiveReport(report: ApiReport, journey?: ServerJourney | null): LiveRe
 
 /* ---------- Compatibility results ---------- */
 
+/** One piece of structured evidence behind a perspective summary; `person` refers to profile a or b. */
+export type CompatibilityEvidence =
+  | { type: "day_gan"; person: "a" | "b"; gan: string; element: string }
+  | { type: "day_gan_relation"; relation: "same" | "a_generates_b" | "b_generates_a" | "a_controls_b" | "b_controls_a" }
+  | { type: "five_elements"; element: string; a: number; b: number };
+
+export type CompatibilityDimension = { key: string; title: string; summary: string; evidence: CompatibilityEvidence[] };
+export type CompatibilityPaidSection = { title: string; body: string | null; locked: boolean };
+
 export type ServerCompatibilityDetail = {
   id: string;
   relation: "couple" | "friend" | "colleague" | "family" | string;
   summary: string;
   limitedByUnknownTime: boolean;
+  /** The server's own unknown-birth-time notice, present only when `limitedByUnknownTime`. */
+  notice: string | null;
+  dimensions: CompatibilityDimension[];
   profileAId: string;
   profileBId: string;
   snapshotAId: string;
   snapshotBId: string;
   status: string;
-  lockedSections: string[];
+  /** Paid sections: before purchase only the title (`locked`), after purchase the body too. */
+  paidSections: CompatibilityPaidSection[];
   createdAt: string;
 };
 
+const DAY_GAN_RELATIONS = new Set(["same", "a_generates_b", "b_generates_a", "a_controls_b", "b_controls_a"]);
+
+/** Keeps the evidence shapes this client can phrase; anything else is dropped rather than shown raw. */
+function toEvidence(value: unknown): CompatibilityEvidence[] {
+  if (!value || typeof value !== "object") return [];
+  const item = value as Record<string, unknown>;
+  if (item.type === "day_gan" && (item.person === "a" || item.person === "b") && typeof item.gan === "string" && typeof item.element === "string") {
+    return [{ type: "day_gan", person: item.person, gan: item.gan, element: item.element }];
+  }
+  if (item.type === "day_gan_relation" && typeof item.relation === "string" && DAY_GAN_RELATIONS.has(item.relation)) {
+    return [{ type: "day_gan_relation", relation: item.relation as Extract<CompatibilityEvidence, { type: "day_gan_relation" }>["relation"] }];
+  }
+  if (item.type === "five_elements" && typeof item.element === "string" && typeof item.a === "number" && typeof item.b === "number") {
+    return [{ type: "five_elements", element: item.element, a: item.a, b: item.b }];
+  }
+  return [];
+}
+
+function toDimensions(value: unknown): CompatibilityDimension[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((raw) => {
+    if (!raw || typeof raw !== "object") return [];
+    const item = raw as Record<string, unknown>;
+    if (typeof item.title !== "string" || typeof item.summary !== "string" || !item.summary.trim()) return [];
+    return [{ key: String(item.key ?? item.title), title: item.title, summary: item.summary, evidence: Array.isArray(item.evidence) ? item.evidence.flatMap(toEvidence) : [] }];
+  });
+}
+
 function compatibilityPreview(result: ApiCompatibility) {
-  const value = (result.result ?? {}) as { free_preview?: { summary?: string; limited_by_unknown_time?: boolean }; paid_detail?: { sections?: Array<{ title?: unknown; locked?: unknown }> } };
+  const value = (result.result ?? {}) as {
+    free_preview?: { summary?: string; limited_by_unknown_time?: boolean; notice?: unknown; dimensions?: unknown };
+    paid_detail?: { sections?: Array<{ title?: unknown; body?: unknown; locked?: unknown }> };
+  };
+  const limited = value.free_preview?.limited_by_unknown_time ?? false;
+  const notice = value.free_preview?.notice;
   return {
     summary: value.free_preview?.summary ?? "관계 결과를 준비했습니다.",
-    limited: value.free_preview?.limited_by_unknown_time ?? false,
-    locked: (value.paid_detail?.sections ?? []).filter((section) => section.locked === true && typeof section.title === "string").map((section) => section.title as string),
+    limited,
+    notice: limited && typeof notice === "string" && notice.trim() ? notice : null,
+    dimensions: toDimensions(value.free_preview?.dimensions),
+    paid: (value.paid_detail?.sections ?? []).flatMap((section) => {
+      if (typeof section.title !== "string") return [];
+      const body = typeof section.body === "string" && section.body.trim() ? section.body : null;
+      // A section without a body is never shown as open, whatever its flag says.
+      return [{ title: section.title, body: section.locked === true ? null : body, locked: section.locked === true || body === null }];
+    }),
   };
 }
 
@@ -797,12 +871,14 @@ export async function getCompatibility(id: string): Promise<ServerCompatibilityD
     relation: result.relation_type,
     summary: preview.summary,
     limitedByUnknownTime: preview.limited,
+    notice: preview.notice,
+    dimensions: preview.dimensions,
     profileAId: String(result.profile_a_id),
     profileBId: String(result.profile_b_id),
     snapshotAId: String(result.snapshot_a_id),
     snapshotBId: String(result.snapshot_b_id),
     status: result.generation_status,
-    lockedSections: preview.locked,
+    paidSections: preview.paid,
     createdAt: toIso(result.created_at)!,
   };
 }
