@@ -424,6 +424,14 @@ html:has(.sj-topbar) { scroll-padding-top: 80px; }
   line-height: 1.5;
 }
 
+.sj-row-title-clamp {
+  display: -webkit-box;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .sj-row-sub {
   color: var(--sj-muted);
   font-size: 13px;

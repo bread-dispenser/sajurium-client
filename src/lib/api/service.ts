@@ -2,6 +2,7 @@ import type { components } from "@/lib/api/sasaju.generated";
 import type { CreditLedgerEntry, LibraryAction, LibraryItemView, ProductView, ProfileInput } from "@/lib/contracts";
 import { ApiRequestError, apiRequest } from "@/lib/api/client";
 import { toChartView, type ChartView } from "@/lib/saju";
+import { markdownPreview, markdownTitle } from "@/lib/markdown";
 
 type Schema<Name extends keyof components["schemas"]> = components["schemas"][Name];
 type ApiProfile = Schema<"SajuProfile">;
@@ -951,17 +952,20 @@ export async function listConsultations(): Promise<{ items: ApiConsultation[] }>
   return { items: details };
 }
 
+/** Library rows show a plain preview; stored reports and messages are never changed. */
+const LIBRARY_TITLE_LENGTH = 80;
+
 export async function listLibrary(): Promise<{ items: LibraryItemView[] }> {
   const [reports, consultations] = await Promise.all([
     request<ApiReport[]>("/api/v1/reports"),
     listConsultations(),
   ]);
   const reportItems = reports.data.map((report) => {
-    const item = { id: `report-${report.id}`, type: "report" as const, title: report.title, subtitle: report.summary ?? report.content.slice(0, 120), href: `/report?reportId=${report.id}`, access: report.requires_payment && !report.purchased ? "locked" as const : "available" as const, purchased: report.purchased, read: false, hidden: report.is_hidden, profile: { id: String(report.user_id), displayName: "내 기록" }, topic: null, createdAt: toIso(report.created_at)! };
+    const item = { id: `report-${report.id}`, type: "report" as const, title: markdownTitle(report.title, LIBRARY_TITLE_LENGTH) || "사주 리포트", subtitle: markdownPreview(report.summary) || markdownPreview(report.content) || "리포트를 열어 내용을 볼 수 있어요.", href: `/report?reportId=${report.id}`, access: report.requires_payment && !report.purchased ? "locked" as const : "available" as const, purchased: report.purchased, read: false, hidden: report.is_hidden, profile: { id: String(report.user_id), displayName: "내 기록" }, topic: null, createdAt: toIso(report.created_at)! };
     return { ...item, allowedActions: (item.access === "available" ? ["open", "delete"] : ["open"]) as LibraryAction[] };
   });
   const consultationItems = consultations.items.map((session) => {
-    const item = { id: `consultation-${session.id}`, type: "consultation" as const, title: session.session_title ?? "상담 기록", subtitle: session.messages.at(-1)?.content.slice(0, 120) ?? "상담을 이어볼 수 있어요.", href: `/consult/session/${session.id}`, access: "available" as const, purchased: false, read: false, hidden: session.status === "DELETED", profile: { id: String(session.profile_id ?? ""), displayName: "내 기록" }, topic: null, createdAt: session.created_at };
+    const item = { id: `consultation-${session.id}`, type: "consultation" as const, title: markdownTitle(session.session_title, LIBRARY_TITLE_LENGTH) || "상담 기록", subtitle: markdownPreview(session.messages.at(-1)?.content) || "상담을 이어볼 수 있어요.", href: `/consult/session/${session.id}`, access: "available" as const, purchased: false, read: false, hidden: session.status === "DELETED", profile: { id: String(session.profile_id ?? ""), displayName: "내 기록" }, topic: null, createdAt: session.created_at };
     return { ...item, allowedActions: ["open", "delete"] as LibraryAction[] };
   });
   return { items: [...reportItems, ...consultationItems].sort((left, right) => right.createdAt.localeCompare(left.createdAt)) };
