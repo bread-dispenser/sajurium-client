@@ -6,7 +6,6 @@ import type {
   ConsultationSessionView,
   CreditLedgerEntry,
   DailyFlowView,
-  FeedbackProvenance,
   FeedbackTarget,
   FeedbackView,
   GenerationView,
@@ -18,6 +17,7 @@ import type {
   OwnerRelationship,
   ProductView,
   ProfileInput,
+  StoredFeedbackProvenance,
   TopicId as ContractTopicId,
 } from "./contracts";
 
@@ -166,7 +166,7 @@ export type FeedbackEntry = {
   rating: FeedbackId;
   reason: FeedbackReason;
   comment: string;
-  provenance: FeedbackProvenance;
+  provenance: StoredFeedbackProvenance;
   reported: boolean;
   createdAt: string;
 };
@@ -191,7 +191,7 @@ export type FeedbackRecord = {
   rating: FeedbackId;
   reason: FeedbackReason;
   comment: string;
-  provenance: FeedbackProvenance;
+  provenance: StoredFeedbackProvenance;
   reported: boolean;
   createdAt: string;
 };
