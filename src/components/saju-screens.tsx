@@ -1059,9 +1059,11 @@ function saveStorageMode(): SaveStorageMode {
   return getSessionKind() === "account" ? "server-account" : "server-anonymous";
 }
 
-function SaveStorageCard({ mode, localSaved }: { mode: SaveStorageMode; localSaved: boolean }) {
+function SaveStorageCard({ mode, localSaved, copyAvailable = true }: { mode: SaveStorageMode; localSaved: boolean; copyAvailable?: boolean }) {
   const server = mode !== "device-only";
-  const deviceCopy = localSaved ? "출생 정보와 고른 관심 주제 사본이 남아 있어요" : "저장하면 출생 정보와 고른 관심 주제 사본이 남아요";
+  const deviceCopy = !copyAvailable
+    ? "이 기기에는 사본으로 남길 출생 정보가 없어요"
+    : localSaved ? "출생 정보와 고른 관심 주제 사본이 남아 있어요" : "저장하면 출생 정보와 고른 관심 주제 사본이 남아요";
   return (
     <section className="sj-section" style={{ gap: 0 }} aria-labelledby="save-where-title">
       <h2 id="save-where-title" className="sj-group-title">어디에 저장되나요</h2>
@@ -1097,6 +1099,27 @@ function SaveStorageCard({ mode, localSaved }: { mode: SaveStorageMode; localSav
   );
 }
 
+/**
+ * The server keeps this reading, but the birth draft is gone from this device (it is cleared once a
+ * copy is saved or the person moves on, and it never survives the tab). The server profile lacks the
+ * time zone and personalization a device copy carries, so no copy is offered rather than a guessed one.
+ */
+function SaveScreenServerOnly({ mode }: { mode: SaveStorageMode }) {
+  return (
+    <main className="sj-page" aria-labelledby="save-title">
+      <section className="sj-section" style={{ gap: 8 }}>
+        <h1 id="save-title" className="sj-h1">결과는 서버에 저장돼 있어요</h1>
+        <p className="sj-lead" role="status">출생 정보와 계산 결과는 이미 서버에 저장돼 있어요. 이 기기에는 사본으로 남길 입력 정보가 없어서 따로 저장하지 않아도 돼요.</p>
+      </section>
+      <SaveStorageCard mode={mode} localSaved={false} copyAvailable={false} />
+      <div className="sj-actions">
+        <Link className="sj-button sj-button-block" href="/report">결과 계속 보기</Link>
+        {mode === "server-anonymous" && <Link className="sj-button-secondary" href="/login">이메일로 로그인하거나 가입하기</Link>}
+      </div>
+    </main>
+  );
+}
+
 export function SaveScreen({ topicId, feedback }: { topicId: TopicId; feedback: FeedbackId | null }) {
   const hydrated = useHydrated();
   const [savedInSession, setSavedInSession] = useState(false);
@@ -1104,13 +1127,21 @@ export function SaveScreen({ topicId, feedback }: { topicId: TopicId; feedback: 
   if (!hydrated) return <LoadingState />;
   const birthState = inspectCurrentBirth(INITIAL_BIRTH);
   if (birthState.status !== "ok") return <CorruptState title="출생 정보를 읽을 수 없어요" description="손상된 출생 정보를 확인 없이 덮어쓰지 않아요." unavailable={birthState.status === "unavailable"} onReset={() => resetBirthSource(birthState.store)} />;
-  const birth = birthState.birth;
   const reportInspection = reportStore.inspect();
   if (reportInspection.status === "corrupt" || reportInspection.status === "unavailable") return <CorruptState title="저장한 리포트를 읽을 수 없어요" description="손상된 리포트를 확인 없이 덮어쓰지 않아요." unavailable={reportInspection.status === "unavailable"} onReset={reportStore.remove} />;
-  const storedReport = reportInspection.status === "ok" ? reportInspection.value : null;
-  const localSaved = savedInSession || Boolean(storedReport && storedReport.topic === topicId && storedReport.feedback === feedback && sameBirth(storedReport.birth, birth));
   const mode = saveStorageMode();
   const server = mode !== "device-only";
+  // inspectCurrentBirth falls back to the example birth when this device holds no draft, profile or
+  // saved report. That example is never the user's record, so it must not be saved as their copy.
+  if (birthState.birth === INITIAL_BIRTH) {
+    if (!server) {
+      return <EmptyState title="저장할 결과가 아직 없어요" description="이 기기에 입력한 출생 정보가 없어요. 출생 정보를 입력하고 명식을 계산하면 결과를 저장할 수 있어요." action={{ href: "/birth", label: "출생 정보 입력하기" }} />;
+    }
+    return <SaveScreenServerOnly mode={mode} />;
+  }
+  const birth = birthState.birth;
+  const storedReport = reportInspection.status === "ok" ? reportInspection.value : null;
+  const localSaved = savedInSession || Boolean(storedReport && storedReport.topic === topicId && storedReport.feedback === feedback && sameBirth(storedReport.birth, birth));
   const lead = server
     ? localSaved
       ? "이 브라우저에 사본을 남겼어요. 서버에 저장된 출생 정보와 계산 결과는 그대로예요."
