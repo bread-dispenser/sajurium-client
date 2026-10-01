@@ -1,6 +1,7 @@
 import type { components } from "@/lib/api/sasaju.generated";
 import type { CreditLedgerEntry, LibraryAction, LibraryItemView, ProductView, ProfileInput } from "@/lib/contracts";
 import { ApiRequestError, apiRequest } from "@/lib/api/client";
+import { toChartView, type ChartView } from "@/lib/saju";
 
 type Schema<Name extends keyof components["schemas"]> = components["schemas"][Name];
 type ApiProfile = Schema<"SajuProfile">;
@@ -33,12 +34,17 @@ export type LiveReport = {
 
 export type LiveOrder = {
   order_id: string;
+  order_number: string;
   status: string;
+  fulfillment_status: string | null;
   amount_minor: number;
   currency: string;
   product_id: string;
+  product_name: string;
   created_at: string;
 };
+
+export type LiveRefund = { id: string; orderId: string; amount: number; reason: string | null; status: string; createdAt: string };
 
 export type CreditSnapshot = { balance: { balance: number }; ledger: { items: CreditLedgerEntry[] } };
 export type ServerProfile = { id: string; nickname: string; isSelf: boolean; relationship: string | null; birthYear: number; birthTimeUnknown: boolean; birthLocation: string | null; createdAt: string };
@@ -112,6 +118,12 @@ function readAuthSession(): StoredAuthSession | null {
   } catch {
     return null;
   }
+}
+
+/** Which session this browser holds, for choosing account copy. Never exposes tokens. */
+export function getSessionKind(): SessionKind | "none" {
+  const session = readAuthSession();
+  return session && session.accessToken ? session.kind : "none";
 }
 
 function storeAuthSession(session: StoredAuthSession) {
@@ -529,6 +541,12 @@ export async function getCurrentReport(): Promise<LiveReport | null> {
   return toLiveReport((await request<ApiReport>(`/api/v1/reports/${journey.reportId}`)).data, journey);
 }
 
+export async function getCurrentChart(): Promise<ChartView | null> {
+  const journey = readServerJourney();
+  if (!journey) return null;
+  return toChartView((await request<ApiChart>(`/api/v1/charts/${journey.chartId}`)).data);
+}
+
 export async function getFlow(scope: "today" | "month" | "year"): Promise<LiveReport> {
   const journey = readServerJourney();
   if (!journey) throw new Error("먼저 출생 정보와 명식 계산을 완료해 주세요.");
@@ -584,7 +602,26 @@ export async function createOrder(productId: string): Promise<LiveOrder> {
 }
 
 function toLiveOrder(order: ApiOrder): LiveOrder {
-  return { order_id: String(order.id), status: order.status, amount_minor: order.amount, currency: order.currency, product_id: PRODUCT_IDS[order.product_code] ?? order.product_code, created_at: toIso(order.created_at)! };
+  return {
+    order_id: String(order.id),
+    order_number: order.order_number,
+    status: order.status,
+    fulfillment_status: order.fulfillment_status ?? null,
+    amount_minor: order.amount,
+    currency: order.currency,
+    product_id: PRODUCT_IDS[order.product_code] ?? order.product_code,
+    product_name: order.product_name,
+    created_at: toIso(order.created_at)!,
+  };
+}
+
+export async function listOrders(): Promise<LiveOrder[]> {
+  return (await request<ApiOrder[]>("/api/v1/orders")).data.map(toLiveOrder);
+}
+
+export async function listOrderRefunds(orderId: string): Promise<LiveRefund[]> {
+  const refunds = (await request<Schema<"Refund">[]>(`/api/v1/orders/${orderId}/refunds`)).data;
+  return refunds.map((refund) => ({ id: String(refund.id), orderId: String(refund.order_id), amount: refund.amount, reason: refund.reason ?? null, status: refund.status, createdAt: toIso(refund.created_at)! }));
 }
 
 export async function getOrder(orderId: string): Promise<LiveOrder> {

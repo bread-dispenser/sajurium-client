@@ -36,8 +36,6 @@ export function SocialLoginOptions({
   const pendingRef = useRef(pending);
   useEffect(() => { pendingRef.current = pending; }, [pending]);
 
-  if (!googleLoginAvailable && !appleLoginAvailable) return null;
-
   function renderGoogleButton() {
     const target = googleMount.current;
     const identity = window.google?.accounts.id;
@@ -75,21 +73,33 @@ export function SocialLoginOptions({
     }
   }
 
+  const anyProvider = googleLoginAvailable || appleLoginAvailable;
+
   return (
-    <section className="social-login-options" aria-label="소셜 로그인">
-      <p className="supporting">또는 소셜 계정으로 계속하기</p>
+    <section className="sj-section" style={{ gap: 10 }} aria-label="다른 방법으로 계속하기">
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }} aria-hidden="true">
+        <span style={{ flex: "1 1 auto", height: 1, background: "var(--sj-line)" }} />
+        <span className="sj-meta">또는</span>
+        <span style={{ flex: "1 1 auto", height: 1, background: "var(--sj-line)" }} />
+      </div>
       {googleLoginAvailable && <>
         <Script src="https://accounts.google.com/gsi/client" strategy="afterInteractive"
-                onReady={renderGoogleButton} onError={() => onError("Google 로그인 화면을 불러오지 못했어요.")} />
-        <div ref={googleMount} className="social-login-google" />
+                onReady={renderGoogleButton} onError={() => onError("Google 로그인 화면을 불러오지 못했어요. 새로고침한 뒤 다시 시도해 주세요.")} />
+        <div ref={googleMount} style={{ display: "flex", justifyContent: "center", minHeight: 44 }} />
       </>}
       {appleLoginAvailable && <>
         <Script src="https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js"
                 strategy="afterInteractive" onReady={() => setAppleReady(true)}
-                onError={() => onError("Apple 로그인 화면을 불러오지 못했어요.")} />
-        <button className="secondary-button" type="button" disabled={!appleReady || pending}
+                onError={() => onError("Apple 로그인 화면을 불러오지 못했어요. 새로고침한 뒤 다시 시도해 주세요.")} />
+        <button className="sj-button-secondary" type="button" disabled={!appleReady || pending}
+                style={{ minHeight: 52, background: "var(--sj-ink)", borderColor: "var(--sj-ink)", color: "#ffffff" }}
                 onClick={() => { void signInWithApple(); }}>Apple로 계속</button>
       </>}
+      <button className="sj-button-secondary" type="button" disabled aria-describedby="kakao-login-note"
+              style={{ minHeight: 52, borderStyle: "dashed", background: "var(--sj-sunk)", color: "var(--sj-muted)" }}>
+        카카오로 계속<span id="kakao-login-note" className="sj-badge" style={{ background: "var(--sj-surface)" }}>준비 중</span>
+      </button>
+      {!anyProvider && <p className="sj-fine sj-center">소셜 로그인은 준비 중이에요. 지금은 이메일로 로그인할 수 있어요.</p>}
     </section>
   );
 }

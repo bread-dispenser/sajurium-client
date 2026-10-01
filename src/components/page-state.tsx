@@ -3,25 +3,22 @@
 import Link from "next/link";
 import { useState } from "react";
 import type { ReactNode } from "react";
-import styles from "./saas-system-rollout.module.css";
 
 type PageStateProps = {
-  eyebrow?: string;
   title: string;
   description: string;
   children?: ReactNode;
   action?: { href: string; label: string };
 };
 
-function PageState({ eyebrow, title, description, children, action }: PageStateProps) {
+function PageState({ title, description, children, action }: PageStateProps) {
   return (
-    <section className={`page-state ${styles.srScreen}`} aria-labelledby="page-state-title">
-      {eyebrow && <p className="section-kicker">{eyebrow}</p>}
-      <h1 id="page-state-title">{title}</h1>
-      <p className="supporting">{description}</p>
+    <section className="sj-state" aria-labelledby="page-state-title">
+      <h1 id="page-state-title" className="sj-h1">{title}</h1>
+      <p className="sj-lead">{description}</p>
       {children}
       {action && (
-        <Link className="primary-button state-action" href={action.href}>
+        <Link className="sj-button sj-button-block" href={action.href} style={{ marginTop: 16 }}>
           {action.label}
         </Link>
       )}
@@ -31,20 +28,24 @@ function PageState({ eyebrow, title, description, children, action }: PageStateP
 
 export function LoadingState({ title = "내용을 정리하고 있어요" }: { title?: string }) {
   return (
-    <section className={`page-state ${styles.srScreen}`} aria-labelledby="loading-state-title" aria-busy="true" role="status">
-      <h1 id="loading-state-title">{title}</h1>
-      <p className="supporting">잠시만 기다려 주세요.</p>
-      <div className="state-lines" aria-hidden="true"><span /><span /><span /></div>
+    <section className="sj-state" aria-labelledby="loading-state-title" aria-busy="true" role="status">
+      <h1 id="loading-state-title" className="sj-h2">{title}</h1>
+      <div className="sj-skeleton" aria-hidden="true">
+        <div className="sj-skeleton-block" />
+        <div className="sj-skeleton-line" style={{ width: "88%" }} />
+        <div className="sj-skeleton-line" style={{ width: "72%" }} />
+        <div className="sj-skeleton-line" style={{ width: "54%" }} />
+      </div>
     </section>
   );
 }
 
 export function EmptyState({ title, description, action }: Omit<PageStateProps, "children">) {
-  return <PageState eyebrow="비어 있음" title={title} description={description} action={action} />;
+  return <PageState title={title} description={description} action={action} />;
 }
 
 export function UnavailableScreen({ title, description }: { title: string; description: string }) {
-  return <PageState eyebrow="준비 중" title={title} description={description} action={{ href: "/home", label: "홈으로 돌아가기" }} />;
+  return <PageState title={title} description={description} action={{ href: "/home", label: "홈으로 돌아가기" }} />;
 }
 
 export function CorruptState({ title, description, unavailable = false, onReset }: { title: string; description: string; unavailable?: boolean; onReset: () => boolean }) {
@@ -59,11 +60,11 @@ export function CorruptState({ title, description, unavailable = false, onReset 
   }
 
   return (
-    <PageState eyebrow={unavailable ? "브라우저 저장소 사용 불가" : "기기 저장 오류"} title={title} description={unavailable ? "저장소 접근이 차단되어 데이터를 확인할 수 없어요. 브라우저 설정을 확인한 뒤 다시 시도해 주세요." : description}>
-      {error && <p className="form-error" role="alert">{error}</p>}
+    <PageState title={title} description={unavailable ? "저장소 접근이 차단되어 데이터를 확인할 수 없어요. 브라우저 설정을 확인한 뒤 다시 시도해 주세요." : description}>
+      {error && <p className="sj-error" role="alert">{error}</p>}
       {unavailable
-        ? <button className="primary-button state-action" type="button" onClick={() => window.location.reload()}>다시 확인하기</button>
-        : <button className="primary-button state-action" type="button" onClick={reset}>손상 데이터 초기화</button>}
+        ? <button className="sj-button sj-button-block" type="button" onClick={() => window.location.reload()}>다시 확인하기</button>
+        : <button className="sj-button sj-button-block" type="button" onClick={reset}>손상 데이터 초기화</button>}
     </PageState>
   );
 }

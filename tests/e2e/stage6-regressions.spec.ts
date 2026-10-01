@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { fillBirthStepOne, submitBirth } from "./birth-helpers";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/");
@@ -11,12 +12,12 @@ test.beforeEach(async ({ page }) => {
 
 test("a consultation topic query overrides the draft topic and preserves draft text", async ({ page }) => {
   await page.goto("/consult/new");
-  await page.getByRole("button", { name: /연애 · 관계/ }).click();
+  await page.getByRole("button", { name: "연애", exact: true }).click();
   await page.locator("#consult-question").fill("질문 텍스트를 보존해요");
   await page.locator("#consult-situation").fill("상황 텍스트도 보존해요");
 
   await page.goto("/consult/new?topic=money");
-  await expect(page.locator(".signal-topic-option[aria-pressed='true']")).toContainText("재물");
+  await expect(page.locator(".sj-segment[aria-pressed='true']")).toContainText("재물");
   await expect(page.locator("#consult-question")).toHaveValue("질문 텍스트를 보존해요");
   await expect(page.locator("#consult-situation")).toHaveValue("상황 텍스트도 보존해요");
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem("sajurium-consultations") ?? "null").draft)).toMatchObject({
@@ -46,9 +47,9 @@ test("restricted consultation taxonomy gives guidance, preserves the draft, and 
     await page.goto("/consult/new?topic=career");
     await page.locator("#consult-question").fill(question);
     await page.locator("#consult-situation").fill("이 상황 설명은 제한 제출 뒤에도 남아야 해요.");
-    await expect(page.locator(".restricted-guidance")).toContainText("사망·질병 진단·임신 여부·재판 결과·투자 수익·도박 당첨·타인의 속마음·배우자의 외도");
-    await page.getByRole("button", { name: "상담 답변 보기" }).click();
-    await expect(page.locator(".signal-error")).toContainText("확정적인 답을 제공하지 않아요");
+    await expect(page.locator(".sj-banner-accent")).toContainText("사망·질병 진단·임신 여부·재판 결과·투자 수익·도박 당첨·타인의 속마음·배우자의 외도");
+    await page.getByRole("button", { name: "질문 보내기" }).click();
+    await expect(page.locator(".sj-error")).toContainText("확정적인 답을 제공하지 않아요");
 
     const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("sajurium-consultations") ?? "null"));
     expect(stored).toMatchObject({
@@ -68,43 +69,50 @@ test("birth, people, and settings forms reject future dates with the shared boun
     return local.toISOString().slice(0, 10);
   });
 
+  const [year, month, day] = tomorrow.split("-");
+
   await page.goto("/birth");
-  await page.getByLabel("이름 또는 닉네임").fill("미래 테스트");
-  await page.getByLabel("출생지").fill("서울");
-  await page.getByLabel("생년월일").fill(tomorrow);
-  await page.getByRole("button", { name: "다음" }).click();
+  await fillBirthStepOne(page, { name: "미래 테스트", year, month, day });
+  await page.getByRole("button", { name: "다음", exact: true }).click();
   await expect(page.locator("#birth-error")).toContainText("1900년 이후");
+  await expect(page.getByLabel("출생지")).toHaveCount(0);
 
   await page.goto("/people/new");
   await page.getByLabel("이름 또는 별칭").fill("미래 인물");
-  await page.getByLabel("생년월일").fill(tomorrow);
-  await page.getByRole("button", { name: "인물 저장" }).click();
-  await expect(page.locator(".signal-error")).toContainText("1900년 이후");
+  await page.getByLabel("태어난 해").fill(year);
+  await page.getByLabel("태어난 달").fill(month);
+  await page.getByLabel("태어난 날").fill(day);
+  await page.getByRole("button", { name: "사람 저장하기" }).click();
+  await expect(page.locator(".sj-error")).toContainText("1900년 이후");
 
   await page.goto("/settings");
+  await page.getByRole("button", { name: /출생 정보 수정/ }).click();
   await page.getByLabel("생년월일").fill(tomorrow);
   await page.getByRole("button", { name: "출생 정보 저장" }).click();
   await expect(page.getByRole("status")).toContainText("실제 존재하는 생년월일");
 });
 
-test("live compatibility state and consultation rows fit within 320px", async ({ page }) => {
+test("live compatibility state and consultation entry fit within 320px", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 844 });
   await page.goto("/compatibility");
-  await expect(page.getByRole("heading", { name: "서버 명식으로 궁합 보기" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /만나는 자리를 살펴봐요/ })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
 
+  // 상담 주제 목록 행은 없어졌다. 대신 상담 첫 화면의 이용권 카드와 시작 버튼, 목록 행이 320px 안에 들어가는지 본다.
   await page.goto("/consult");
   await expect(page.getByRole("heading", { name: /마음에 걸리는 일을/ })).toBeVisible();
-  const consultationRows = await page.locator(".signal-topic-row").evaluateAll((rows) => rows.map((element) => {
-    const style = getComputedStyle(element);
-    const rect = element.getBoundingClientRect();
-    return { columns: style.gridTemplateColumns.trim().split(/\s+/), right: rect.right, viewport: window.innerWidth, scrollWidth: element.scrollWidth, clientWidth: element.clientWidth };
-  }));
-  expect(consultationRows).not.toHaveLength(0);
-  consultationRows.forEach((row) => {
-    expect(row.columns).toHaveLength(2);
-    expect(row.right).toBeLessThanOrEqual(row.viewport + 1);
-    expect(row.scrollWidth).toBeLessThanOrEqual(row.clientWidth + 1);
+  await expect(page.locator(".sj-mobile-only a[href='/consult/new']")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
+  const controls = await page.locator("main :is(a, button, li, .sj-card-dark)").evaluateAll((elements) => elements
+    .filter((element) => element.getClientRects().length > 0)
+    .map((element) => {
+      const rect = element.getBoundingClientRect();
+      return { text: element.textContent?.trim().slice(0, 20), right: rect.right, viewport: window.innerWidth, scrollWidth: element.scrollWidth, clientWidth: element.clientWidth };
+    }));
+  expect(controls).not.toHaveLength(0);
+  controls.forEach((control) => {
+    expect(control.right, control.text).toBeLessThanOrEqual(control.viewport + 1);
+    expect(control.scrollWidth, control.text).toBeLessThanOrEqual(control.clientWidth + 1);
   });
 });
 
@@ -117,7 +125,6 @@ test("monthly server flow entry remains readable without mobile overflow", async
 
 test("storage and account deletion copy separates device and server data", async ({ page }) => {
   await page.goto("/products");
-  await expect(page.getByText("이 브라우저 저장", { exact: true })).toBeVisible();
   await expect(page.getByText("영구 보관", { exact: true })).toHaveCount(0);
 
   await page.goto("/settings");
@@ -128,8 +135,9 @@ test("storage and account deletion copy separates device and server data", async
 
 test("server product detail discloses the paused checkout", async ({ page }) => {
   await page.goto("/products/compatibility-report");
-  await expect(page.getByRole("status")).toContainText("결제와 주문은 준비 중입니다");
-  await expect(page.getByRole("link", { name: "서버 주문으로" })).toHaveCount(0);
+  await expect(page.getByRole("status")).toContainText("결제와 주문은 준비 중이에요");
+  await expect(page.getByRole("button", { name: /구매하기/ })).toBeDisabled();
+  await expect(page.locator("main a[href^='/checkout/']")).toHaveCount(0);
 });
 
 test("exact birth date, time, and place stay out of privacy-safe previews", async ({ page }) => {
@@ -145,10 +153,10 @@ test("exact birth date, time, and place stay out of privacy-safe previews", asyn
 
 test("main journey CTAs remain scrollable and clickable above the mobile bottom navigation", async ({ page }) => {
   const journeys = [
-    { path: "/", selector: "button[aria-label='생년월일 입력하기 · 내 흐름 살펴보기']", expected: /\/birth$/ },
+    { path: "/", selector: "main a[href='/birth']", expected: /\/birth$/ },
     { path: "/birth", selector: "button[type='submit']", expected: /\/report$/ },
-    { path: "/home", selector: ".signal-atlas-consultation-cta a", expected: /\/consult\/new$/ },
-    { path: "/consult", selector: "main.signal-consultation-home > a.signal-primary-action", expected: /\/consult\/new$/ },
+    { path: "/home", selector: "main a[href='/consult/new']", expected: /\/consult\/new$/ },
+    { path: "/consult", selector: ".sj-mobile-only a[href='/consult/new']", expected: /\/consult\/new$/ },
   ];
 
   for (const width of [320, 390]) {
@@ -163,7 +171,7 @@ test("main journey CTAs remain scrollable and clickable above the mobile bottom 
         const centerX = rect.left + rect.width / 2;
         const centerY = rect.top + rect.height / 2;
         const hit = document.elementFromPoint(centerX, centerY);
-        const bottomNavigation = document.querySelector(".bottom-navigation")?.getBoundingClientRect();
+        const bottomNavigation = document.querySelector(".sj-tabbar")?.getBoundingClientRect();
         return {
           width: rect.width,
           height: rect.height,
@@ -177,9 +185,12 @@ test("main journey CTAs remain scrollable and clickable above the mobile bottom 
       expect(geometry.centerCoveredByNavigation, `${journey.path} CTA covered at ${width}px`).toBe(false);
 
       if (journey.path === "/birth") {
-        await page.getByLabel("이름 또는 닉네임").fill("서연");
-        await page.getByLabel("생년월일").fill("1992-06-18");
+        // 출생 입력은 두 단계다. 1단계 제출 버튼을 누른 뒤 2단계 제출 버튼도 같은 조건으로 눌러 본다.
+        await fillBirthStepOne(page, { name: "서연" });
+        await cta.click();
         await page.getByLabel("출생지").fill("서울");
+        await cta.scrollIntoViewIfNeeded();
+        await expect(cta).toHaveText("명식 계산하기");
       }
       await cta.click();
       await expect(page).toHaveURL(journey.expected, { timeout: 5_000 });
@@ -189,22 +200,19 @@ test("main journey CTAs remain scrollable and clickable above the mobile bottom 
 
 test("keyboard focus keeps the home consultation CTA above the mobile navigation", async ({ page }) => {
   await page.goto("/birth");
-  await page.getByLabel("이름 또는 닉네임").fill("키보드 확인");
-  await page.getByLabel("생년월일").fill("1992-06-18");
-  await page.getByLabel("출생지").fill("서울");
-  await page.getByRole("button", { name: "다음", exact: true }).click();
-  await expect(page).toHaveURL(/\/report$/);
+  await submitBirth(page, "키보드 확인");
+  await expect(page).toHaveURL(/\/report$/, { timeout: 15_000 });
 
   for (const width of [320, 390]) {
     await page.setViewportSize({ width, height: width === 320 ? 720 : 844 });
     await page.goto("/home");
 
-    const consultationCta = page.locator(".signal-atlas-consultation-cta a");
+    const consultationCta = page.getByRole("main").getByRole("link", { name: "상담 시작하기" });
     await consultationCta.focus();
 
     const geometry = await page.evaluate(() => {
       const focused = document.activeElement as HTMLElement | null;
-      const navigation = document.querySelector<HTMLElement>(".bottom-navigation");
+      const navigation = document.querySelector<HTMLElement>(".sj-tabbar");
       const focusedBounds = focused?.getBoundingClientRect();
       const navigationBounds = navigation?.getBoundingClientRect();
       const style = focused ? getComputedStyle(focused) : null;

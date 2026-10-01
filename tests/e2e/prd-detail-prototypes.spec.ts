@@ -1,14 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
-
-async function createServerReport(page: import("@playwright/test").Page) {
-  await page.goto("/birth");
-  await page.getByLabel("이름 또는 닉네임").fill("공유 확인");
-  await page.getByLabel("생년월일").fill("1992-06-18");
-  await page.getByLabel("출생지").fill("서울");
-  await page.getByRole("button", { name: "다음", exact: true }).click();
-  await expect(page).toHaveURL(/\/report$/);
-}
+import { createServerReport } from "./birth-helpers";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/");
@@ -20,9 +12,7 @@ test.beforeEach(async ({ page }) => {
 
 test("keeps unsupported production surfaces explicitly unavailable", async ({ page }) => {
   const cases = [
-    ["/profile", "내 프로필 편집은 준비 중입니다"],
-    ["/billing", "결제 복구 센터는 아직 제공되지 않아요"],
-    ["/notifications/policy", "알림 정책 미리보기는 제공되지 않아요"],
+    ["/profile", "출생 정보 수정은 준비 중이에요"],
     ["/platform-labs", "플랫폼 랩은 아직 제공되지 않아요"],
     ["/admin/operations", "운영 작업은 아직 제공되지 않아요"],
     ["/admin/analytics", "운영 분석은 아직 제공되지 않아요"],
@@ -33,26 +23,41 @@ test("keeps unsupported production surfaces explicitly unavailable", async ({ pa
     await expect(page.getByRole("heading", { name: heading })).toBeVisible();
     await expect(page.getByRole("link", { name: "홈으로 돌아가기" })).toBeVisible();
   }
+
+  // 주문 내역과 알림 정책은 이제 실제 화면이다. 결제 일시중지 공개와 설정으로의 안내는 그대로 확인한다.
+  await page.goto("/billing");
+  await expect(page.getByText("결제는 준비 중이에요. 지난 주문과 환불 내역은 계속 볼 수 있어요.")).toBeVisible();
+  await page.goto("/notifications/policy");
+  await expect(page.getByRole("heading", { name: "알림 설정은 설정 화면에 있어요" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "알림 설정 열기" })).toHaveAttribute("href", "/settings#notifications");
 });
 
 test("creates and deactivates a server-backed share link", async ({ page }) => {
-  await createServerReport(page);
-  await page.goto("/share/links");
-  await page.getByRole("button", { name: "현재 리포트 공유 링크 만들기" }).click();
-  const activeLink = page.locator(".signal-row").filter({ hasText: "활성 링크" }).first();
+  await createServerReport(page, "공유 확인");
+  await page.goto("/share");
+  await expect(page.getByRole("heading", { name: "기본 사주 리포트를 링크로 보내요" })).toBeVisible();
+  await page.getByRole("button", { name: "링크 만들기" }).click();
+  await expect(page.getByLabel("공유 링크")).toHaveValue(/\/shared\//);
+  await page.getByRole("link", { name: "내가 만든 공유 링크 보기" }).click();
+  await expect(page).toHaveURL(/\/share\/links$/);
+  const activeLink = page.getByRole("listitem").filter({ hasText: "볼 수 있어요" }).first();
   await expect(activeLink).toBeVisible();
-  await expect(activeLink.locator("code")).toContainText("/shared/");
   await activeLink.getByRole("button", { name: "비활성화" }).click();
-  await expect(page.locator(".signal-row").filter({ hasText: "비활성 링크" }).first()).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("링크를 비활성화했어요");
+  await expect(page.getByRole("region", { name: "닫힌 링크" }).getByRole("listitem").filter({ hasText: "비활성화함" }).first()).toBeVisible();
 });
 
 test("loads and updates notification preferences through the API", async ({ page }) => {
-  await page.goto("/notifications");
-  await expect(page.getByRole("heading", { name: "받고 싶은 소식" })).toBeVisible();
-  const firstPreference = page.locator('input[type="checkbox"]').first();
+  await page.goto("/settings");
+  const preferences = page.getByRole("region", { name: "알림" });
+  await expect(preferences.getByRole("heading", { name: "알림" })).toBeVisible();
+  const firstPreference = preferences.getByRole("switch").first();
+  await expect(firstPreference).toBeVisible();
   const before = await firstPreference.isChecked();
   await firstPreference.setChecked(!before);
   await expect(firstPreference).toBeChecked({ checked: !before });
+  await page.reload();
+  await expect(page.getByRole("region", { name: "알림" }).getByRole("switch").first()).toBeChecked({ checked: !before });
 });
 
 test("shows server notifications without linking to an external deep link", async ({ page }, testInfo) => {
@@ -65,7 +70,7 @@ test("shows server notifications without linking to an external deep link", asyn
   });
   await page.goto("/notifications");
   await expect(page.getByRole("heading", { name: "리포트가 준비됐어요" })).toBeVisible();
-  await expect(page.getByText("리포트 · 기록됨")).toBeVisible();
+  await expect(page.getByText("리포트 완성, 9월 23일")).toBeVisible();
   await expect(page.getByRole("link", { name: "내용 보기" })).toHaveAttribute("href", "/report");
   await expect(page.getByRole("heading", { name: "외부 링크는 열지 않아요" })).toBeVisible();
   await expect(page.getByRole("link", { name: "내용 보기" })).toHaveCount(1);
@@ -74,10 +79,10 @@ test("shows server notifications without linking to an external deep link", asyn
 });
 
 test("downloads an authenticated account export with the saved profile", async ({ page }) => {
-  await createServerReport(page);
+  await createServerReport(page, "공유 확인");
   await page.goto("/settings/privacy");
   const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "내 데이터 내보내기" }).click();
+  await page.getByRole("button", { name: "내 데이터 내려받기" }).click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toBe("sajurium-account-export.json");
   const exported = JSON.parse(await readFile(await download.path(), "utf8"));
@@ -95,10 +100,12 @@ test("offers a retry after the notification settings request fails", async ({ pa
     }
     await route.continue();
   });
-  await page.goto("/notifications");
-  await expect(page.getByRole("button", { name: "다시 시도" })).toBeVisible();
-  await page.getByRole("button", { name: "다시 시도" }).click();
-  await expect(page.getByRole("heading", { name: "받고 싶은 소식" })).toBeVisible();
+  await page.goto("/settings");
+  const preferences = page.getByRole("region", { name: "알림" });
+  await expect(preferences.getByRole("alert")).toBeVisible();
+  await expect(preferences.getByRole("switch")).toHaveCount(0);
+  await preferences.getByRole("button", { name: "다시 시도" }).click();
+  await expect(preferences.getByRole("switch").first()).toBeVisible();
 });
 
 test("keeps an invalid public share token private and non-indexable", async ({ page }) => {

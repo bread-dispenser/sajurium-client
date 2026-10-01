@@ -4,34 +4,36 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import type { FormEvent } from "react";
-import type {
-  BirthInfo,
-  CompatibilityData,
-  CompatibilityRelationshipType,
-  CompatibilityResult,
-  LibraryData,
-  PeopleData,
-  PersonProfile,
-  PersonRelationship,
-} from "@/lib/domain";
-import type { CalendarKind, CalculationGender, OwnerRelationship, ProfileType, TopicId } from "@/lib/contracts";
-import { hasValidLeapMonthSemantics, maskBirthDate, maskBirthTime, maskBirthplace, parseBirthDate, withAllowedLibraryActions } from "@/lib/contracts";
-import { INITIAL_BIRTH, INITIAL_LIBRARY_ITEMS, INITIAL_PEOPLE_DATA } from "@/lib/fixtures";
-import { compatibilityStore, createTransactionStep, libraryStore, peopleStore, runStorageTransaction } from "@/lib/storage";
+import type { BirthInfo, CompatibilityData, CompatibilityRelationshipType, PeopleData } from "@/lib/domain";
+import type { CalculationGender, OwnerRelationship } from "@/lib/contracts";
+import { hasValidLeapMonthSemantics, parseBirthDate } from "@/lib/contracts";
+import { INITIAL_BIRTH, INITIAL_PEOPLE_DATA } from "@/lib/fixtures";
+import { compatibilityStore, peopleStore } from "@/lib/storage";
 import { useHydrated } from "@/hooks/use-hydrated";
+import type { ChartView } from "@/lib/saju";
 import { CorruptState, EmptyState, LoadingState } from "./page-state";
-import styles from "./saas-core-rollout.module.css";
-import { createCompatibility, createProfile, deleteProfile, formatApiRequestError, listProfiles, type ServerProfile } from "@/lib/api/service";
+import { InfoIcon, PlusIcon } from "./ui/icons";
+import { createCompatibility, createProfile, deleteProfile, formatApiRequestError, getCurrentChart, isAccountSessionExpired, listProfiles, type ServerProfile } from "@/lib/api/service";
 
-const RELATIONSHIP_LABELS: Record<PersonRelationship, string> = {
-  self: "본인",
-  partner: "연인·배우자",
-  family: "가족",
-  friend: "친구",
-  coworker: "동료",
-};
+const PEOPLE_LIMIT = 20;
 
-const COMPATIBILITY_LABELS: Record<CompatibilityRelationshipType, string> = {
+/** 사람 보관함 관계(서버 relationship_type 값) */
+const RELATION_OPTIONS: readonly { id: Exclude<OwnerRelationship, "self">; label: string }[] = [
+  { id: "partner", label: "연인" },
+  { id: "friend", label: "친구" },
+  { id: "family", label: "가족" },
+  { id: "coworker", label: "동료" },
+];
+
+/** 궁합 관계(서버 relation_type 값) */
+const COMPAT_RELATIONS: readonly { id: "couple" | "friend" | "family" | "colleague"; label: string }[] = [
+  { id: "couple", label: "연인" },
+  { id: "friend", label: "친구" },
+  { id: "family", label: "가족" },
+  { id: "colleague", label: "동료" },
+];
+
+const LOCAL_COMPAT_LABELS: Record<CompatibilityRelationshipType, string> = {
   dating: "연애",
   marriage: "결혼",
   family: "가족",
@@ -39,16 +41,14 @@ const COMPATIBILITY_LABELS: Record<CompatibilityRelationshipType, string> = {
   business: "동업",
 };
 
-const COMPATIBILITY_DIMENSIONS = [
-  { id: "emotional-expression", title: "감정 표현", summary: "감정을 드러내는 속도와 방식의 차이를 확인해요." },
-  { id: "communication-style", title: "대화 방식", summary: "결론에 도달하는 속도가 달라 확인 질문이 중요해요." },
-  { id: "intimacy", title: "친밀감", summary: "함께하는 시간과 각자의 공간에 대한 기대를 살펴봐요." },
-  { id: "lifestyle-rhythm", title: "생활 리듬", summary: "쉬는 시간과 활동하는 시간의 기준을 맞춰보세요." },
-  { id: "conflict-style", title: "갈등 방식", summary: "감정이 커지기 전에 사실과 기대를 나누는 편이 좋아요." },
-  { id: "values-goals", title: "가치관과 목표", summary: "중요한 선택에서 서로 포기할 수 없는 조건을 확인해요." },
-  { id: "long-term", title: "장기 관계", summary: "관계를 이어가기 위해 필요한 약속과 역할을 살펴봐요." },
-  { id: "mutual-influence", title: "서로에게 주는 영향", summary: "서로의 선택과 일상에 주는 긍정적인 자극을 확인해요." },
-] as const;
+function relationLabel(profile: ServerProfile) {
+  if (profile.isSelf) return "본인";
+  return RELATION_OPTIONS.find((option) => option.id === profile.relationship)?.label ?? "저장한 사람";
+}
+
+function profileSub(profile: ServerProfile) {
+  return `${profile.birthYear}년생${profile.birthTimeUnknown ? ", 태어난 시간 모름" : ""}`;
+}
 
 function getPeopleData(): PeopleData | null {
   const inspection = peopleStore.inspect();
@@ -64,106 +64,133 @@ function getCompatibilityData(): CompatibilityData | null {
   return { version: 1, results: [] };
 }
 
-function buildLibraryWithCompatibility(result: CompatibilityResult, names: string): LibraryData | null {
-  const inspection = libraryStore.inspect();
-  if (inspection.status === "corrupt" || inspection.status === "unavailable") return null;
-  const current = inspection.status === "ok" ? inspection.value.items : [...INITIAL_LIBRARY_ITEMS];
-  return {
-    version: 1,
-    items: [
-      withAllowedLibraryActions({
-        id: `library-${result.id}`,
-        type: "compatibility",
-        title: `${names} 관계 요약`,
-        subtitle: `${COMPATIBILITY_LABELS[result.relationshipType]} 예시 분석`,
-        createdAt: result.createdAt,
-        href: `/compatibility/result/${result.id}`,
-        access: "available",
-        purchased: false,
-        read: false,
-        hidden: false,
-        profile: { id: result.personA.profileId, displayName: result.personA.displayName },
-        topic: "relationships",
-      }),
-      ...current.filter((item) => item.id !== `library-${result.id}`),
-    ],
-  };
+function PersonTile({ profile, chart, size = "row" }: { profile: ServerProfile; chart: ChartView | null; size?: "row" | "pair" }) {
+  const day = chart && chart.profileId === profile.id ? chart.pillars.day : null;
+  const box = size === "pair" ? { width: 52, height: 64 } : { width: 44, height: 56 };
+  if (day) {
+    return (
+      <span aria-label={`${day.stem.ko}${day.branch.ko} 일주`} lang="zh-Hant" style={{ ...box, display: "flex", flex: "0 0 auto", flexDirection: "column", alignItems: "center", justifyContent: "center", borderRadius: 8, background: "var(--sj-ink)", fontSize: size === "pair" ? 22 : 19 }}>
+        <span className={`sj-hanja sj-el-dark-${day.stem.element}`}>{day.stem.hanja}</span>
+        <span className={`sj-hanja sj-el-dark-${day.branch.element}`}>{day.branch.hanja}</span>
+      </span>
+    );
+  }
+  return <span className="sj-initial-tile" aria-hidden="true" style={box}>{profile.nickname.slice(0, 1)}</span>;
 }
 
-export function PeopleScreen() {
-  const hydrated = useHydrated();
-  const raw = useSyncExternalStore(peopleStore.subscribe, peopleStore.rawSnapshot, () => null);
-  const [query, setQuery] = useState("");
-  const [sort, setSort] = useState<"newest" | "oldest">("newest");
-  const [message, setMessage] = useState("");
-  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
-  if (!hydrated) return <LoadingState title="사람 보관함을 확인하고 있어요" />;
-  void raw;
-  const data = getPeopleData();
-  if (!data) return <CorruptState title="사람 데이터를 읽을 수 없어요" description="손상된 인물 정보를 확인 없이 체험용 예시로 바꾸지 않습니다." unavailable={peopleStore.inspect().status === "unavailable"} onReset={peopleStore.remove} />;
-  const activeData: PeopleData = data;
-  const people = [...data.people]
-    .filter((person) => `${person.profile.displayName} ${RELATIONSHIP_LABELS[person.profile.ownerRelationship]}`.includes(query.trim()))
-    .sort((left, right) => sort === "newest" ? right.createdAt.localeCompare(left.createdAt) : left.createdAt.localeCompare(right.createdAt));
-  const limitReached = data.people.length >= data.freeLimit;
+function useProfilesWithChart() {
+  const [profiles, setProfiles] = useState<ServerProfile[] | null>(null);
+  const [chart, setChart] = useState<ChartView | null>(null);
+  const [loadError, setLoadError] = useState<unknown>(null);
+  useEffect(() => {
+    let active = true;
+    void listProfiles().then((items) => active && setProfiles(items)).catch((reason) => active && setLoadError(reason ?? new Error("load failed")));
+    void getCurrentChart().then((value) => active && setChart(value)).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
+  return { profiles, setProfiles, chart, loadError };
+}
 
-  function deletePerson(id: string) {
-    if (!peopleStore.write({ ...activeData, people: activeData.people.filter((person) => person.id !== id) })) {
-      setMessage("이 인물을 삭제할 수 없어요.");
-      return;
+function LoadFailure({ error, title }: { error: unknown; title: string }) {
+  if (isAccountSessionExpired(error)) return <EmptyState title="다시 로그인해 주세요" description="로그인 세션이 만료됐어요. 다시 로그인하면 저장한 사람을 이어볼 수 있어요." action={{ href: "/login", label: "로그인하기" }} />;
+  return <CorruptState title={title} description={formatApiRequestError(error, "연결 상태를 확인한 뒤 다시 시도해 주세요.")} unavailable onReset={() => { window.location.reload(); return true; }} />;
+}
+
+export function LivePeopleScreen() {
+  const { profiles, setProfiles, chart, loadError } = useProfilesWithChart();
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  if (!profiles && !loadError) return <LoadingState title="저장한 사람을 불러오고 있어요" />;
+  if (loadError || !profiles) return <LoadFailure error={loadError} title="사람 보관함을 불러오지 못했어요" />;
+  const others = profiles.filter((profile) => !profile.isSelf).length;
+  const limitReached = others >= PEOPLE_LIMIT;
+  const sorted = [...profiles].sort((left, right) => Number(right.isSelf) - Number(left.isSelf) || left.createdAt.localeCompare(right.createdAt));
+
+  async function remove(profile: ServerProfile) {
+    setError("");
+    try {
+      await deleteProfile(profile.id);
+      setProfiles((items) => items?.filter((item) => item.id !== profile.id) ?? null);
+      setPendingDeleteId(null);
+      setMessage(`${profile.nickname}님을 보관함에서 삭제했어요.`);
+    } catch (reason) {
+      setError(formatApiRequestError(reason, "삭제하지 못했어요. 잠시 후 다시 시도해 주세요."));
     }
-    setPendingDeleteId(null);
-    setMessage("인물을 이 기기에서 삭제했어요.");
   }
 
   return (
-    <main className={`screen-content people-content signal-screen signal-people ${styles.scope}`} aria-labelledby="people-title">
-      <div className="signal-hero people-hero">
-        <p className="section-kicker signal-kicker">사람 보관함</p>
-        <h1 id="people-title">관계를 살펴볼 사람을<br />저장하세요</h1>
-        <p className="supporting">출생 정보는 목록에서 가려 보여요. 정보는 이 브라우저에만 저장됩니다.</p>
-      </div>
-      <div className="limit-summary signal-panel signal-limit-summary"><span>저장한 사람</span><strong>{data.people.length} / {data.freeLimit}</strong></div>
-      {limitReached ? <p className="limit-notice signal-evidence">무료 저장 한도에 도달했어요. 새 인물을 추가하려면 기존 인물을 삭제하세요.</p> : <Link className="primary-button signal-action signal-primary-action" href="/people/new">새 인물 추가</Link>}
-      <div className="people-controls signal-controls"><label className="signal-field">검색<input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="이름 또는 관계" /></label><label className="signal-field">정렬<select value={sort} onChange={(event) => setSort(event.target.value as typeof sort)}><option value="newest">최신순</option><option value="oldest">오래된순</option></select></label></div>
-      {people.length === 0 ? <EmptyState title="조건에 맞는 인물이 없어요" description="검색어를 바꾸거나 새 인물을 추가하세요." /> : (
-        <div className="people-list signal-row-list">
-          {people.map((person) => (
-            <article key={person.id} className="signal-row signal-person-row">
-              <div className="signal-row-copy"><small>{RELATIONSHIP_LABELS[person.profile.ownerRelationship]}</small><h2>{person.profile.displayName}</h2><p>{maskBirthDate(person.profile.birthDate)} · {maskBirthTime(person.profile.birthTime, person.profile.birthTimeUnknown)} · {maskBirthplace(person.profile.birthplace)}</p></div>
-              <div className="people-item-actions signal-row-actions">
-                <Link className="signal-action" href={`/people/${person.id}/edit`}>수정</Link>
-                {pendingDeleteId === person.id ? (
-                  <div className="danger-confirm signal-danger person-delete-confirm">
-                    <p>{person.profile.displayName}님의 저장 정보를 삭제할까요?</p>
-                    <button className="signal-action" type="button" onClick={() => deletePerson(person.id)}>인물 삭제 확정</button>
-                    <button className="signal-action" type="button" onClick={() => setPendingDeleteId(null)}>취소</button>
-                  </div>
-                ) : <button className="signal-action signal-destructive-action" type="button" onClick={() => { setPendingDeleteId(person.id); setMessage(""); }}>삭제</button>}
-              </div>
-            </article>
-          ))}
+    <main className="sj-page" aria-labelledby="people-title" style={{ gap: 24 }}>
+      <div className="sj-section" style={{ gap: 8 }}>
+        <div className="sj-section-head">
+          <h1 id="people-title" className="sj-h1">저장한 사람</h1>
+          <span className="sj-meta">{others} / {PEOPLE_LIMIT}명</span>
         </div>
+        <p className="sj-lead">궁합과 상담에 쓸 사람을 저장해요. 나를 빼고 {PEOPLE_LIMIT}명까지 저장할 수 있어요.</p>
+      </div>
+
+      {profiles.length === 0 ? (
+        <section className="sj-section" aria-labelledby="people-empty-title">
+          <h2 id="people-empty-title" className="sj-h2">저장한 사람이 없어요</h2>
+          <p className="sj-body">궁합을 보려면 나와 상대, 두 사람의 출생 정보가 필요해요.</p>
+        </section>
+      ) : (
+        <ul className="sj-list" aria-label="저장한 사람" style={{ borderTop: "1px solid var(--sj-line)" }}>
+          {sorted.map((profile) => (
+            <li key={profile.id} style={{ borderBottom: "1px solid var(--sj-line)", padding: "14px 0", display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                <PersonTile profile={profile} chart={chart} />
+                <span className="sj-row-main">
+                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 16, fontWeight: 700 }}>{profile.nickname}</span>
+                    <span className="sj-chip" style={{ minHeight: 22, padding: "0 8px" }}>{relationLabel(profile)}</span>
+                  </span>
+                  <span className="sj-row-sub">{profileSub(profile)}</span>
+                </span>
+                {pendingDeleteId !== profile.id && (
+                  <button className="sj-text-button" type="button" style={{ color: "var(--sj-muted)", padding: "0 4px" }} aria-label={`${profile.nickname} 삭제`} onClick={() => { setPendingDeleteId(profile.id); setMessage(""); setError(""); }}>삭제</button>
+                )}
+              </div>
+              {pendingDeleteId === profile.id && (
+                <div className="sj-banner" role="group" aria-label={`${profile.nickname} 삭제 확인`} style={{ flexDirection: "column" }}>
+                  <p style={{ margin: 0 }}>{profile.nickname}님의 출생 정보를 삭제할까요? 삭제하면 되돌릴 수 없어요.</p>
+                  <div className="sj-actions-row">
+                    <button className="sj-button-danger" type="button" onClick={() => { void remove(profile); }}>기록 삭제</button>
+                    <button className="sj-button-secondary" type="button" onClick={() => setPendingDeleteId(null)}>취소</button>
+                  </div>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
       )}
-      {message && <p className="form-error signal-error" role="status">{message}</p>}
-      <Link className="secondary-button signal-action" href="/compatibility">두 사람 선택하기</Link>
+
+      {error && <p className="sj-error" role="alert">{error}</p>}
+      {message && <p className="sj-meta" role="status">{message}</p>}
+
+      {limitReached ? (
+        <p className="sj-banner" role="note">{PEOPLE_LIMIT}명을 모두 저장했어요. 새 사람을 추가하려면 먼저 한 명을 삭제해 주세요.</p>
+      ) : (
+        <Link className="sj-button-secondary" href="/people/new" style={{ minHeight: 52, borderColor: "var(--sj-ink)", fontWeight: 700 }}><PlusIcon />사람 추가</Link>
+      )}
+      <Link className="sj-text-button" href="/compatibility" style={{ alignSelf: "center" }}>두 사람 궁합 보기</Link>
+
+      <p className="sj-fine">다른 사람의 생년월일은 목록에서 태어난 해만 보여요. 저장한 사람은 나에게만 보이고, 언제든 삭제할 수 있어요.</p>
     </main>
   );
 }
 
-export function PersonFormScreen({ personId }: { personId?: string }) {
+export function PersonFormScreen() {
   const hydrated = useHydrated();
-  if (!hydrated) return <LoadingState title="인물 정보를 준비하고 있어요" />;
+  if (!hydrated) return <LoadingState title="입력 화면을 준비하고 있어요" />;
   const data = getPeopleData();
-  if (!data) return <CorruptState title="사람 데이터를 읽을 수 없어요" description="손상된 인물 정보를 확인 없이 덮어쓰지 않습니다." unavailable={peopleStore.inspect().status === "unavailable"} onReset={peopleStore.remove} />;
-  const existing = personId ? data.people.find((person) => person.id === personId) : undefined;
-  if (personId && !existing) return <EmptyState title="인물을 찾을 수 없어요" description="삭제됐거나 다른 브라우저에 저장된 인물일 수 있어요." action={{ href: "/people", label: "사람 보관함으로" }} />;
-  return <PersonForm key={personId ?? "new"} existing={existing} />;
+  if (!data) return <CorruptState title="이 기기의 사람 정보를 읽을 수 없어요" description="손상된 정보를 확인 없이 덮어쓰지 않아요." unavailable={peopleStore.inspect().status === "unavailable"} onReset={peopleStore.remove} />;
+  return <PersonForm />;
 }
 
-function PersonForm({ existing }: { existing?: PersonProfile }) {
+function PersonForm() {
   const router = useRouter();
-  const [profile, setProfile] = useState<BirthInfo>(existing?.profile ?? {
+  const [profile, setProfile] = useState<BirthInfo>({
     ...INITIAL_BIRTH,
     displayName: "",
     birthDate: "",
@@ -174,11 +201,22 @@ function PersonForm({ existing }: { existing?: PersonProfile }) {
     ownerRelationship: "partner",
     thirdPartyConsent: false,
   });
+  const [dateParts, setDateParts] = useState({ year: "", month: "", day: "" });
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const name = profile.displayName.trim();
 
   function updateProfile(update: Partial<BirthInfo>) {
     setProfile((current) => ({ ...current, ...update }));
     setError("");
+  }
+
+  function updateDate(part: "year" | "month" | "day", raw: string) {
+    const digits = raw.replace(/\D/g, "").slice(0, part === "year" ? 4 : 2);
+    const next = { ...dateParts, [part]: digits };
+    setDateParts(next);
+    const complete = next.year.length === 4 && next.month && next.day;
+    updateProfile({ birthDate: complete ? `${next.year}-${next.month.padStart(2, "0")}-${next.day.padStart(2, "0")}` : "" });
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -186,235 +224,280 @@ function PersonForm({ existing }: { existing?: PersonProfile }) {
     if (!profile.displayName.trim()) return setError("이름 또는 별칭을 입력해 주세요.");
     if (!parseBirthDate(profile.birthDate, new Date(), profile.calendar)) return setError("1900년 이후, 오늘보다 늦지 않은 올바른 생년월일을 입력해 주세요.");
     if (!hasValidLeapMonthSemantics(profile)) return setError("양력 날짜에는 윤달을 선택할 수 없어요.");
-    if (!profile.birthTimeUnknown && !profile.birthTime) return setError("출생 시간을 입력하거나 시간 미상을 선택해 주세요.");
+    if (!profile.birthTimeUnknown && !profile.birthTime) return setError("태어난 시각을 입력하거나 시간을 모른다고 선택해 주세요.");
     if (!profile.birthplace.trim()) return setError("출생지를 입력해 주세요.");
-    if (!profile.timezone.trim()) return setError("시간대를 입력해 주세요.");
-    if (profile.profileType === "other" && !profile.thirdPartyConsent) return setError("상대방의 정보를 저장할 권한이나 동의를 확인해 주세요.");
-    if (profile.profileType === "self" && profile.ownerRelationship !== "self") return setError("본인 프로필의 관계는 본인이어야 해요.");
-    if (profile.profileType === "other" && profile.ownerRelationship === "self") return setError("다른 사람과의 관계를 선택해 주세요.");
-    if (existing) return setError("기존 프로필 수정은 서버 전환 중입니다. 사람 보관함에서 삭제 후 다시 등록해 주세요.");
+    if (!profile.timezone.trim()) return setError("시간대 정보가 없어요. 새로고침한 뒤 다시 시도해 주세요.");
+    if (!profile.thirdPartyConsent) return setError("저장하려면 상대방의 동의나 저장 권한을 확인해 주세요.");
+    if (profile.ownerRelationship === "self") return setError("나와의 관계를 골라 주세요.");
     const normalized: BirthInfo = {
       ...profile,
       displayName: profile.displayName.trim(), birthplace: profile.birthplace.trim(), timezone: profile.timezone.trim(),
       birthTime: profile.birthTimeUnknown ? null : profile.birthTime,
       personalization: { ...profile.personalization, relationshipStatus: profile.personalization.relationshipStatus?.trim() || null, occupationStatus: profile.personalization.occupationStatus?.trim() || null, primaryConcern: profile.personalization.primaryConcern?.trim() || null },
     };
+    setSaving(true);
     try {
       await createProfile(normalized);
       router.push("/people");
     } catch (reason) {
-      setError(formatApiRequestError(reason, "서버에 인물을 저장하지 못했어요."));
+      setError(formatApiRequestError(reason, "저장하지 못했어요. 잠시 후 다시 시도해 주세요."));
+      setSaving(false);
     }
   }
 
+  const calendarValue = profile.calendar === "lunar" ? (profile.leapMonth ? "leap" : "lunar") : "solar";
+
   return (
-    <form className={`screen-content person-form signal-screen signal-person-form ${styles.scope}`} onSubmit={submit} aria-labelledby="person-form-title">
-      <div className="signal-hero person-form-hero">
-        <p className="section-kicker signal-kicker">{existing ? "인물 수정" : "새 인물"}</p>
-        <h1 id="person-form-title">이 사람의 출생 정보를<br />입력해 주세요</h1>
-        <p className="supporting">관계의 흐름을 살필 때 사용할 정보예요.</p>
+    <form className="sj-page" onSubmit={submit} aria-labelledby="person-form-title" noValidate>
+      <div className="sj-section" style={{ gap: 8 }}>
+        <h1 id="person-form-title" className="sj-h1">누구를 저장할까요?</h1>
+        <p className="sj-lead" style={{ fontSize: 14 }}>궁합을 보거나 이 사람과의 관계를 상담할 때 써요.</p>
       </div>
-      <section className="signal-panel signal-form-section" aria-labelledby="person-basic-title">
-        <h2 id="person-basic-title">기본 정보</h2>
-        <label className="signal-field" htmlFor="person-display-name">이름 또는 별칭<input id="person-display-name" value={profile.displayName} onChange={(event) => updateProfile({ displayName: event.target.value })} /></label>
-        <label className="signal-field" htmlFor="person-profile-type">프로필 유형<select id="person-profile-type" value={profile.profileType} onChange={(event) => updateProfile({ profileType: event.target.value as ProfileType })}><option value="self">본인</option><option value="other">다른 사람</option></select></label>
-        <label className="signal-field" htmlFor="person-relationship">관계<select id="person-relationship" value={profile.ownerRelationship} onChange={(event) => updateProfile({ ownerRelationship: event.target.value as OwnerRelationship })}>{Object.entries(RELATIONSHIP_LABELS).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+
+      <div className="sj-field">
+        <label className="sj-label" htmlFor="person-display-name">이름 또는 별칭</label>
+        <input id="person-display-name" className="sj-input" value={profile.displayName} onChange={(event) => updateProfile({ displayName: event.target.value })} autoComplete="off" />
+      </div>
+
+      <fieldset className="sj-field">
+        <legend className="sj-label" style={{ marginBottom: 8 }}>나와의 관계</legend>
+        <div className="sj-chips" style={{ gap: 8 }}>
+          {RELATION_OPTIONS.map((option) => (
+            <button key={option.id} type="button" className="sj-chip-button" style={{ minHeight: 44, padding: "0 18px", fontSize: 14 }} aria-pressed={profile.ownerRelationship === option.id} onClick={() => updateProfile({ ownerRelationship: option.id })}>{option.label}</button>
+          ))}
+        </div>
+      </fieldset>
+
+      <fieldset className="sj-field">
+        <legend className="sj-label" style={{ marginBottom: 8 }}>생년월일</legend>
+        <div className="sj-segmented">
+          {([["solar", "양력"], ["lunar", "음력"], ["leap", "음력 윤달"]] as const).map(([value, label]) => (
+            <button key={value} type="button" className="sj-segment" aria-pressed={calendarValue === value} onClick={() => updateProfile({ calendar: value === "solar" ? "solar" : "lunar", leapMonth: value === "leap" })}>{label}</button>
+          ))}
+        </div>
+        <div className="sj-date-grid">
+          <span className="sj-unit-input">
+            <input className="sj-unit-input-field" aria-label="태어난 해" inputMode="numeric" value={dateParts.year} onChange={(event) => updateDate("year", event.target.value)} placeholder="1991" />
+            <span className="sj-unit" aria-hidden="true">년</span>
+          </span>
+          <span className="sj-unit-input">
+            <input className="sj-unit-input-field" aria-label="태어난 달" inputMode="numeric" value={dateParts.month} onChange={(event) => updateDate("month", event.target.value)} />
+            <span className="sj-unit" aria-hidden="true">월</span>
+          </span>
+          <span className="sj-unit-input">
+            <input className="sj-unit-input-field" aria-label="태어난 날" inputMode="numeric" value={dateParts.day} onChange={(event) => updateDate("day", event.target.value)} />
+            <span className="sj-unit" aria-hidden="true">일</span>
+          </span>
+        </div>
+      </fieldset>
+
+      <fieldset className="sj-field">
+        <legend className="sj-label" style={{ marginBottom: 8 }}>태어난 시간</legend>
+        <label className="sj-visually-hidden" htmlFor="person-birth-time">태어난 시각</label>
+        <input id="person-birth-time" className="sj-input" type="time" value={profile.birthTime ?? ""} disabled={profile.birthTimeUnknown} onChange={(event) => updateProfile({ birthTime: event.target.value || null })} style={profile.birthTimeUnknown ? { background: "var(--sj-sunk)", borderColor: "var(--sj-sunk)", color: "var(--sj-muted)" } : undefined} />
+        <label className="sj-check">
+          <input className="sj-check-input" type="checkbox" checked={profile.birthTimeUnknown} onChange={(event) => updateProfile({ birthTimeUnknown: event.target.checked, birthTime: event.target.checked ? null : profile.birthTime })} />
+          시간을 몰라요. 시주를 빼고 여섯 글자로 계산할게요.
+        </label>
+      </fieldset>
+
+      <fieldset className="sj-field">
+        <legend className="sj-label" style={{ marginBottom: 8 }}>계산 기준 성별</legend>
+        <div className="sj-segmented">
+          {([["female", "여성"], ["male", "남성"]] as const).map(([value, label]) => (
+            <button key={value} type="button" className="sj-segment" aria-pressed={profile.calculationGender === value} onClick={() => updateProfile({ calculationGender: value as CalculationGender })}>{label}</button>
+          ))}
+        </div>
+        <p className="sj-help">대운이 흐르는 방향을 정할 때만 쓰여요.</p>
+      </fieldset>
+
+      <div className="sj-field">
+        <label className="sj-label" htmlFor="person-birthplace">출생지</label>
+        <input id="person-birthplace" className="sj-input" value={profile.birthplace} onChange={(event) => updateProfile({ birthplace: event.target.value })} placeholder="예: 부산" />
+      </div>
+
+      <section className="sj-card" aria-labelledby="person-consent-title" style={{ padding: 18 }}>
+        <h2 id="person-consent-title" className="sj-h3">다른 사람의 정보를 저장하기 전에</h2>
+        <p className="sj-body" style={{ fontSize: 13 }}>생년월일은 그 사람의 개인정보예요. {name ? `${name}님에게` : "상대에게"} 알리고 동의를 받았을 때만 저장해 주세요. 저장한 정보는 궁합과 상담에만 쓰고, 공유 링크에는 보이지 않아요.</p>
+        <label className="sj-check" style={{ borderTop: "1px solid var(--sj-track)", paddingTop: 14, color: "var(--sj-ink)" }}>
+          <input className="sj-check-input" type="checkbox" checked={profile.thirdPartyConsent} onChange={(event) => updateProfile({ thirdPartyConsent: event.target.checked })} required />
+          <span>{name ? `${name}님의` : "상대의"} 동의를 받았거나 이 정보를 저장할 권한이 있어요 <span style={{ color: "var(--sj-accent)", fontWeight: 700 }}>(필수)</span></span>
+        </label>
       </section>
-      <fieldset className="signal-panel signal-form-section">
-        <legend>출생 정보</legend>
-        <fieldset className="signal-fieldset"><legend>달력 기준</legend><div className="segmented-control signal-choice-row">{(["solar", "lunar"] as CalendarKind[]).map((calendar) => <button type="button" key={calendar} className={profile.calendar === calendar ? "selected signal-selected" : ""} aria-pressed={profile.calendar === calendar} onClick={() => updateProfile({ calendar, leapMonth: calendar === "lunar" ? profile.leapMonth : false })}>{calendar === "solar" ? "양력" : "음력"}</button>)}</div></fieldset>
-        {profile.calendar === "lunar" && <label className="check-card signal-check-row"><input type="checkbox" checked={profile.leapMonth} onChange={(event) => updateProfile({ leapMonth: event.target.checked })} />윤달</label>}
-        <label className="signal-field" htmlFor="person-birth-date">생년월일<input id="person-birth-date" type={profile.calendar === "lunar" ? "text" : "date"} placeholder={profile.calendar === "lunar" ? "YYYY-MM-DD (음력)" : undefined} value={profile.birthDate} onChange={(event) => updateProfile({ birthDate: event.target.value })} /></label>
-        <label className="signal-field" htmlFor="person-birth-time">출생 시간<input id="person-birth-time" type="time" value={profile.birthTime ?? ""} disabled={profile.birthTimeUnknown} onChange={(event) => updateProfile({ birthTime: event.target.value || null })} /></label>
-        <label className="check-card signal-check-row"><input type="checkbox" checked={profile.birthTimeUnknown} onChange={(event) => updateProfile({ birthTimeUnknown: event.target.checked, birthTime: event.target.checked ? null : profile.birthTime })} />출생 시간을 몰라요</label>
-        <label className="signal-field" htmlFor="person-birthplace">출생지<input id="person-birthplace" value={profile.birthplace} onChange={(event) => updateProfile({ birthplace: event.target.value })} /></label>
-        <label className="signal-field" htmlFor="person-timezone">시간대<input id="person-timezone" value={profile.timezone} onChange={(event) => updateProfile({ timezone: event.target.value })} placeholder="Asia/Seoul" /></label>
-        <label className="signal-field" htmlFor="person-calculation-gender">계산 성별<select id="person-calculation-gender" value={profile.calculationGender} onChange={(event) => updateProfile({ calculationGender: event.target.value as CalculationGender })}><option value="female">여성</option><option value="male">남성</option></select></label>
-      </fieldset>
-      <fieldset className="signal-panel signal-form-section">
-        <legend>관심 주제 <small>선택</small></legend>
-        <div className="signal-choice-list">{(["love", "career", "money", "family"] as TopicId[]).map((topic) => <label className="check-card signal-check-row" key={topic}><input type="checkbox" checked={profile.personalization.interests.includes(topic)} onChange={(event) => updateProfile({ personalization: { ...profile.personalization, interests: event.target.checked ? [...profile.personalization.interests, topic] : profile.personalization.interests.filter((item) => item !== topic) } })} />{{ love: "연애", career: "커리어", money: "재물", family: "가족" }[topic as "love" | "career" | "money" | "family"]}</label>)}</div>
-        <label className="signal-field" htmlFor="person-relationship-status">관계 상태 <small>선택</small><input id="person-relationship-status" value={profile.personalization.relationshipStatus ?? ""} onChange={(event) => updateProfile({ personalization: { ...profile.personalization, relationshipStatus: event.target.value || null } })} /></label>
-        <label className="signal-field" htmlFor="person-occupation-status">직업 상태 <small>선택</small><input id="person-occupation-status" value={profile.personalization.occupationStatus ?? ""} onChange={(event) => updateProfile({ personalization: { ...profile.personalization, occupationStatus: event.target.value || null } })} /></label>
-        <label className="signal-field" htmlFor="person-primary-concern">주요 고민 <small>선택</small><textarea id="person-primary-concern" value={profile.personalization.primaryConcern ?? ""} onChange={(event) => updateProfile({ personalization: { ...profile.personalization, primaryConcern: event.target.value || null } })} /></label>
-      </fieldset>
-      {profile.profileType === "other" && <label className="check-card signal-check-row"><input type="checkbox" checked={profile.thirdPartyConsent} onChange={(event) => updateProfile({ thirdPartyConsent: event.target.checked })} />이 정보를 저장할 권한이나 상대방의 동의를 확인했어요</label>}
-      <p className="privacy-note signal-evidence">체험용 관계 요약에만 사용하며, 목록에서는 생년월일을 가려 보여요. 정보는 이 브라우저에만 저장됩니다.</p>
-      {error && <p className="form-error signal-error" role="alert">{error}</p>}
-      <button className="primary-button signal-action signal-primary-action" type="submit">{existing ? "변경 내용 저장" : "인물 저장"}</button>
-      <Link className="text-button inline-action signal-action" href="/people">취소</Link>
+
+      <div className="sj-sticky-cta">
+        {error && <p className="sj-error" role="alert">{error}</p>}
+        <button className="sj-button sj-button-block" type="submit" disabled={saving}>사람 저장하기</button>
+        <p className="sj-fine sj-center">저장한 뒤에도 사람 보관함에서 언제든 삭제할 수 있어요</p>
+      </div>
     </form>
   );
 }
 
-export function CompatibilityHomeScreen() {
-  const hydrated = useHydrated();
-  const peopleRaw = useSyncExternalStore(peopleStore.subscribe, peopleStore.rawSnapshot, () => null);
-  const resultRaw = useSyncExternalStore(compatibilityStore.subscribe, compatibilityStore.rawSnapshot, () => null);
-  const router = useRouter();
-  const [personAId, setPersonAId] = useState(INITIAL_PEOPLE_DATA.people[0]?.id ?? "");
-  const [personBId, setPersonBId] = useState(INITIAL_PEOPLE_DATA.people[1]?.id ?? "");
-  const [relationshipType, setRelationshipType] = useState<CompatibilityRelationshipType>("dating");
-  const [error, setError] = useState("");
-  if (!hydrated) return <LoadingState title="관계 분석 정보를 확인하고 있어요" />;
-  void peopleRaw;
-  void resultRaw;
-  const peopleData = getPeopleData();
-  const compatibilityData = getCompatibilityData();
-  if (!peopleData) return <CorruptState title="사람 데이터를 읽을 수 없어요" description="손상된 인물 정보를 확인 없이 체험용 예시로 바꾸지 않습니다." unavailable={peopleStore.inspect().status === "unavailable"} onReset={peopleStore.remove} />;
-  if (!compatibilityData) return <CorruptState title="궁합 데이터를 읽을 수 없어요" description="손상된 궁합 기록을 확인 없이 초기화하지 않습니다." unavailable={compatibilityStore.inspect().status === "unavailable"} onReset={compatibilityStore.remove} />;
-  const activePeopleData: PeopleData = peopleData;
-  const activeCompatibilityData: CompatibilityData = compatibilityData;
-  const effectivePersonAId = peopleData.people.some((person) => person.id === personAId)
-    ? personAId
-    : peopleData.people[0]?.id ?? "";
-  const effectivePersonBId = peopleData.people.some((person) => person.id === personBId) && personBId !== effectivePersonAId
-    ? personBId
-    : peopleData.people.find((person) => person.id !== effectivePersonAId)?.id ?? "";
-  const selectedPersonA = peopleData.people.find((person) => person.id === effectivePersonAId);
-  const selectedPersonB = peopleData.people.find((person) => person.id === effectivePersonBId);
-
-  function generateFixture(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (activePeopleData.people.length < 2) return setError("관계를 살펴보려면 두 사람 이상 저장해 주세요.");
-    if (!effectivePersonAId || !effectivePersonBId || effectivePersonAId === effectivePersonBId) return setError("서로 다른 두 사람을 선택해 주세요.");
-    const first = activePeopleData.people.find((person) => person.id === effectivePersonAId);
-    const second = activePeopleData.people.find((person) => person.id === effectivePersonBId);
-    if (!first || !second) return setError("선택한 인물 정보를 찾을 수 없어요.");
-    const now = new Date().toISOString();
-    const resultId = `compat-${crypto.randomUUID()}`;
-    const personAChartSnapshotId = `chart-${crypto.randomUUID()}`;
-    const personBChartSnapshotId = `chart-${crypto.randomUUID()}`;
-    const result: CompatibilityResult = {
-      id: resultId,
-      personA: { profileId: first.id, displayName: first.profile.displayName, maskedBirthYear: `${first.profile.birthDate.slice(0, 2)}**`, birthTimeUnknown: first.profile.birthTimeUnknown, chartSnapshotId: personAChartSnapshotId },
-      personB: { profileId: second.id, displayName: second.profile.displayName, maskedBirthYear: `${second.profile.birthDate.slice(0, 2)}**`, birthTimeUnknown: second.profile.birthTimeUnknown, chartSnapshotId: personBChartSnapshotId },
-      relationshipType,
-      createdAt: now,
-      summary: "서로 다른 속도를 존중하고 기대하는 방식을 말로 확인하는 것이 중요한 관계로 보여요.",
-      strengths: ["상대의 다른 관점을 통해 선택의 폭을 넓힐 수 있어요.", "서로의 생활 리듬을 존중하면 안정적인 관계를 만들 수 있어요."],
-      cautions: ["기대를 말하지 않고 짐작하면 작은 속도 차이가 갈등으로 이어질 수 있어요."],
-      provenance: {
-        chartSnapshotId: `chart-${crypto.randomUUID()}`,
-        interpretationVersion: "compatibility-fixture-1",
-        modelVersion: null,
-        promptVersion: null,
-        templateVersion: "compatibility-free-1",
-        generatedAt: now,
-      },
-      dimensions: COMPATIBILITY_DIMENSIONS.map((dimension) => ({ ...dimension })),
-      fixtureVersion: 1,
-      fixture: true,
-    };
-    const nextCompatibility = { version: 1 as const, results: [result, ...activeCompatibilityData.results] };
-    const nextLibrary = buildLibraryWithCompatibility(result, `${first.profile.displayName} · ${second.profile.displayName}`);
-    if (!nextLibrary) return setError("보관함 데이터를 확인한 뒤 다시 시도해 주세요.");
-    const transaction = runStorageTransaction([
-      createTransactionStep(compatibilityStore, nextCompatibility),
-      createTransactionStep(libraryStore, nextLibrary),
-    ]);
-    if (transaction !== "committed") return setError(transaction === "rolled-back" ? "궁합 결과 저장에 실패해 모든 변경을 취소했어요." : "저장 복구가 필요해 설정에서 기기 저장 정보를 확인해 주세요.");
-    router.push(`/compatibility/result/${result.id}`);
-  }
-
+function DeepReportCard() {
   return (
-    <main className={`screen-content compatibility-content signal-screen signal-compatibility ${styles.scope}`} aria-labelledby="compatibility-title">
-      <div className="signal-hero compatibility-hero">
-        <p className="section-kicker signal-kicker">두 사람의 관계</p>
-        <h1 id="compatibility-title">두 사람의 시간이<br />만나는 지점</h1>
-        <p className="supporting">저장한 사람을 골라 관계의 흐름을 살펴봐요. 결과는 점수가 아닌 관점이에요.</p>
-      </div>
-      <Link className="secondary-button signal-action" href="/people">사람 보관함 관리</Link>
-      {peopleData.people.length < 2 ? <EmptyState title="두 사람 이상 필요해요" description="사람 보관함에 관계를 살펴볼 인물을 추가하세요." action={{ href: "/people/new", label: "인물 추가" }} /> : (
-        <>
-          {selectedPersonA && selectedPersonB && <section className="signal-panel signal-pair-summary" aria-label="선택한 두 사람">
-            <div className="signal-pair-person"><span className="signal-avatar" aria-hidden="true">{selectedPersonA.profile.displayName.slice(0, 1)}</span><strong>{selectedPersonA.profile.displayName}</strong><small>{maskBirthDate(selectedPersonA.profile.birthDate)} · {RELATIONSHIP_LABELS[selectedPersonA.profile.ownerRelationship]}</small></div>
-            <span className="signal-pair-mark" aria-hidden="true">×</span>
-            <div className="signal-pair-person"><span className="signal-avatar" aria-hidden="true">{selectedPersonB.profile.displayName.slice(0, 1)}</span><strong>{selectedPersonB.profile.displayName}</strong><small>{maskBirthDate(selectedPersonB.profile.birthDate)} · {RELATIONSHIP_LABELS[selectedPersonB.profile.ownerRelationship]}</small></div>
-          </section>}
-          <form className="compatibility-form signal-panel signal-compatibility-form" onSubmit={generateFixture}>
-            <label className="signal-field" htmlFor="compatibility-person-a">첫 번째 사람<select id="compatibility-person-a" value={effectivePersonAId} onChange={(event) => setPersonAId(event.target.value)}>{peopleData.people.map((person) => <option key={person.id} value={person.id}>{person.profile.displayName} · {RELATIONSHIP_LABELS[person.profile.ownerRelationship]}</option>)}</select></label>
-            <label className="signal-field" htmlFor="compatibility-person-b">두 번째 사람<select id="compatibility-person-b" value={effectivePersonBId} onChange={(event) => setPersonBId(event.target.value)}>{peopleData.people.map((person) => <option key={person.id} value={person.id}>{person.profile.displayName} · {RELATIONSHIP_LABELS[person.profile.ownerRelationship]}</option>)}</select></label>
-            <label className="signal-field" htmlFor="compatibility-type">관계 유형<select id="compatibility-type" value={relationshipType} onChange={(event) => setRelationshipType(event.target.value as CompatibilityRelationshipType)}>{Object.entries(COMPATIBILITY_LABELS).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
-            {error && <p className="form-error signal-error" role="alert">{error}</p>}
-            <button className="primary-button signal-action signal-primary-action" type="submit">예시 관계 요약 보기</button>
-            <p className="action-note signal-evidence">실제 궁합 계산이 아닌 미리 준비한 여러 관점의 예시 결과를 보여줍니다.</p>
-          </form>
-        </>
-      )}
-      <section className="compatibility-history signal-section signal-compatibility-history" aria-labelledby="compatibility-history-title">
-        <h2 id="compatibility-history-title">저장한 결과</h2>
-        {compatibilityData.results.length === 0 ? <p>아직 저장된 관계 결과가 없어요.</p> : <div className="signal-row-list">{compatibilityData.results.map((result) => <Link className="signal-row signal-compatibility-row" key={result.id} href={`/compatibility/result/${result.id}`}><span className="signal-row-copy"><small>{COMPATIBILITY_LABELS[result.relationshipType]}</small><strong>{result.summary}</strong><span>{result.createdAt.slice(0, 10)}</span></span><span className="signal-row-arrow" aria-hidden="true">›</span></Link>)}</div>}
-      </section>
-    </main>
-  );
-}
-
-export function CompatibilityResultScreen({ resultId }: { resultId: string }) {
-  const hydrated = useHydrated();
-  const raw = useSyncExternalStore(compatibilityStore.subscribe, compatibilityStore.rawSnapshot, () => null);
-  if (!hydrated) return <LoadingState title="저장한 관계 결과를 확인하고 있어요" />;
-  void raw;
-  const compatibility = getCompatibilityData();
-  if (!compatibility) return <CorruptState title="궁합 데이터를 읽을 수 없어요" description="손상된 궁합 기록을 확인 없이 초기화하지 않습니다." unavailable={compatibilityStore.inspect().status === "unavailable"} onReset={compatibilityStore.remove} />;
-  const result = compatibility.results.find((candidate) => candidate.id === resultId);
-  if (!result) return <EmptyState title="관계 결과를 찾을 수 없어요" description="이 기기에서 삭제됐거나 다른 브라우저에 저장된 결과일 수 있어요." action={{ href: "/compatibility", label: "궁합 화면으로" }} />;
-  const unknownTime = result.personA.birthTimeUnknown || result.personB.birthTimeUnknown;
-
-  return (
-    <main className={`screen-content compatibility-result signal-screen signal-compatibility-result ${styles.scope}`} aria-labelledby="compatibility-result-title">
-      <div className="signal-hero compatibility-result-hero">
-        <p className="section-kicker signal-kicker">{COMPATIBILITY_LABELS[result.relationshipType]} · 관계 요약</p>
-        <h1 id="compatibility-result-title">{result.personA.displayName}님과<br />{result.personB.displayName}님의 관계</h1>
-        <p className="lead signal-summary">{result.summary}</p>
-      </div>
-      <section className="signal-panel signal-pair-summary signal-result-pair" aria-label="관계 대상">
-        <div className="signal-pair-person"><span className="signal-avatar" aria-hidden="true">{result.personA.displayName.slice(0, 1)}</span><strong>{result.personA.displayName}</strong><small>{result.personA.maskedBirthYear}</small></div>
-        <span className="signal-pair-mark" aria-hidden="true">×</span>
-        <div className="signal-pair-person"><span className="signal-avatar" aria-hidden="true">{result.personB.displayName.slice(0, 1)}</span><strong>{result.personB.displayName}</strong><small>{result.personB.maskedBirthYear}</small></div>
-      </section>
-      {unknownTime && <p className="accuracy-note signal-evidence">출생 시간 미상 상태가 포함돼요. 이 결과는 미리 준비한 예시이며 달라지지 않아요.</p>}
-      <section className="signal-panel signal-insight signal-strengths" aria-labelledby="compatibility-strengths-title"><h2 id="compatibility-strengths-title">관계의 강점</h2><ul>{result.strengths.slice(0, 2).map((strength) => <li key={strength}>{strength}</li>)}</ul></section>
-      <section className="signal-panel signal-insight signal-cautions" aria-labelledby="compatibility-cautions-title"><h2 id="compatibility-cautions-title">조율할 부분</h2><ul>{result.cautions.slice(0, 1).map((caution) => <li key={caution}>{caution}</li>)}</ul></section>
-      <section className="signal-section signal-axis-section" aria-labelledby="compatibility-axes-title">
-        <div className="signal-section-heading"><p className="section-kicker signal-kicker">무료 요약</p><h2 id="compatibility-axes-title">관계의 축</h2><p className="supporting">점수 대신 서로의 차이와 맞는 지점을 살펴봐요.</p></div>
-        <div className="compatibility-dimensions signal-axis-list">{result.dimensions.map((dimension, index) => <article className="signal-axis signal-row" key={dimension.id}><span className="signal-axis-index" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span><div className="signal-row-copy"><h3>{dimension.title}</h3><p>{dimension.summary}</p></div><span className="signal-row-arrow" aria-hidden="true">›</span></article>)}</div>
-      </section>
-      <article className="locked-report-section compatibility-locked signal-panel signal-lock signal-preview signal-paywall">
-        <p className="section-kicker signal-kicker">심층 미리보기</p>
-        <h2>더 오래 함께하기 위한 관점</h2>
-        <p>무료 요약에서 보인 축을 바탕으로 장기 흐름과 갈등 상황의 대화 문장을 살펴볼 수 있어요.</p>
-        <ul className="signal-preview-list"><li>장기 관계 흐름</li><li>갈등 유형별 대화 문장</li></ul>
-        <div className="signal-action-list">
-          <button className="primary-button signal-action signal-paywall-action" type="button" disabled>심층 궁합 · 이용 불가</button>
-          <Link className="text-button signal-action" href="/products/compatibility-report#generation-policy">리포트 구성 보기</Link>
+    <section className="sj-card" aria-labelledby="compat-deep-title">
+      <div style={{ display: "flex", gap: 14 }}>
+        <span className="sj-ganji-tile" aria-hidden="true" lang="zh-Hant" style={{ width: 48, height: 60, fontSize: 24 }}>合</span>
+        <div className="sj-row-main" style={{ gap: 4 }}>
+          <h2 id="compat-deep-title" className="sj-h2">궁합 심층 리포트</h2>
+          <p className="sj-meta" style={{ color: "var(--sj-ink-strong-muted)" }}>관계 유형에 맞춘 분석과 두 사람의 소통 방식을 더 깊게 살펴봐요.</p>
         </div>
-        <small className="signal-evidence">표시 가격과 주문 상태는 체험용 예시예요.</small>
-      </article>
-      <details className="signal-evidence"><summary>결과 근거와 한계</summary><p>이 결과는 화면 체험용으로 미리 준비한 예시이며 실제 사주 원국이나 두 사람의 궁합을 계산하지 않았습니다. 점수나 확정된 판단을 대신하지 않아요.</p><dl className="signal-evidence-list"><div><dt>관계 유형</dt><dd>{COMPATIBILITY_LABELS[result.relationshipType]}</dd></div><div><dt>차트 기록</dt><dd>{result.provenance.chartSnapshotId}</dd></div><div><dt>해석 버전</dt><dd>{result.provenance.interpretationVersion}</dd></div></dl></details>
-      <Link className="secondary-button signal-action" href="/compatibility">다른 두 사람 선택</Link>
-    </main>
+      </div>
+      <button className="sj-button" type="button" disabled style={{ minHeight: 48, fontSize: 15 }}>결제 준비 중</button>
+      <Link className="sj-text-button" href="/products/compatibility-report" style={{ alignSelf: "center" }}>리포트 구성 보기</Link>
+    </section>
   );
 }
 
-export function LivePeopleScreen() {
-  const [profiles, setProfiles] = useState<ServerProfile[] | null>(null);
-  const [error, setError] = useState("");
-  useEffect(() => { void listProfiles().then(setProfiles).catch((reason) => setError(formatApiRequestError(reason, "프로필을 불러오지 못했어요."))); }, []);
-  if (!profiles && !error) return <LoadingState title="서버 프로필을 불러오고 있어요" />;
-  if (error) return <CorruptState title="사람 보관함 서버에 연결할 수 없어요" description={error} unavailable onReset={() => { window.location.reload(); return true; }} />;
-  return <main className={`screen-content people-content signal-screen signal-people ${styles.scope}`} aria-labelledby="people-title">
-    <div className="signal-hero people-hero"><p className="section-kicker signal-kicker">사람 보관함</p><h1 id="people-title">서버에 저장한 사람</h1><p className="supporting">출생 정보는 권한 있는 세션에서만 저장하고 목록에서는 가려 보여요.</p></div>
-    <Link className="primary-button signal-action signal-primary-action" href="/people/new">새 인물 추가</Link>
-    {profiles?.length === 0 ? <EmptyState title="저장한 사람이 없어요" description="궁합을 보려면 두 사람의 프로필이 필요해요." action={{ href: "/people/new", label: "인물 추가" }} /> : <div className="people-list signal-row-list">{profiles?.map((person) => <article key={person.id} className="signal-row signal-person-row"><div className="signal-row-copy"><small>{person.isSelf ? "본인" : person.relationship ?? "관계 프로필"}</small><h2>{person.nickname}</h2><p>{person.birthYear}년생 · {person.birthLocation ?? "출생지 비공개"}</p></div><button className="signal-action signal-destructive-action" type="button" onClick={() => { void deleteProfile(person.id).then(() => setProfiles((items) => items?.filter((item) => item.id !== person.id) ?? null)).catch(() => setError("삭제하지 못했어요.")); }}>삭제</button></article>)}</div>}
-    <Link className="secondary-button signal-action" href="/compatibility">두 사람 궁합 보기</Link>
-  </main>;
+function UnknownTimeNote({ subject }: { subject: string }) {
+  return (
+    <div className="sj-banner" role="note">
+      <InfoIcon className="sj-banner-icon" />
+      <p style={{ margin: 0 }}>{subject} 태어난 시간을 몰라서 시주를 빼고 여섯 글자로 비교했어요. 시주에 기대는 해석은 이 결과에 넣지 않았어요.</p>
+    </div>
+  );
 }
 
 export function LiveCompatibilityScreen() {
-  const [profiles, setProfiles] = useState<ServerProfile[] | null>(null);
-  const [left, setLeft] = useState(""); const [right, setRight] = useState(""); const [result, setResult] = useState<{ summary: string; limited: boolean } | null>(null); const [error, setError] = useState("");
-  useEffect(() => { void listProfiles().then((items) => { setProfiles(items); setLeft(items[0]?.id ?? ""); setRight(items[1]?.id ?? ""); }).catch((reason) => setError(formatApiRequestError(reason, "프로필을 불러오지 못했어요."))); }, []);
-  if (!profiles && !error) return <LoadingState title="궁합 대상을 불러오고 있어요" />;
-  return <main className={`screen-content compatibility-content signal-screen signal-compatibility ${styles.scope}`} aria-labelledby="compatibility-title"><div className="signal-hero compatibility-hero"><p className="section-kicker signal-kicker">두 사람의 관계</p><h1 id="compatibility-title">서버 명식으로 궁합 보기</h1><p className="supporting">두 프로필의 최신 계산 스냅샷을 고정해 결과를 만듭니다.</p></div>{profiles && profiles.length < 2 ? <EmptyState title="두 사람 이상 필요해요" description="사람 보관함에서 프로필을 추가하세요." action={{ href: "/people/new", label: "인물 추가" }} /> : <form className="compatibility-form signal-panel signal-compatibility-form" onSubmit={(event) => { event.preventDefault(); if (!left || !right || left === right) return setError("서로 다른 두 사람을 선택해 주세요."); void createCompatibility(left, right, "couple").then((value) => { setResult({ summary: value.summary, limited: value.limitedByUnknownTime }); setError(""); }).catch((reason) => setError(formatApiRequestError(reason, "궁합을 만들지 못했어요."))); }}><label className="signal-field">첫 번째 사람<select value={left} onChange={(event) => setLeft(event.target.value)}>{profiles?.map((item) => <option key={item.id} value={item.id}>{item.nickname}</option>)}</select></label><label className="signal-field">두 번째 사람<select value={right} onChange={(event) => setRight(event.target.value)}>{profiles?.map((item) => <option key={item.id} value={item.id}>{item.nickname}</option>)}</select></label><button className="primary-button signal-action signal-primary-action" type="submit">실제 궁합 계산하기</button></form>}{result && <section className="signal-panel"><h2>관계 요약</h2><p>{result.summary}</p>{result.limited && <p className="accuracy-note">출생 시간 미상으로 시주 기반 범위는 제외했어요.</p>}</section>}{error && <p className="form-error signal-error" role="alert">{error}</p>}</main>;
+  const { profiles, chart, loadError } = useProfilesWithChart();
+  const [partnerId, setPartnerId] = useState("");
+  const [relation, setRelation] = useState<(typeof COMPAT_RELATIONS)[number]["id"]>("couple");
+  const [result, setResult] = useState<{ summary: string; limited: boolean; partner: string; relation: string } | null>(null);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+  if (!profiles && !loadError) return <LoadingState title="궁합 볼 사람을 불러오고 있어요" />;
+  if (loadError || !profiles) return <LoadFailure error={loadError} title="저장한 사람을 불러오지 못했어요" />;
+
+  const me = profiles.find((profile) => profile.isSelf) ?? profiles[0];
+  const candidates = profiles.filter((profile) => profile.id !== me?.id);
+  const partner = candidates.find((profile) => profile.id === partnerId) ?? candidates[0];
+  const relationText = COMPAT_RELATIONS.find((item) => item.id === relation)?.label ?? "연인";
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!me || !partner || me.id === partner.id) return setError("서로 다른 두 사람을 골라 주세요.");
+    setPending(true);
+    setError("");
+    try {
+      const value = await createCompatibility(me.id, partner.id, relation);
+      setResult({ summary: value.summary, limited: value.limitedByUnknownTime, partner: partner.nickname, relation: relationText });
+    } catch (reason) {
+      setError(formatApiRequestError(reason, "궁합을 만들지 못했어요. 잠시 후 다시 시도해 주세요."));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <main className="sj-split" aria-labelledby="compatibility-title">
+      <div className="sj-page">
+        <section className="sj-section" style={{ gap: 8 }}>
+          <h1 id="compatibility-title" className="sj-h1">두 사람의 명식이<br />만나는 자리를 살펴봐요</h1>
+          <p className="sj-lead">두 사람의 지금 명식을 계산해 나란히 놓고, 관계를 한 문장으로 정리해요. 점수로 좋고 나쁨을 가리지 않아요.</p>
+          <Link className="sj-text-button" href="/people" style={{ alignSelf: "flex-start" }}>사람 보관함</Link>
+        </section>
+
+        {!me || candidates.length === 0 ? (
+          <section className="sj-section" aria-labelledby="compat-empty-title">
+            <h2 id="compat-empty-title" className="sj-h2">두 사람 이상 필요해요</h2>
+            <p className="sj-body">나와 함께 볼 사람을 사람 보관함에 먼저 저장해 주세요.</p>
+            <Link className="sj-button sj-button-block" href="/people/new">사람 추가</Link>
+          </section>
+        ) : (
+          <form className="sj-page" onSubmit={submit} aria-label="궁합 보기" style={{ gap: 28 }}>
+            {partner && (
+              <section className="sj-card" aria-label="선택한 두 사람" style={{ display: "grid", gridTemplateColumns: "1fr 36px 1fr", alignItems: "center", padding: 16 }}>
+                {[me, partner].map((person, index) => (
+                  <div key={person.id} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, gridColumn: index === 0 ? 1 : 3 }}>
+                    <PersonTile profile={person} chart={chart} size="pair" />
+                    <span style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                      <span style={{ fontSize: 15, fontWeight: 700 }}>{person.nickname}</span>
+                      <span className="sj-fine">{index === 0 ? "나" : `${relationLabel(person)}${person.birthTimeUnknown ? ", 시간 모름" : ""}`}</span>
+                    </span>
+                  </div>
+                ))}
+                <span aria-hidden="true" style={{ gridColumn: 2, gridRow: 1, textAlign: "center", color: "var(--sj-faint)", fontSize: 18 }}>+</span>
+              </section>
+            )}
+
+            <fieldset className="sj-field" style={{ gap: 0 }}>
+              <legend className="sj-label" style={{ marginBottom: 4 }}>나와 함께 볼 사람</legend>
+              <div style={{ borderTop: "1px solid var(--sj-line)" }}>
+                {candidates.map((person) => (
+                  <label key={person.id} style={{ display: "flex", alignItems: "center", gap: 12, minHeight: 60, padding: "8px 0", borderBottom: "1px solid var(--sj-line)", cursor: "pointer" }}>
+                    <input className="sj-check-input" type="radio" name="compat-partner" value={person.id} checked={partner?.id === person.id} onChange={() => { setPartnerId(person.id); setResult(null); }} style={{ margin: 0 }} />
+                    <span className="sj-row-main">
+                      <span className="sj-row-title">{person.nickname}</span>
+                      <span className="sj-row-sub">{relationLabel(person)}, {profileSub(person)}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+
+            <fieldset className="sj-field">
+              <legend className="sj-label" style={{ marginBottom: 8 }}>어떤 관계로 볼까요</legend>
+              <div className="sj-segmented">
+                {COMPAT_RELATIONS.map((item) => (
+                  <button key={item.id} type="button" className="sj-segment" aria-pressed={relation === item.id} onClick={() => { setRelation(item.id); setResult(null); }}>{item.label}</button>
+                ))}
+              </div>
+              {partner?.birthTimeUnknown && <p className="sj-help">{partner.nickname}님은 태어난 시간을 몰라서 시주를 뺀 범위로 살펴봐요.</p>}
+            </fieldset>
+
+            {error && <p className="sj-error" role="alert">{error}</p>}
+            <button className="sj-button sj-button-block" type="submit" disabled={pending}>궁합 보기</button>
+            {pending && <p className="sj-meta" role="status">두 사람의 명식을 계산하고 있어요</p>}
+          </form>
+        )}
+      </div>
+
+      <aside className="sj-aside" aria-label="궁합 결과">
+        {result ? (
+          <section className="sj-page" aria-labelledby="compat-result-title" style={{ gap: 20, paddingTop: 28 }}>
+            <div className="sj-section" style={{ gap: 6 }}>
+              <h2 id="compat-result-title" className="sj-h2">관계 요약</h2>
+              <p className="sj-meta">{me?.nickname}님과 {result.partner}님, {result.relation} 관계로 봤어요</p>
+              <p className="sj-h1" style={{ fontSize: 22 }}>{result.summary}</p>
+            </div>
+            {result.limited && <UnknownTimeNote subject="두 사람 중 한 명이" />}
+            <DeepReportCard />
+            <p className="sj-fine">두 명식의 계산 요소를 바탕으로 한 관점이에요. 관계의 좋고 나쁨을 정하지 않아요.</p>
+          </section>
+        ) : (
+          <p className="sj-fine sj-desktop-only">결과는 두 사람의 명식을 계산해 고정한 뒤 만들어요. 같은 두 사람과 관계로 다시 보면 같은 결과를 보여드려요.</p>
+        )}
+      </aside>
+    </main>
+  );
+}
+
+/** 이 기기에 저장된 예전 관계 결과. 서버 조회 함수가 생기면 서버 결과로 바꾼다. */
+export function CompatibilityResultScreen({ resultId }: { resultId: string }) {
+  const hydrated = useHydrated();
+  const raw = useSyncExternalStore(compatibilityStore.subscribe, compatibilityStore.rawSnapshot, () => null);
+  if (!hydrated) return <LoadingState title="궁합 결과를 불러오고 있어요" />;
+  void raw;
+  const compatibility = getCompatibilityData();
+  if (!compatibility) return <CorruptState title="궁합 결과를 읽을 수 없어요" description="손상된 궁합 기록을 확인 없이 초기화하지 않아요." unavailable={compatibilityStore.inspect().status === "unavailable"} onReset={compatibilityStore.remove} />;
+  const result = compatibility.results.find((candidate) => candidate.id === resultId);
+  if (!result) return <EmptyState title="궁합 결과를 찾을 수 없어요" description="이 기기에서 삭제됐거나 다른 브라우저에 저장된 결과예요. 궁합 화면에서 다시 볼 수 있어요." action={{ href: "/compatibility", label: "궁합 다시 보기" }} />;
+  const unknownTime = result.personA.birthTimeUnknown || result.personB.birthTimeUnknown;
+  const unknownSubject = result.personA.birthTimeUnknown && result.personB.birthTimeUnknown
+    ? "두 사람 모두"
+    : `${result.personA.birthTimeUnknown ? result.personA.displayName : result.personB.displayName}님은`;
+
+  return (
+    <main className="sj-page" aria-labelledby="compatibility-result-title">
+      <div className="sj-section" style={{ gap: 6 }}>
+        <p className="sj-meta">{result.personA.displayName}님과 {result.personB.displayName}님, {LOCAL_COMPAT_LABELS[result.relationshipType]} 관계로 봤어요</p>
+        <h1 id="compatibility-result-title" className="sj-h1" style={{ fontSize: 24 }}>{result.summary}</h1>
+      </div>
+      {unknownTime && <UnknownTimeNote subject={unknownSubject} />}
+      <DeepReportCard />
+      <Link className="sj-button-secondary" href="/compatibility">다른 사람과 궁합 보기</Link>
+      <p className="sj-fine">두 명식의 계산 요소를 바탕으로 한 관점이에요. 관계의 좋고 나쁨을 정하지 않아요.</p>
+    </main>
+  );
 }

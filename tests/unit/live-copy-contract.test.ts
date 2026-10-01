@@ -36,7 +36,7 @@ describe("live-route copy contract", () => {
     const saju = source("src/components/saju-screens.tsx");
 
     expect(settings).toContain("외부 결제 제공자 승인과 유료 상품 지급은 아직 제공하지 않습니다.");
-    expect(saju).toContain("소셜 로그인 · 준비 중");
+    expect(saju).toContain("소셜 로그인은 준비 중이에요");
     expect(saju).toContain("외부 결제 제공자 연결은 아직 준비 중이에요.");
   });
 });
