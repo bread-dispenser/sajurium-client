@@ -23,6 +23,7 @@ const PRODUCT_MARKS: Partial<Record<string, string>> = {
   "love-report": "緣",
   "career-report": "業",
   "money-report": "財",
+  "family-report": "家",
   "compatibility-report": "合",
   "year-report": "年",
   "decade-report": "運",

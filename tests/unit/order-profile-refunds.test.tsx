@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 import { BillingScreen, CheckoutScreen, PaymentStatusScreen, orderReferenceLabel } from "@/components/commerce-screens";
 import { ApiRequestError } from "@/lib/api/client";
-import { buildOrderRequest, createOrder, formatOrderError, listRefunds, validateOrderSelection } from "@/lib/api/service";
+import { buildOrderRequest, createOrder, formatOrderError, listRefunds, orderProfileRequirement, validateOrderSelection } from "@/lib/api/service";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
@@ -22,6 +22,8 @@ function json(body: unknown, status = 200) {
 const PRODUCTS = [
   { id: 2, code: "report_love_deep", name: "연애 심층 리포트", product_type: "report", price: 4900, currency: "KRW", is_active: true, version: 1, description: "관계 성향과 반복 패턴을 차분히 살펴보는 리포트" },
   { id: 5, code: "compatibility_deep", name: "궁합 심층 리포트", product_type: "compatibility", price: 5900, currency: "KRW", is_active: true, version: 1, description: "두 사람의 관계를 여러 관점으로 살펴보는 리포트" },
+  { id: 8, code: "report_family_deep", name: "가족 심층 리포트", product_type: "report", price: 4900, currency: "KRW", is_active: true, version: 1, description: "가족 안에서의 역할과 거리감을 차분히 살펴보는 리포트" },
+  { id: 9, code: "report_decade_deep", name: "대운(10년) 심층 리포트", product_type: "report", price: 5900, currency: "KRW", is_active: true, version: 1, description: "10년 단위 흐름을 구간별 근거와 함께 정리하는 리포트" },
   { id: 6, code: "credit_pack_5", name: "상담 이용권 5회", product_type: "credit_pack", price: 9900, currency: "KRW", is_active: true, version: 1, description: "상담 이용권" },
 ];
 
@@ -73,6 +75,18 @@ describe("order request body builder", () => {
     expect(buildOrderRequest("love-report", { profileId: "3", partnerProfileId: "5", relationType: "friend" }, "order-1")).toEqual({
       product_code: "report_love_deep", idempotency_key: "order-1", profile_id: 3,
     });
+  });
+
+  it.each([
+    ["family-report", "report_family_deep"],
+    ["decade-report", "report_decade_deep"],
+  ] as const)("treats %s as a single-profile report and sends only profile_id", (id, code) => {
+    expect(orderProfileRequirement(id)).toBe("single");
+    expect(buildOrderRequest(id, { profileId: "3", partnerProfileId: "5", relationType: "family" }, "order-fd")).toEqual({
+      product_code: code, idempotency_key: "order-fd", profile_id: 3,
+    });
+    expect(validateOrderSelection(id, {})).toBe("어느 명식으로 볼지 골라 주세요.");
+    expect(() => buildOrderRequest(id, {}, "k")).toThrow("어느 명식으로 볼지 골라 주세요.");
   });
 
   it("sends both profiles and the relation for a compatibility product, defaulting the relation to couple", () => {
@@ -128,6 +142,24 @@ describe("checkout reference profile step", () => {
 
     fireEvent.change(select, { target: { value: "5" } });
     expect(screen.getByRole("region", { name: "주문 내용" })).toHaveTextContent("기준 명식민준");
+  });
+
+  it.each([
+    ["family-report", "가족 심층 리포트", "4,900원"],
+    ["decade-report", "대운(10년) 심층 리포트", "5,900원"],
+  ] as const)("asks for a reference profile on the %s checkout and loads saved people", async (id, name, amount) => {
+    const calls = serveCheckout();
+    render(<CheckoutScreen productId={id} />);
+
+    const select = await screen.findByLabelText("누구의 명식으로 볼까요");
+    expect(select).toHaveValue("3");
+    expect(calls.some((call) => call.path === "/api/v1/profiles/")).toBe(true);
+    await waitFor(() => expect(screen.getAllByText(amount)).toHaveLength(2));
+    const summary = screen.getByRole("region", { name: "주문 내용" });
+    expect(summary).toHaveTextContent(name);
+    expect(summary).toHaveTextContent("기준 명식서연");
+    expect(screen.queryByLabelText("함께 볼 사람")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /결제하기/ })).toBeDisabled();
   });
 
   it("defaults a compatibility checkout to me and another person, and rejects two identical profiles", async () => {

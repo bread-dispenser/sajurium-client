@@ -67,6 +67,18 @@ test("chooses the reference profile in a paused report and compatibility checkou
   await page.getByLabel("주문 내용과 환불 규정을 확인했고, 결제에 동의해요.").check();
   await expect(page.getByRole("button", { name: /결제하기/ })).toBeDisabled();
 
+  // The family and decade reports are report products too: they need the same reference profile.
+  for (const [productId, name] of [["family-report", "가족 심층 리포트"], ["decade-report", "대운(10년) 심층 리포트"]] as const) {
+    await page.goto(`/checkout/${productId}`);
+    const picker = page.getByLabel("누구의 명식으로 볼까요");
+    await expect(picker).toBeVisible();
+    await expect(picker.locator("option:checked")).toHaveText("기준 확인, 본인");
+    const summary = page.getByRole("region", { name: "주문 내용" });
+    await expect(summary).toContainText(name);
+    await expect(summary).toContainText("기준 명식");
+    await expect(page.getByRole("button", { name: /결제하기/ })).toBeDisabled();
+  }
+
   // Only one saved profile: compatibility asks for a second person instead of a broken picker.
   await page.goto("/checkout/compatibility-report");
   await expect(page.getByText(/궁합은 두 사람이 필요해요/)).toBeVisible();
@@ -77,4 +89,23 @@ test("chooses the reference profile in a paused report and compatibility checkou
   await page.goto("/checkout/consult-5");
   await expect(page.getByRole("heading", { name: "주문 내용" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "기준 명식" })).toHaveCount(0);
+});
+
+test("lists the family and decade reports with their server prices among the deep reports", async ({ page }) => {
+  await page.goto("/products");
+  const reports = page.getByRole("region", { name: "심층 리포트", exact: true });
+  const family = reports.getByRole("link", { name: /가족 심층 리포트/ });
+  await expect(family).toBeVisible({ timeout: 15_000 });
+  await expect(family).toContainText("4,900원");
+  await expect(family).toHaveAttribute("href", "/products/family-report");
+  const decade = reports.getByRole("link", { name: /대운\(10년\) 심층 리포트/ });
+  await expect(decade).toContainText("5,900원");
+  await expect(decade).toHaveAttribute("href", "/products/decade-report");
+  // Six deep reports and two credit packs; the free basic report is not for sale.
+  await expect(reports.getByRole("link")).toHaveCount(6);
+  await expect(page.getByRole("region", { name: "상담 이용권", exact: true }).getByRole("link")).toHaveCount(2);
+
+  await family.click();
+  await expect(page.getByRole("heading", { level: 1, name: "가족 심층 리포트" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "4,900원 구매하기" })).toBeDisabled();
 });

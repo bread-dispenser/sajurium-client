@@ -9,7 +9,7 @@ import { LockedSections, OpenSections } from "./ui/report-parts";
 import { BackIcon, ShareIcon } from "./ui/icons";
 import { Banner, RowLink } from "./ui/layout";
 import { DaeunStrip, ElementBalance, PillarGrid, PillarStrip } from "./ui/chart-display";
-import type { BirthInfo, FeedbackData, FeedbackId, FeedbackReason, TopicId } from "@/lib/domain";
+import type { BirthInfo, FeedbackData, FeedbackId, FeedbackReason, ProductId, TopicId } from "@/lib/domain";
 import type { FeedbackTarget, OwnerRelationship, TopicId as ProfileTopicId } from "@/lib/contracts";
 import { hasValidLeapMonthSemantics, parseBirthDate } from "@/lib/contracts";
 import { useHydrated } from "@/hooks/use-hydrated";
@@ -77,7 +77,7 @@ function birthLine(birth: BirthInfo) {
 
 const TOPIC_NAMES: Record<TopicId, string> = { love: "연애", career: "커리어", money: "재물", family: "가족" };
 const TOPIC_MARKS: Record<TopicId, string> = { love: "緣", career: "業", money: "財", family: "家" };
-const TOPIC_PRODUCTS: Partial<Record<TopicId, string>> = { love: "love-report", career: "career-report", money: "money-report" };
+const TOPIC_PRODUCTS: Record<TopicId, ProductId> = { love: "love-report", career: "career-report", money: "money-report", family: "family-report" };
 
 /* ---------- Landing (/) ---------- */
 

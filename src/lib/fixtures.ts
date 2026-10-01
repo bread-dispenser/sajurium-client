@@ -371,6 +371,13 @@ export const PRODUCTS: readonly Product[] = [
     refundPolicy: "생성 전에는 환불할 수 있고, 생성 실패 시 같은 해석 버전으로 재시도합니다.", preview: "필요한 지출과 미룰 수 있는 지출을 나누는 맞춤 점검 항목을 보여드려요.",
   },
   {
+    id: "family-report", slug: "family-report", version: "1", status: "active", kind: "report", title: "가족 심층 리포트",
+    description: "가족 안에서의 역할과 거리감을 차분히 살펴보는 리포트", answersQuestions: ["가족 관계에서 반복되는 패턴은 무엇인가요?", "가까운 사이에서 경계를 어떻게 표현하면 좋을까요?"],
+    requiredInputs: ["기준 명식", "기준 연도"], requiresBirthTime: false, includedSections: ["가족 관계에서 반복되는 패턴", "시주로 보는 자녀·후배와의 관계"],
+    generationMethod: "고른 사람의 명식을 가족 주제 화면과 같은 기준 연도로 읽어 심층 섹션을 엽니다.", priceAmount: 4900, priceCurrency: "KRW",
+    refundPolicy: "생성 전에는 환불할 수 있고, 생성 실패 시 같은 기준 연도로 재시도합니다.", preview: "가족 주제 화면에서 강점, 주의할 점, 지금의 흐름을 먼저 무료로 볼 수 있어요.",
+  },
+  {
     id: "year-report", slug: "year-report", version: "1", status: "active", kind: "report", title: "연간 흐름 리포트",
     description: "한 해의 방향과 관계·일·생활 흐름을 네 장면으로 읽는 리포트", answersQuestions: ["올해 집중할 생활 영역은 무엇인가요?", "분기마다 점검할 변화 신호는 무엇인가요?"],
     requiredInputs: ["현재 프로필", "조회 연도", "관심사 또는 고민"], requiresBirthTime: false, includedSections: ["연간 방향", "분기별 장면", "관계와 일"],
@@ -378,11 +385,11 @@ export const PRODUCTS: readonly Product[] = [
     refundPolicy: "생성 전에는 환불할 수 있고, 생성 실패 시 같은 연도와 해석 버전으로 재시도합니다.", preview: "선택한 연도의 흐름을 현재 관심사에 맞춘 네 장면으로 구성해 보여드려요.",
   },
   {
-    id: "decade-report", slug: "decade-report", version: "1", status: "active", kind: "report", title: "10년 장기 흐름 리포트",
-    description: "긴 호흡의 변화를 세 구간으로 살펴보는 리포트", answersQuestions: ["장기 변화에서 지켜야 할 생활 기반은 무엇인가요?", "세 구간의 전환점마다 무엇을 점검해야 하나요?"],
-    requiredInputs: ["현재 프로필", "조회 시작 연도", "장기 관심사"], requiresBirthTime: true, includedSections: ["10년 방향", "세 구간 전환", "생활 기반"],
-    generationMethod: "출생 시간을 포함한 프로필과 시작 연도, 장기 관심사를 세 구간 템플릿에 반영해 생성합니다.", priceAmount: 19900, priceCurrency: "KRW",
-    refundPolicy: "생성 전에는 환불할 수 있고, 출생 시간 누락 시 생성하지 않으며 실패 시 재시도합니다.", preview: "현재 장기 관심사에 맞춰 세 구간에서 점검할 질문을 먼저 보여드려요.",
+    id: "decade-report", slug: "decade-report", version: "1", status: "active", kind: "report", title: "대운(10년) 심층 리포트",
+    description: "10년 단위 흐름을 구간별 근거와 함께 정리하는 리포트", answersQuestions: ["다음 대운으로 넘어가기 전에 무엇을 준비하면 좋을까요?", "구간마다 어떤 명식 요소가 흐름을 이끄나요?"],
+    requiredInputs: ["기준 명식", "기준 연도"], requiresBirthTime: false, includedSections: ["다음 대운 준비", "구간별 심층 해설"],
+    generationMethod: "고른 사람의 명식에서 대운 구간을 계산하고, 대운 화면과 같은 기준 연도로 구간별 해설을 엽니다.", priceAmount: 5900, priceCurrency: "KRW",
+    refundPolicy: "생성 전에는 환불할 수 있고, 생성 실패 시 같은 기준 연도로 재시도합니다.", preview: "대운 화면에서 지금의 대운과 전체 흐름을 먼저 무료로 볼 수 있어요.",
   },
   {
     id: "career-report", slug: "career-report", version: "1", status: "active", kind: "report", title: "커리어 심층 리포트",

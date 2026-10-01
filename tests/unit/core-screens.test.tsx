@@ -130,7 +130,17 @@ describe("core screens", () => {
     expect(screen.getByRole("article", { name: "대운 흐름 한눈에 보기" })).toBeDefined();
     const locked = screen.getByRole("list", { name: "구매하면 열리는 내용" });
     expect(within(locked).getAllByRole("listitem").map((item) => item.textContent)).toEqual(["다음 대운 준비", "구간별 심층 해설"]);
-    expect(screen.getByRole("link", { name: "리포트 상품 보기" }).getAttribute("href")).toBe("/products");
+    expect(screen.getByRole("button", { name: "결제 준비 중" }).hasAttribute("disabled")).toBe(true);
+  });
+
+  it("decade screen links its locked sections to the decade report product while payment stays paused", async () => {
+    render(<DecadeScreen />);
+    await screen.findByRole("list", { name: "구매하면 열리는 내용" });
+    expect(screen.getByText("대운(10년) 심층 리포트")).toBeDefined();
+    expect(screen.getByRole("link", { name: "리포트 구성 보기" }).getAttribute("href")).toBe("/products/decade-report");
+    expect(screen.queryByRole("link", { name: "리포트 상품 보기" })).toBeNull();
+    expect(screen.getByRole("button", { name: "결제 준비 중" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByText(/지금은 결제를 받지 않고 있어요/)).toBeDefined();
   });
 
   it("decade screen offers a retry when the server fails", async () => {

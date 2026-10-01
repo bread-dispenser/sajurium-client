@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
 import type { LibraryItemType, LibraryItemView } from "@/lib/contracts";
+import { getProduct } from "@/lib/fixtures";
 import { libraryStore } from "@/lib/storage";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { markdownPreview, markdownTitle } from "@/lib/markdown";
@@ -18,6 +19,9 @@ import { deleteLibraryItem, formatApiRequestError, formatConnectionError, getCur
 /* ---------- Dates and period pillars (display only; charts come from the server) ---------- */
 
 type Day = { year: number; month: number; day: number };
+
+/** The paid product that unlocks the decade report's locked sections (server `report_decade_deep`). */
+const DECADE_PRODUCT = getProduct("decade-report");
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"] as const;
 // Name of the solar term that opens each month pillar, starting from 인월.
@@ -466,7 +470,7 @@ export function DecadeScreen() {
 
       {others.length > 0 && <OpenSections sections={others} label="대운 무료 해설" />}
 
-      <LockedSections sections={locked} heading="심층 해설에 이어지는 내용" productName={null} productHref={null} />
+      <LockedSections sections={locked} heading="심층 해설에 이어지는 내용" productName={DECADE_PRODUCT.title} productHref={`/products/${DECADE_PRODUCT.id}`} />
 
       <p className="sj-fine">대운의 방향과 시작 나이는 생년월일시와 계산 기준 성별로 정해져요. 계산 요소를 바탕으로 한 일반적인 흐름이며 특정 사건을 예측하지 않아요.</p>
     </main>
