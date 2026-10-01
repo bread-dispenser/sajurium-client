@@ -38,8 +38,9 @@ const TABLE_DIVIDER = /^[ \t]*\|?[ \t]*:?-{3,}:?[ \t]*(\|[ \t]*:?-{3,}:?[ \t]*)+
 const TABLE_ROW = /^[ \t]*\|(.*)\|[ \t]*$/;
 const CONTINUATION = /^(?: {2,}|\t)\S/;
 
+/** Latin letters and digits around "_" mean snake_case, not emphasis. Korean particles may follow "_강조_". */
 function isWordChar(char: string | undefined) {
-  return Boolean(char) && /[0-9A-Za-zÀ-ɏᄀ-ᇿ㄰-㆏가-힯]/.test(char as string);
+  return Boolean(char) && /[0-9A-Za-z]/.test(char as string);
 }
 
 function isSpace(char: string | undefined) {
@@ -267,6 +268,38 @@ export function blockToPlainText(block: MarkdownBlock): string {
  */
 export function markdownToPlainText(text: string | null | undefined): string {
   return parseMarkdown(text).map(blockToPlainText).filter(Boolean).join("\n");
+}
+
+function truncate(text: string, maxLength: number) {
+  const chars = Array.from(text);
+  if (chars.length <= maxLength) return text;
+  const cut = chars.slice(0, Math.max(1, maxLength - 1)).join("");
+  const lastSpace = cut.lastIndexOf(" ");
+  const trimmed = lastSpace > 0 && lastSpace >= cut.length - 20 ? cut.slice(0, lastSpace) : cut;
+  return `${trimmed.replace(/[\s.,;:]+$/, "")}…`;
+}
+
+function plainLines(text: string | null | undefined) {
+  return markdownToPlainText(text)
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+}
+
+/**
+ * One-line plain preview: strip markdown first, then collapse whitespace, then truncate,
+ * so a cut never lands inside syntax. A line that is followed by another line ends as a
+ * sentence, so line boundaries stay readable on a single row.
+ */
+export function markdownPreview(text: string | null | undefined, maxLength = 120): string {
+  const lines = plainLines(text);
+  const plain = lines.map((line, index) => (index === lines.length - 1 || /[.!?。…:;,)\]"'”’]$/.test(line) ? line : `${line}.`)).join(" ");
+  return truncate(plain, maxLength);
+}
+
+/** Plain single-line title: same stripping as markdownPreview, without added punctuation. */
+export function markdownTitle(text: string | null | undefined, maxLength = 80): string {
+  return truncate(plainLines(text).join(" "), maxLength);
 }
 
 function renderInline(line: MarkdownLine, keyPrefix: string): ReactNode[] {
