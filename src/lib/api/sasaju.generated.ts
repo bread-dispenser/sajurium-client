@@ -72,11 +72,61 @@ export interface paths {
          * @description 소셜 토큰 검증 후 로그인/회원가입.
          *
          *     제공자 JWKS로 서명·issuer·audience·만료를 확인한다. 토큰 원문은 저장하지 않는다(§7).
-         *     오류 구분: 비활성 제공자 503 SOCIAL_PROVIDER_DISABLED, 제공자 장애 503
-         *     SOCIAL_PROVIDER_UNAVAILABLE, 잘못된 토큰 401 INVALID_SOCIAL_TOKEN, 시도 한도 429.
+         *     계정은 연결된 식별자(user_identities)의 (provider, subject)로만 찾는다. 이메일/비밀번호
+         *     계정에 연결된 식별자라면 그 계정으로 로그인한다. 오류 구분은 `_verify_provider_token` 참고.
          */
         post: operations["social_login_api_v1_auth_social_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/identities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Identities
+         * @description 이 계정의 로그인 수단. 제공자 subject는 내보내지 않는다.
+         */
+        get: operations["list_identities_api_v1_auth_identities_get"];
+        put?: never;
+        /**
+         * Link Identity
+         * @description 로그인한 계정에 소셜 식별자를 직접 연결한다(#30).
+         *
+         *     자동 병합은 하지 않는다. 제공자 토큰을 소셜 로그인과 같은 게이트·검증으로 확인한 뒤
+         *     - 이 계정에 이미 같은 식별자: 200(멱등)
+         *     - 다른 계정에 연결된 식별자: 409 IDENTITY_ALREADY_LINKED(옮기지 않음)
+         *     - 이 계정에 같은 제공자의 다른 식별자: 409 PROVIDER_ALREADY_LINKED
+         *     동시 연결 경쟁은 unique 제약이 막고, 진 쪽은 다시 조회해 위 규칙대로 답한다.
+         */
+        post: operations["link_identity_api_v1_auth_identities_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/identities/{provider}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Unlink Identity
+         * @description 연결 해제. 비밀번호도 다른 식별자도 없으면 409 LAST_LOGIN_METHOD로 거부한다.
+         */
+        delete: operations["unlink_identity_api_v1_auth_identities__provider__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1453,6 +1503,38 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** IdentitiesResponse */
+        IdentitiesResponse: {
+            /** Has Password */
+            has_password: boolean;
+            /** Email */
+            email?: string | null;
+            /** Identities */
+            identities: components["schemas"]["LinkedIdentity"][];
+        };
+        /**
+         * IdentityLinkRequest
+         * @description 로그인한 계정에 소셜 식별자를 연결한다. 본문은 소셜 로그인과 같다.
+         */
+        IdentityLinkRequest: {
+            /** Provider */
+            provider: string;
+            /** Id Token */
+            id_token: string;
+        };
+        /**
+         * LinkedIdentity
+         * @description 연결된 로그인 수단. subject는 응답에 싣지 않는다.
+         */
+        LinkedIdentity: {
+            /** Provider */
+            provider: string;
+            /**
+             * Linked At
+             * Format: date-time
+             */
+            linked_at: string;
+        };
         /**
          * MessageAcceptedResponse
          * @description 상담 시작 요청은 즉시 작업 상태를 반환한다 (§3.5).
@@ -2419,6 +2501,90 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Token"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_identities_api_v1_auth_identities_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentitiesResponse"];
+                };
+            };
+        };
+    };
+    link_identity_api_v1_auth_identities_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IdentityLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unlink_identity_api_v1_auth_identities__provider__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
