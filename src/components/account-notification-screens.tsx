@@ -13,12 +13,22 @@ import { Banner, GroupRowLink } from "./ui/layout";
 
 /* ---------- Notification topics ---------- */
 
+/**
+ * Every topic the server can send (`DEFAULT_TOPICS` in the backend notification service),
+ * plus the legacy `payment` code older preferences may still carry. Settings rows and inbox
+ * labels both read this list, so a topic is named the same way everywhere.
+ */
 const NOTIFICATION_TOPICS: readonly { code: string; label: string; desc: string }[] = [
   { code: "daily_flow", label: "오늘의 흐름", desc: "그날의 흐름이 준비되면 알려드려요" },
   { code: "report_ready", label: "리포트 완성", desc: "리포트가 준비되면 알려드려요" },
+  { code: "consultation_answered", label: "상담 답변", desc: "상담 답변이 도착하면 알려드려요" },
+  { code: "payment_completed", label: "결제 완료", desc: "결제와 지급이 끝나면 알려드려요" },
   { code: "payment", label: "결제", desc: "주문과 결제 상태가 바뀌면 알려드려요" },
   { code: "marketing", label: "혜택과 소식", desc: "새 리포트와 이벤트 안내, 따로 동의한 경우에만 보내요" },
 ];
+
+/** Topics this client does not know yet share one row, so no two rows look the same and no raw code shows. */
+const OTHER_TOPICS_ROW = { code: "__other__", label: "기타 알림", desc: "위에 없는 서비스 안내를 한 번에 켜고 꺼요" };
 
 function notificationTopicLabel(topic: string) {
   return NOTIFICATION_TOPICS.find((item) => item.code === topic)?.label ?? "알림";
@@ -85,7 +95,10 @@ export function NotificationPreferencesGroup() {
 
   const known = NOTIFICATION_TOPICS.filter((topic) => topic.code in preferences.topics);
   const extra = Object.keys(preferences.topics).filter((code) => !NOTIFICATION_TOPICS.some((topic) => topic.code === code));
-  const rows = [...known, ...extra.map((code) => ({ code, label: "기타 알림", desc: "서비스 운영에 필요한 안내" }))];
+  const rows = [
+    ...known.map((topic) => ({ ...topic, codes: [topic.code] })),
+    ...(extra.length ? [{ ...OTHER_TOPICS_ROW, codes: extra }] : []),
+  ];
   const hours = Array.from({ length: 24 }, (_, hour) => hour);
 
   return (
@@ -97,8 +110,9 @@ export function NotificationPreferencesGroup() {
               <span className="sj-row-title">{topic.label}</span>
               <span className="sj-row-sub" style={{ fontSize: 12 }}>{topic.desc}</span>
             </span>
-            <input className="sj-switch" type="checkbox" role="switch" checked={preferences.topics[topic.code]} onChange={(event) => {
-              const topics = { ...preferences.topics, [topic.code]: event.target.checked };
+            <input className="sj-switch" type="checkbox" role="switch" checked={topic.codes.every((code) => preferences.topics[code])} onChange={(event) => {
+              const changed = Object.fromEntries(topic.codes.map((code) => [code, event.target.checked]));
+              const topics = { ...preferences.topics, ...changed };
               save({ ...preferences, topics }, { topics });
             }} />
           </label>
