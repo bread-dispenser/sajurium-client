@@ -789,6 +789,26 @@ html:has(.sj-topbar) { scroll-padding-top: 80px; }
   font-size: 12px;
 }
 
+/* Evidence behind a report section: the chart elements the server read, one chip each. */
+.sj-evidence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* A paid section title that stays closed until purchase. */
+.sj-locked-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 0;
+  color: var(--sj-ink-strong-muted);
+}
+
 .sj-chip-button {
   display: inline-flex;
   align-items: center;

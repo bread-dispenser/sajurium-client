@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { FormEvent } from "react";
-import { CorruptState, EmptyState, LoadingState } from "./page-state";
+import { ConnectionErrorState, CorruptState, EmptyState, LoadingState } from "./page-state";
+import { LockedSections, OpenSections } from "./ui/report-parts";
 import { BackIcon, ShareIcon } from "./ui/icons";
 import { Banner, RowLink } from "./ui/layout";
 import { DaeunStrip, ElementBalance, PillarGrid, PillarStrip } from "./ui/chart-display";
@@ -13,7 +14,7 @@ import type { FeedbackTarget, OwnerRelationship, TopicId as ProfileTopicId } fro
 import { hasValidLeapMonthSemantics, parseBirthDate } from "@/lib/contracts";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { FEEDBACK_OPTIONS, INITIAL_BIRTH, TOPICS, getTopicPreview } from "@/lib/fixtures";
-import { createBasicReading, formatApiRequestError, getCurrentChart, getCurrentReport, submitFeedback, type LiveReport } from "@/lib/api/service";
+import { createBasicReading, formatApiRequestError, formatConnectionError, getCurrentChart, getCurrentReport, getTopicReport, isAccountSessionExpired, submitFeedback, toServerReportTopic, type LiveReport, type TopicReport } from "@/lib/api/service";
 import { getSessionKind, readServerJourney } from "@/lib/api/service";
 import { ELEMENTS, currentDaeun, ganjiGlyphs, ganjiHanja, type ChartView, type Pillar } from "@/lib/saju";
 import {
@@ -804,6 +805,7 @@ export function TopicsScreen() {
   const reportInspection = reportStore.inspect();
   if (reportInspection.status === "corrupt" || reportInspection.status === "unavailable") return <CorruptState title="저장한 리포트를 읽을 수 없어요" description="손상된 리포트를 확인 없이 다른 내용으로 바꾸지 않아요." unavailable={reportInspection.status === "unavailable"} onReset={reportStore.remove} />;
   const storedTopic = reportInspection.status === "ok" ? reportInspection.value.topic : null;
+  const server = readServerJourney() !== null;
 
   return (
     <main className="sj-page">
@@ -819,20 +821,98 @@ export function TopicsScreen() {
                 href={`/report/topics/${topic.id}`}
                 leading={<span className="sj-ganji-tile" aria-hidden="true" lang="zh-Hant">{TOPIC_MARKS[topic.id]}</span>}
                 title={TOPIC_NAMES[topic.id]}
-                sub={getTopicPreview(topic.id).headline.replace(/\n/g, " ")}
+                sub={topic.description}
                 value={storedTopic === topic.id ? "저장한 주제" : undefined}
               />
             </li>
           ))}
         </ul>
       </section>
-      <Banner>주제별 미리보기는 누구에게나 같은 예시 문장이에요. 명식을 반영한 심층 리포트는 결제가 준비되면 열려요.</Banner>
+      {server
+        ? <Banner>무료 미리보기는 계산한 명식을 바탕으로 읽어요. 심층 내용은 결제가 준비되면 열려요.</Banner>
+        : <Banner>아직 계산한 명식이 없어 주제별 미리보기는 누구에게나 같은 예시 문장이에요. <Link href="/birth" style={{ color: "var(--sj-accent)", fontWeight: 700 }}>출생 정보 입력하기</Link></Banner>}
       <p className="sj-fine">사주는 선택을 대신하지 않아요.</p>
     </main>
   );
 }
 
+function topicFeedbackLinks(feedbackHref: string) {
+  return (
+    <section className="sj-section" aria-labelledby="topic-feedback-title">
+      <h2 id="topic-feedback-title" className="sj-h2">이 해석이 도움이 됐나요?</h2>
+      <div className="sj-actions-row">
+        <Link className="sj-button-secondary" href={`${feedbackHref}&rating=helpful`} style={{ flex: "1 1 0" }}>도움됐어요</Link>
+        <Link className="sj-button-secondary" href={`${feedbackHref}&report=1`} style={{ flex: "1 1 0" }}>문제 신고</Link>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * /report/topics/[topic]. With a server reading the topic report comes from the server: free sections
+ * with their evidence, paid ones as locked titles. Without one, the fixed example preview is shown and
+ * labelled as an example, because it is the same text for everyone.
+ */
 export function TopicPreviewScreen({ topicId }: { topicId: TopicId }) {
+  const hydrated = useHydrated();
+  if (!hydrated) return <LoadingState title="주제별 리포트를 확인하고 있어요" />;
+  const journey = readServerJourney();
+  if (!journey) return <TopicExampleScreen topicId={topicId} />;
+  return <ServerTopicScreen key={`${journey.chartId}-${topicId}`} topicId={topicId} chartId={journey.chartId} />;
+}
+
+type TopicLoad =
+  | { status: "loading" }
+  | { status: "ready"; report: TopicReport }
+  | { status: "error"; message: string; needsLogin: boolean };
+
+function ServerTopicScreen({ topicId, chartId }: { topicId: TopicId; chartId: string }) {
+  const [load, setLoad] = useState<TopicLoad>({ status: "loading" });
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let active = true;
+    getTopicReport(chartId, toServerReportTopic(topicId))
+      .then((report) => { if (active) setLoad({ status: "ready", report }); })
+      .catch((reason: unknown) => {
+        if (active) setLoad({ status: "error", message: formatConnectionError(reason), needsLogin: isAccountSessionExpired(reason) });
+      });
+    return () => { active = false; };
+  }, [chartId, topicId, attempt]);
+
+  const name = TOPIC_NAMES[topicId];
+  if (load.status === "loading") return <LoadingState title={`${name} 리포트를 불러오고 있어요`} />;
+  if (load.status === "error") {
+    if (load.needsLogin) return <EmptyState title="다시 로그인해 주세요" description={load.message} action={{ href: "/login", label: "로그인" }} />;
+    return <ConnectionErrorState title={`${name} 리포트를 불러오지 못했어요`} description={load.message} onRetry={() => { setLoad({ status: "loading" }); setAttempt((value) => value + 1); }} />;
+  }
+
+  const { report } = load;
+  const open = report.sections.filter((section) => !section.locked && section.body);
+  const locked = report.sections.filter((section) => section.locked);
+  if (!open.length && !locked.length) {
+    return <EmptyState title={`${name} 리포트에 담긴 내용이 아직 없어요`} description="다른 주제를 먼저 읽어 보거나, 잠시 뒤 다시 열어 주세요." action={{ href: "/report/topics", label: "다른 주제 보기" }} />;
+  }
+  const productSlug = TOPIC_PRODUCTS[topicId];
+  const feedbackHref = `/report/feedback?targetType=report&reportId=${report.id}&topic=${topicId}&reportKind=topic`;
+
+  return (
+    <main className="sj-page">
+      <section className="sj-section" style={{ gap: 8 }}>
+        <h1 id="preview-title" className="sj-h1">{report.title}</h1>
+        <p className="sj-lead">계산한 명식을 바탕으로 강점, 주의할 점, 지금의 흐름을 먼저 읽어드려요.{report.referenceYear ? ` 지금의 흐름은 ${report.referenceYear}년 기준이에요.` : ""}</p>
+      </section>
+
+      {open.length > 0 && <OpenSections sections={open} label={`${name} 무료 미리보기`} />}
+
+      <LockedSections sections={locked} heading="심층 리포트에 이어지는 내용" productName={productSlug ? `${name} 심층 리포트` : null} productHref={productSlug ? `/products/${productSlug}` : null} />
+
+      {topicFeedbackLinks(feedbackHref)}
+      <p className="sj-fine">계산 요소를 바탕으로 한 일반적인 경향이에요. 특정 사건을 예측하지 않아요.</p>
+    </main>
+  );
+}
+
+function TopicExampleScreen({ topicId }: { topicId: TopicId }) {
   const preview = getTopicPreview(topicId);
   const name = TOPIC_NAMES[topicId];
   const productSlug = TOPIC_PRODUCTS[topicId];
@@ -847,10 +927,13 @@ export function TopicPreviewScreen({ topicId }: { topicId: TopicId }) {
     <main className="sj-page">
       <section className="sj-section" style={{ gap: 8 }}>
         <h1 id="preview-title" className="sj-h1">{preview.headline.split("\n").map((line, index) => <span key={line}>{index > 0 && <br />}{line}</span>)}</h1>
+        <span className="sj-badge" style={{ alignSelf: "flex-start" }}>예시</span>
         <p className="sj-lead">{preview.introduction}</p>
       </section>
 
-      <section className="sj-group" aria-label={`${name} 무료 미리보기`}>
+      <Banner>아직 계산한 명식이 없어 누구에게나 같은 예시 문장을 보여드려요. 출생 정보를 입력하면 내 명식으로 읽어드려요. <Link href="/birth" style={{ color: "var(--sj-accent)", fontWeight: 700 }}>출생 정보 입력하기</Link></Banner>
+
+      <section className="sj-group" aria-label={`${name} 예시 미리보기`}>
         {sections.map((section, index) => (
           <article key={section.title} className="sj-section" style={{ gap: 8, padding: 20, borderTop: index ? "1px solid var(--sj-track)" : undefined }}>
             <h2 className="sj-h2">{section.title}</h2>
@@ -871,18 +954,7 @@ export function TopicPreviewScreen({ topicId }: { topicId: TopicId }) {
         </section>
       )}
 
-      <section className="sj-section" aria-labelledby="topic-feedback-title">
-        <h2 id="topic-feedback-title" className="sj-h2">이 해석이 도움이 됐나요?</h2>
-        <div className="sj-actions-row">
-          <Link className="sj-button-secondary" href={`${feedbackHref}&rating=helpful`} style={{ flex: "1 1 0" }}>도움됐어요</Link>
-          <Link className="sj-button-secondary" href={`${feedbackHref}&report=1`} style={{ flex: "1 1 0" }}>문제 신고</Link>
-        </div>
-      </section>
-
-      <details className="sj-card" style={{ gap: 0 }}>
-        <summary className="sj-h3" style={{ minHeight: 44, display: "flex", alignItems: "center", cursor: "pointer" }}>이 미리보기의 범위</summary>
-        <p className="sj-meta" style={{ marginTop: 4 }}>현재 내용은 화면 체험을 위한 고정 예시이며 실제 사주 계산 결과가 아니에요. 입력 정보에 따라 문장이 달라지지 않아요.</p>
-      </details>
+      {topicFeedbackLinks(feedbackHref)}
       <p className="sj-fine">사주는 선택을 대신하지 않아요.</p>
     </main>
   );
@@ -907,7 +979,7 @@ function isServerFeedbackTarget(target: FeedbackScreenTarget) {
   return target.type === "consultation_message" || isServerReportId(target.reportId);
 }
 
-export function FeedbackScreen({ target, topicId, initialRating = null, initialReported = false }: { target: FeedbackScreenTarget; topicId: TopicId; initialRating?: FeedbackId | null; initialReported?: boolean }) {
+export function FeedbackScreen({ target, topicId, initialRating = null, initialReported = false, topicReport = false }: { target: FeedbackScreenTarget; topicId: TopicId; initialRating?: FeedbackId | null; initialReported?: boolean; topicReport?: boolean }) {
   const router = useRouter();
   const [feedback, setFeedback] = useState<FeedbackId | null>(initialRating);
   const [reason, setReason] = useState<FeedbackReason | "">("");
@@ -916,7 +988,7 @@ export function FeedbackScreen({ target, topicId, initialRating = null, initialR
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
   const serverTarget = isServerFeedbackTarget(target);
-  const targetLabel = target.type === "consultation_message" ? "상담 답변" : serverTarget ? "기본 사주 리포트" : `${TOPIC_NAMES[topicId]} 미리보기`;
+  const targetLabel = target.type === "consultation_message" ? "상담 답변" : serverTarget ? (topicReport ? `${TOPIC_NAMES[topicId]} 리포트` : "기본 사주 리포트") : `${TOPIC_NAMES[topicId]} 미리보기`;
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

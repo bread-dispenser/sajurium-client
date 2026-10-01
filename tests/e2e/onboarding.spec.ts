@@ -24,13 +24,17 @@ test("completes routed onboarding and stores the local report", async ({ page })
   await expect(page).toHaveURL(/\/report\/topics$/);
   await page.getByRole("link", { name: /^커리어/ }).click();
   await expect(page).toHaveURL(/\/report\/topics\/career$/);
+  // 서버 명식이 있으면 주제 화면은 서버 주제 리포트를 보여 주고, 피드백도 그 서버 리포트로 보낸다.
+  await expect(page.getByRole("heading", { level: 1, name: "커리어 리포트" })).toBeVisible({ timeout: 15_000 });
   await page.getByRole("link", { name: "도움됐어요" }).click();
-  await expect(page).toHaveURL(/\/report\/feedback\?/);
-  await page.getByRole("button", { name: "도움이 됐어요" }).click();
+  await expect(page).toHaveURL(/\/report\/feedback\?.*reportKind=topic/);
+  await expect(page.getByText("커리어 리포트")).toBeVisible();
   await expect(page.getByRole("button", { name: "도움이 됐어요" })).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "내용이 너무 일반적이에요" }).click();
   await page.getByRole("button", { name: "피드백 보내기" }).click();
-  await expect(page).toHaveURL(/\/report\/save\?topic=career&feedback=helpful$/);
+  await expect(page).toHaveURL(/\/settings\/feedback\?sent=1$/);
+
+  await page.goto("/report/save?topic=career&feedback=helpful");
   await page.getByRole("button", { name: "이 기기에 결과 저장" }).click();
 
   await expect.poll(() => page.evaluate(() => Boolean(localStorage.getItem("sajurium-saju-report")))).toBe(true);

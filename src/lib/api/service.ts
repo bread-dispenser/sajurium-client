@@ -843,6 +843,130 @@ export async function getCurrentChart(): Promise<ChartView | null> {
   return toChartView((await request<ApiChart>(`/api/v1/charts/${journey.chartId}`)).data);
 }
 
+/* ---------- Topic and decade reports ---------- */
+
+/** Topics the server writes topic reports for. The client calls the money topic `money`; the server calls it `wealth`. */
+export type ServerReportTopic = "love" | "career" | "wealth" | "family";
+
+export function toServerReportTopic(topic: "love" | "career" | "money" | "family"): ServerReportTopic {
+  return topic === "money" ? "wealth" : topic;
+}
+
+export type ReportSectionView = {
+  key: string;
+  title: string;
+  /** Always null while the section is locked, whatever the response carried. */
+  body: string | null;
+  isFree: boolean;
+  locked: boolean;
+  evidence: string[];
+  requiresBirthTime: boolean;
+};
+
+export type DaeunPeriodSummary = {
+  sequence: number | null;
+  ganji: string;
+  startAge: number;
+  endAge: number;
+  startYear: number | null;
+  endYear: number | null;
+  stemTenGod: string;
+  branchTenGod: string;
+  isCurrent: boolean;
+  evidence: string[];
+};
+
+export type TopicReport = {
+  id: string;
+  topic: ServerReportTopic;
+  title: string;
+  referenceYear: number | null;
+  purchased: boolean;
+  sections: ReportSectionView[];
+  excludedDueToUnknownTime: boolean;
+  excludedSections: Array<{ key: string; title: string; reason: string }>;
+  currentPeriod: DaeunPeriodSummary | null;
+};
+
+export type DecadeReport = {
+  id: string;
+  title: string;
+  referenceYear: number | null;
+  purchased: boolean;
+  sections: ReportSectionView[];
+  periods: DaeunPeriodSummary[];
+  currentPeriod: DaeunPeriodSummary | null;
+};
+
+function stringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function toSectionView(section: Schema<"ReportSection">, purchased: boolean): ReportSectionView {
+  const locked = section.locked === true || (section.is_free === false && !purchased);
+  return {
+    key: section.key,
+    title: section.title,
+    body: locked || typeof section.body !== "string" ? null : section.body,
+    isFree: section.is_free === true,
+    locked,
+    evidence: locked ? [] : stringList(section.evidence),
+    requiresBirthTime: section.requires_birth_time === true,
+  };
+}
+
+function toPeriodSummary(period: Schema<"DaeunPeriodView">): DaeunPeriodSummary {
+  return {
+    sequence: period.sequence ?? null,
+    ganji: period.ganji,
+    startAge: period.start_age,
+    endAge: period.end_age,
+    startYear: period.start_year ?? null,
+    endYear: period.end_year ?? null,
+    stemTenGod: period.stem_ten_god,
+    branchTenGod: period.branch_ten_god,
+    isCurrent: period.is_current === true,
+    evidence: stringList(period.evidence),
+  };
+}
+
+function reportContent(report: ApiReport) {
+  const content = report.content_json ?? null;
+  return {
+    sections: (Array.isArray(content?.sections) ? content.sections : []).map((section) => toSectionView(section, report.purchased)),
+    referenceYear: typeof content?.reference_year === "number" ? content.reference_year : null,
+    currentPeriod: content?.current_period ? toPeriodSummary(content.current_period) : null,
+  };
+}
+
+/** Creates (or, for the same chart, topic and year, returns again) the topic report: free preview sections plus locked paid titles. */
+export async function getTopicReport(chartId: string, topic: ServerReportTopic): Promise<TopicReport> {
+  const report = (await request<ApiReport>(`/api/v1/charts/${chartId}/reports/topics/${topic}`, { method: "POST", body: {} })).data;
+  const content = report.content_json ?? null;
+  return {
+    id: String(report.id),
+    topic,
+    title: report.title,
+    purchased: report.purchased,
+    ...reportContent(report),
+    excludedDueToUnknownTime: content?.excluded_due_to_unknown_time === true,
+    excludedSections: (content?.excluded_sections ?? []).map(({ key, title, reason }) => ({ key, title, reason })),
+  };
+}
+
+/** Creates (or returns again) the 10-year report: the daeun periods, free current-period commentary and locked per-period detail. */
+export async function getDecadeReport(chartId: string): Promise<DecadeReport> {
+  const report = (await request<ApiReport>(`/api/v1/charts/${chartId}/reports/decade`, { method: "POST", body: {} })).data;
+  const periods = report.content_json?.periods;
+  return {
+    id: String(report.id),
+    title: report.title,
+    purchased: report.purchased,
+    ...reportContent(report),
+    periods: Array.isArray(periods) ? periods.map(toPeriodSummary) : [],
+  };
+}
+
 export async function getFlow(scope: "today" | "month" | "year"): Promise<LiveReport> {
   const journey = readServerJourney();
   if (!journey) throw new Error("먼저 출생 정보와 명식 계산을 완료해 주세요.");

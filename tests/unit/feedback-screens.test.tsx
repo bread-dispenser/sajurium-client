@@ -132,6 +132,20 @@ describe("feedback form targets", () => {
     expect(window.localStorage.getItem(FEEDBACK_LIST_KEY)).toBeNull();
   });
 
+  it("names a server topic report by its topic instead of the basic report", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(json({ id: 1, status: "RECEIVED", created_at: "2026-09-28T00:00:00" }, 201));
+    render(<FeedbackScreen target={{ type: "report", reportId: "71" }} topicId="career" topicReport />);
+
+    expect(screen.getByText("커리어 리포트")).toBeInTheDocument();
+    expect(screen.queryByText("기본 사주 리포트")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "도움이 됐어요" }));
+    fireEvent.click(screen.getByRole("button", { name: "내용이 너무 일반적이에요" }));
+    fireEvent.click(screen.getByRole("button", { name: "피드백 보내기" }));
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/settings/feedback?sent=1"));
+    expect(bodies(fetchMock, "/api/v1/feedback")[0]).toMatchObject({ report_id: 71, rating: "helpful" });
+  });
+
   it("keeps fixture previews on this device as before", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch");
     render(<FeedbackScreen target={{ type: "report", reportId: "rpt_fixture_career" }} topicId="career" />);

@@ -11,13 +11,14 @@ type FeedbackPageProps = {
     topic?: string | string[];
     rating?: string | string[];
     report?: string | string[];
+    reportKind?: string | string[];
   }>;
 };
 
 const SERVER_ID = /^\d+$/;
 
 export default async function FeedbackPage({ searchParams }: FeedbackPageProps) {
-  const { targetType, reportId, sessionId, messageId, topic, rating, report } = await searchParams;
+  const { targetType, reportId, sessionId, messageId, topic, rating, report, reportKind } = await searchParams;
   const initialRating = isFeedbackId(rating) ? rating : null;
   const initialReported = report === "1";
 
@@ -28,5 +29,7 @@ export default async function FeedbackPage({ searchParams }: FeedbackPageProps) 
   }
 
   if (targetType !== "report" || typeof reportId !== "string" || !isTopicId(topic) || (!SERVER_ID.test(reportId) && reportId !== `rpt_fixture_${topic}`)) notFound();
-  return <FeedbackScreen target={{ type: "report", reportId }} topicId={topic} initialRating={initialRating} initialReported={initialReported} />;
+  // 주제별 리포트는 서버 리포트지만 기본 리포트와 이름이 달라서, 링크가 어떤 리포트인지 알려준다.
+  const topicReport = reportKind === "topic" && SERVER_ID.test(reportId);
+  return <FeedbackScreen target={{ type: "report", reportId }} topicId={topic} initialRating={initialRating} initialReported={initialReported} topicReport={topicReport} />;
 }
