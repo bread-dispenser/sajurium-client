@@ -419,10 +419,19 @@ export async function revokePushToken(token: string) {
   })).data;
 }
 
-export async function createReportShare(hours = 72) {
+/* ---------- Share links ---------- */
+
+/** Public fields a share link may expose; the server rejects anything else and an empty list. */
+export const SHARE_INCLUDE_KEYS = ["summary", "day_pillar", "five_elements", "birth_date", "birth_time"] as const;
+export type ShareIncludeKey = (typeof SHARE_INCLUDE_KEYS)[number];
+export const DEFAULT_SHARE_INCLUDE: readonly ShareIncludeKey[] = ["summary", "day_pillar", "five_elements"];
+
+export async function createReportShare(hours = 72, include: readonly ShareIncludeKey[] = DEFAULT_SHARE_INCLUDE) {
   const journey = readServerJourney();
   if (!journey) throw new Error("먼저 리포트를 생성해 주세요.");
-  return (await request<Schema<"ShareLink">>("/api/v1/share-links", { method: "POST", body: { target_type: "report", target_id: Number(journey.reportId), expires_in_hours: hours } })).data;
+  const selected = SHARE_INCLUDE_KEYS.filter((key) => include.includes(key));
+  if (selected.length === 0) throw new Error("공유할 정보를 하나 이상 골라 주세요.");
+  return (await request<Schema<"ShareLink">>("/api/v1/share-links", { method: "POST", body: { target_type: "report", target_id: Number(journey.reportId), expires_in_hours: hours, include: selected } })).data;
 }
 
 export async function listShareLinks() {
