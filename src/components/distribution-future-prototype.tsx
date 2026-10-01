@@ -4,18 +4,21 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ApiRequestError } from "@/lib/api/client";
 import {
+  DEFAULT_SHARE_INCLUDE,
   createReportShare,
   deactivateShareLink,
   formatApiRequestError,
   getCurrentChart,
+  getCurrentReport,
   getSharedContent,
   isAccountSessionExpired,
   listShareLinks,
   readServerJourney,
+  type ShareIncludeKey,
 } from "@/lib/api/service";
-import type { ChartView } from "@/lib/saju";
+import { ELEMENTS, branchGlyph, stemGlyph, type ChartView, type Element } from "@/lib/saju";
 import { EmptyState, LoadingState } from "./page-state";
-import { Banner } from "./ui/layout";
+import { ElementBalance } from "./ui/chart-display";
 
 type ShareLink = Awaited<ReturnType<typeof listShareLinks>>[number];
 
@@ -26,6 +29,15 @@ const EXPIRY_OPTIONS = [
 ] as const;
 
 const TARGET_LABELS: Record<string, string> = { report: "기본 사주 리포트", compatibility: "궁합 결과" };
+
+/** What a share link may carry, in the order the server lists them. Birth fields start off and ask first. */
+export const SHARE_OPTIONS: readonly { key: ShareIncludeKey; title: string; desc: string; sensitive: boolean }[] = [
+  { key: "summary", title: "한 줄 요약", desc: "리포트의 핵심 한 문장", sensitive: false },
+  { key: "day_pillar", title: "일주", desc: "나를 뜻하는 일간과 그 아래 글자", sensitive: false },
+  { key: "five_elements", title: "오행 균형", desc: "목 화 토 금 수의 개수", sensitive: false },
+  { key: "birth_date", title: "출생일", desc: "양력 또는 음력 생년월일", sensitive: true },
+  { key: "birth_time", title: "출생 시간", desc: "태어난 시각, 모르면 모름으로 보여요", sensitive: true },
+];
 
 /** The backend stores naive UTC timestamps; treat a value without an offset as UTC. */
 function parseServerDate(value: string | null | undefined): Date | null {
@@ -66,7 +78,10 @@ export function ShareCreateScreen() {
   const [ready, setReady] = useState(false);
   const [hasReport, setHasReport] = useState(false);
   const [chart, setChart] = useState<ChartView | null>(null);
+  const [summary, setSummary] = useState<string | null>(null);
   const [hours, setHours] = useState<number>(72);
+  const [include, setInclude] = useState<ShareIncludeKey[]>([...DEFAULT_SHARE_INCLUDE]);
+  const [confirming, setConfirming] = useState<ShareIncludeKey | null>(null);
   const [creating, setCreating] = useState(false);
   const [created, setCreated] = useState<ShareLink | null>(null);
   const [createdUrl, setCreatedUrl] = useState<string | null>(null);
@@ -80,8 +95,11 @@ export function ShareCreateScreen() {
     setHasReport(Boolean(journey));
     setReady(true);
     if (!journey) return;
-    // The card preview is optional; a failed chart request only hides it.
+    // The card preview is optional; a failed request only hides that part of it.
     void getCurrentChart().then(setChart).catch(() => setChart(null));
+    void getCurrentReport()
+      .then((report) => setSummary(report?.sections.find((section) => section.section_id === "summary")?.content ?? report?.sections[0]?.content ?? null))
+      .catch(() => setSummary(null));
   }, []);
 
   if (!ready) return <LoadingState title="공유할 리포트를 확인하고 있어요" />;
@@ -89,13 +107,32 @@ export function ShareCreateScreen() {
     return <EmptyState title="공유할 리포트가 아직 없어요" description="출생 정보를 입력하고 명식을 계산하면 기본 사주 리포트가 만들어져요. 그 리포트를 링크로 공유할 수 있어요." action={{ href: "/birth", label: "명식 계산하기" }} />;
   }
 
+  function setIncluded(key: ShareIncludeKey, on: boolean) {
+    setInclude((current) => (on ? [...current.filter((item) => item !== key), key] : current.filter((item) => item !== key)));
+    setError("");
+  }
+
+  function toggle(key: ShareIncludeKey, on: boolean) {
+    const option = SHARE_OPTIONS.find((item) => item.key === key);
+    if (on && option?.sensitive) {
+      setConfirming(key);
+      return;
+    }
+    if (confirming === key) setConfirming(null);
+    setIncluded(key, on);
+  }
+
   async function create() {
+    if (include.length === 0) {
+      setError("링크에 담을 정보를 하나 이상 골라 주세요.");
+      return;
+    }
     setCreating(true);
     setError("");
     setNeedsLogin(false);
     setStatus("");
     try {
-      const link = await createReportShare(hours);
+      const link = await createReportShare(hours, include);
       setCreated(link);
       setCreatedUrl(publicShareUrl(link));
       setStatus("링크를 만들었어요.");
@@ -115,37 +152,70 @@ export function ShareCreateScreen() {
   const day = chart?.pillars.day ?? null;
   const expiryLabel = EXPIRY_OPTIONS.find((option) => option.hours === hours)?.label ?? `${hours}시간`;
   const createdExpiry = parseServerDate(created?.expires_at);
+  const shows = (key: ShareIncludeKey) => include.includes(key);
+  const sensitiveOn = include.some((key) => key === "birth_date" || key === "birth_time");
+  const confirmingOption = SHARE_OPTIONS.find((item) => item.key === confirming) ?? null;
 
   return (
     <main className="sj-page" aria-labelledby="share-title">
       <section className="sj-section">
         <h1 id="share-title" className="sj-h1">기본 사주 리포트를 링크로 보내요</h1>
-        <p className="sj-lead">링크를 받은 사람은 로그인 없이 리포트의 무료 섹션만 볼 수 있어요.</p>
+        <p className="sj-lead">링크를 받은 사람은 로그인 없이, 아래에서 고른 정보만 볼 수 있어요.</p>
       </section>
 
-      {day && (
+      {(day || summary) && (
         <section className="sj-section" aria-labelledby="share-preview-title">
           <h2 id="share-preview-title" className="sj-group-title" style={{ margin: "0 4px" }}>카드 미리보기</h2>
           <div style={{ padding: "24px 28px", borderRadius: 12, background: "var(--sj-sunk)" }}>
-            <figure className="sj-card" style={{ margin: 0, gap: 16, border: 0, boxShadow: "0 1px 3px rgb(24 27 33 / 10%), 0 8px 24px rgb(24 27 33 / 8%)" }} aria-label={`공유 카드 미리보기: ${day.stem.ko}${day.branch.ko} 일주`}>
+            <figure className="sj-card" style={{ margin: 0, gap: 16, border: 0, boxShadow: "0 1px 3px rgb(24 27 33 / 10%), 0 8px 24px rgb(24 27 33 / 8%)" }} aria-label={day && shows("day_pillar") ? `공유 카드 미리보기: ${day.stem.ko}${day.branch.ko} 일주` : "공유 카드 미리보기"}>
               <span className="sj-wordmark" style={{ fontSize: 15 }}>사주리움</span>
               <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-                <div lang="zh-Hant" aria-hidden="true" style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "8px 12px", border: "1px solid var(--sj-line)", borderRadius: 8 }}>
-                  <span className={`sj-hanja sj-el-${day.stem.element}`} style={{ fontSize: 40 }}>{day.stem.hanja}</span>
-                  <span className={`sj-hanja sj-el-${day.branch.element}`} style={{ fontSize: 40 }}>{day.branch.hanja}</span>
-                </div>
+                {day && shows("day_pillar") && (
+                  <div lang="zh-Hant" aria-hidden="true" style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "8px 12px", border: "1px solid var(--sj-line)", borderRadius: 8 }}>
+                    <span className={`sj-hanja sj-el-${day.stem.element}`} style={{ fontSize: 40 }}>{day.stem.hanja}</span>
+                    <span className={`sj-hanja sj-el-${day.branch.element}`} style={{ fontSize: 40 }}>{day.branch.hanja}</span>
+                  </div>
+                )}
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  <span className="sj-meta">{day.stem.ko}{day.branch.ko} 일주</span>
+                  {day && shows("day_pillar") && <span className="sj-meta">{day.stem.ko}{day.branch.ko} 일주</span>}
                   <p className="sj-h2" style={{ margin: 0 }}>기본 사주 리포트</p>
+                  {summary && shows("summary") && <p className="sj-body" style={{ fontSize: 14 }}>{summary}</p>}
                 </div>
               </div>
+              {chart && shows("five_elements") && <ElementBalance counts={chart.fiveElements} />}
               <p className="sj-fine" style={{ paddingTop: 12, borderTop: "1px solid var(--sj-track)" }}>{expiryLabel} 동안 볼 수 있는 링크예요</p>
             </figure>
           </div>
         </section>
       )}
 
-      <Banner tone="accent">공개 화면에는 출생일·출생 시간·출생지가 나가지 않아요. 리포트의 무료 섹션만 보여요.</Banner>
+      <section className="sj-section" style={{ gap: 0 }} aria-labelledby="share-include-title">
+        <h2 id="share-include-title" className="sj-group-title">링크에 담을 정보</h2>
+        <div className="sj-group">
+          {SHARE_OPTIONS.map((option) => (
+            <label key={option.key} className="sj-row-in-group" style={{ cursor: created ? "default" : "pointer" }}>
+              <span className="sj-row-main">
+                <span className="sj-row-title">{option.title}</span>
+                <span className="sj-row-sub">{option.desc}</span>
+              </span>
+              <input className="sj-switch" type="checkbox" role="switch" checked={shows(option.key)} disabled={Boolean(created)} onChange={(event) => toggle(option.key, event.target.checked)} />
+            </label>
+          ))}
+        </div>
+        {confirmingOption ? (
+          <div className="sj-banner sj-banner-accent" role="alert" style={{ flexDirection: "column", marginTop: 12 }}>
+            <p style={{ margin: 0 }}>{confirmingOption.title}은 링크를 받은 누구나 보게 돼요. 링크는 다른 사람에게 다시 전달될 수 있어요. 그래도 담을까요?</p>
+            <div className="sj-actions-row">
+              <button className="sj-button-danger" type="button" onClick={() => { setIncluded(confirmingOption.key, true); setConfirming(null); }}>{confirmingOption.title} 담기</button>
+              <button className="sj-button-secondary" type="button" onClick={() => setConfirming(null)}>담지 않기</button>
+            </div>
+          </div>
+        ) : sensitiveOn ? (
+          <p className="sj-banner sj-banner-accent" role="note" style={{ margin: "12px 0 0" }}>출생 정보를 담았어요. 링크를 받은 누구나 볼 수 있으니 믿는 사람에게만 보내 주세요.</p>
+        ) : (
+          <p className="sj-fine" style={{ margin: "8px 4px 0" }}>출생일과 출생 시간은 링크를 받은 누구나 보게 돼요. 켜면 한 번 더 확인할게요. 출생지는 담을 수 없어요.</p>
+        )}
+      </section>
 
       <fieldset className="sj-field">
         <legend className="sj-group-title" style={{ padding: 0 }}>링크를 열어둘 기간</legend>
@@ -193,7 +263,7 @@ export function ShareCreateScreen() {
 
       <div className="sj-sticky-cta">
         {!created && (
-          <button className="sj-button sj-button-block" type="button" onClick={() => void create()} disabled={creating}>
+          <button className="sj-button sj-button-block" type="button" onClick={() => void create()} disabled={creating || include.length === 0 || confirming !== null}>
             {creating ? "링크를 만들고 있어요" : "링크 만들기"}
           </button>
         )}
@@ -368,13 +438,114 @@ function StartOwnChart() {
   );
 }
 
+type SharedView = {
+  title: string;
+  sections: SharedSection[];
+  expiresAt: Date | null;
+  /** null for links made before the server stored an include list: only `sections` are public. */
+  include: string[] | null;
+  summary: string | null;
+  dayPillar: { gan: string; ji: string } | null;
+  fiveElements: Record<Element, number> | null;
+  birthDate: { calendar: string; leapMonth: boolean; date: string } | null;
+  birthTime: string | null;
+  birthTimeUnknown: boolean;
+};
+
+export function toSharedView(value: Awaited<ReturnType<typeof getSharedContent>>): SharedView {
+  const include = Array.isArray(value.include) ? value.include : null;
+  const day = value.day_pillar && typeof value.day_pillar.gan === "string" && typeof value.day_pillar.ji === "string" ? { gan: value.day_pillar.gan, ji: value.day_pillar.ji } : null;
+  const five = value.five_elements ? Object.fromEntries(ELEMENTS.map((element) => [element, Number(value.five_elements?.[element] ?? 0)])) as Record<Element, number> : null;
+  const rawDate = value.birth_date as { calendar_type?: unknown; is_leap_month?: unknown; date?: unknown } | null | undefined;
+  const birthDate = rawDate && typeof rawDate.date === "string" ? { calendar: String(rawDate.calendar_type ?? "solar"), leapMonth: rawDate.is_leap_month === true, date: rawDate.date } : null;
+  return {
+    title: value.title,
+    sections: toSections(value.sections),
+    expiresAt: parseServerDate(value.expires_at),
+    include,
+    summary: typeof value.summary === "string" && value.summary.trim() ? value.summary : null,
+    dayPillar: day,
+    fiveElements: five,
+    birthDate,
+    birthTime: typeof value.birth_time === "string" ? value.birth_time : null,
+    birthTimeUnknown: value.birth_time_unknown === true,
+  };
+}
+
+function sharedDateLabel(value: NonNullable<SharedView["birthDate"]>) {
+  const [year, month, day] = value.date.split("-").map(Number);
+  const calendar = value.calendar === "lunar" ? (value.leapMonth ? "음력 윤달" : "음력") : "양력";
+  return `${calendar} ${year}년 ${month}월 ${day}일`;
+}
+
+function sharedTimeLabel(value: string) {
+  const [hour, minute] = value.split(":").map(Number);
+  const base = `${hour < 12 ? "오전" : "오후"} ${hour % 12 === 0 ? 12 : hour % 12}시`;
+  return minute ? `${base} ${minute}분` : base;
+}
+
+function SharedBody({ view }: { view: SharedView }) {
+  if (!view.include) {
+    return view.sections.length > 0 ? (
+      <section aria-label="공유된 내용" style={{ display: "flex", flexDirection: "column" }}>
+        {view.sections.map((section, index) => (
+          <div key={index} style={{ display: "flex", flexDirection: "column", gap: 4, padding: "16px 0", borderBottom: "1px solid var(--sj-line)", borderTop: index === 0 ? "1px solid var(--sj-line)" : undefined }}>
+            {section.title && <h2 className="sj-h3">{section.title}</h2>}
+            <p className="sj-body">{section.body}</p>
+          </div>
+        ))}
+      </section>
+    ) : null;
+  }
+  const stem = view.dayPillar ? stemGlyph(view.dayPillar.gan) : null;
+  const branch = view.dayPillar ? branchGlyph(view.dayPillar.ji) : null;
+  const birthShown = Boolean(view.birthDate) || Boolean(view.birthTime) || view.birthTimeUnknown;
+  return (
+    <>
+      {view.summary && (
+        <section className="sj-section" aria-labelledby="shared-summary-title" style={{ gap: 4 }}>
+          <h2 id="shared-summary-title" className="sj-h3">한 줄 요약</h2>
+          <p className="sj-body">{view.summary}</p>
+        </section>
+      )}
+      {view.dayPillar && (
+        <section className="sj-section" aria-labelledby="shared-day-title" style={{ gap: 8 }}>
+          <h2 id="shared-day-title" className="sj-h3">일주</h2>
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            {stem && branch && (
+              <span lang="zh-Hant" aria-hidden="true" style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "8px 12px", border: "1px solid var(--sj-line)", borderRadius: 8, fontSize: 36 }}>
+                <span className={`sj-hanja sj-el-${stem.element}`}>{stem.hanja}</span>
+                <span className={`sj-hanja sj-el-${branch.element}`}>{branch.hanja}</span>
+              </span>
+            )}
+            <p className="sj-body">{view.dayPillar.gan}{view.dayPillar.ji} 일주{stem ? `, 일간 ${stem.ko}${stem.element}` : ""}</p>
+          </div>
+        </section>
+      )}
+      {view.fiveElements && (
+        <section className="sj-section" aria-labelledby="shared-elements-title" style={{ gap: 8 }}>
+          <h2 id="shared-elements-title" className="sj-h3">오행 균형</h2>
+          <ElementBalance counts={view.fiveElements} />
+        </section>
+      )}
+      {birthShown && (
+        <section className="sj-section" aria-labelledby="shared-birth-title" style={{ gap: 4 }}>
+          <h2 id="shared-birth-title" className="sj-h3">출생 정보</h2>
+          {view.birthDate && <p className="sj-body">{sharedDateLabel(view.birthDate)}</p>}
+          {view.birthTime ? <p className="sj-body">{sharedTimeLabel(view.birthTime)}</p> : view.birthTimeUnknown ? <p className="sj-body">태어난 시간 모름</p> : null}
+        </section>
+      )}
+    </>
+  );
+}
+
 export function LiveSharedResultScreen({ token }: { token: string }) {
-  const [content, setContent] = useState<{ title: string; sections: SharedSection[]; expiresAt: Date | null } | null>(null);
+  const [content, setContent] = useState<SharedView | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
     void getSharedContent(token)
-      .then((value) => setContent({ title: value.title, sections: toSections(value.sections), expiresAt: parseServerDate(value.expires_at) }))
+      .then((value) => setContent(toSharedView(value)))
       .catch((reason) => {
         setError(reason instanceof ApiRequestError && reason.status === 404
           ? "링크 기간이 지났거나 공유한 사람이 링크를 닫았어요. 공유한 사람에게 새 링크를 부탁해 주세요."
@@ -406,27 +577,19 @@ export function LiveSharedResultScreen({ token }: { token: string }) {
     );
   }
 
+  const birthShown = Boolean(content.birthDate) || Boolean(content.birthTime) || content.birthTimeUnknown;
   return (
     <div className="sj-public">
       <PublicHeader expires={content.expiresAt} />
       <main className="sj-page" aria-labelledby="shared-title" style={{ flex: "1 1 auto", paddingTop: 28 }}>
         <section className="sj-section" style={{ gap: 10 }}>
           <h1 id="shared-title" className="sj-h1">{content.title}</h1>
-          <p className="sj-lead">사주리움에서 만든 결과 중 공개된 요약만 담긴 화면이에요.</p>
+          <p className="sj-lead">사주리움에서 만든 결과 중 공유한 사람이 고른 내용만 담긴 화면이에요.</p>
         </section>
 
-        {content.sections.length > 0 && (
-          <section aria-label="공유된 내용" style={{ display: "flex", flexDirection: "column" }}>
-            {content.sections.map((section, index) => (
-              <div key={index} style={{ display: "flex", flexDirection: "column", gap: 4, padding: "16px 0", borderBottom: "1px solid var(--sj-line)", borderTop: index === 0 ? "1px solid var(--sj-line)" : undefined }}>
-                {section.title && <h2 className="sj-h3">{section.title}</h2>}
-                <p className="sj-body">{section.body}</p>
-              </div>
-            ))}
-          </section>
-        )}
+        <SharedBody view={content} />
 
-        <p className="sj-fine">출생 정보와 계산 근거는 공유되지 않아요. 사주 해석은 참고용이며 중요한 결정을 대신하지 않아요.</p>
+        <p className="sj-fine">{birthShown ? "출생지와 계산 근거는 공유되지 않아요." : "출생 정보와 계산 근거는 공유되지 않아요."} 사주 해석은 참고용이며 중요한 결정을 대신하지 않아요.</p>
 
         <div style={{ marginTop: "auto" }}><StartOwnChart /></div>
       </main>
