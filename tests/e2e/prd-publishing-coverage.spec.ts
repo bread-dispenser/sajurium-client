@@ -28,7 +28,6 @@ const explicitlyUnavailable = new Set([
   "/admin/operations",
   "/billing",
   "/platform-labs",
-  "/profile",
 ]);
 
 test("maps every PRD feature requirement to an implemented or explicit unavailable surface", async ({ page }) => {

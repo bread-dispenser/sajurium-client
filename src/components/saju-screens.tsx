@@ -146,10 +146,10 @@ export function LandingScreen({ initialCalculationFailure }: { initialCalculatio
 
 /* ---------- Birth (/birth) ---------- */
 
-type Sijin = { name: string; range: string; hour: number };
+export type Sijin = { name: string; range: string; hour: number };
 
 // 백엔드 규칙: 시지 = ((hour + 1) // 2) % 12. 각 시진의 첫 시각을 보낸다(자시는 23시).
-const SIJIN: readonly Sijin[] = [
+export const SIJIN: readonly Sijin[] = [
   { name: "자시", range: "23–01", hour: 23 },
   { name: "축시", range: "01–03", hour: 1 },
   { name: "인시", range: "03–05", hour: 3 },
@@ -164,7 +164,7 @@ const SIJIN: readonly Sijin[] = [
   { name: "해시", range: "21–23", hour: 21 },
 ];
 
-function sijinSpan(sijin: Sijin) {
+export function sijinSpan(sijin: Sijin) {
   const start = hourLabel(sijin.hour);
   const endHour = (sijin.hour + 2) % 24;
   const end = hourLabel(endHour);

@@ -206,7 +206,13 @@ test("stores a second person on the server and creates a compatibility result", 
   await expect(page.getByText("민준")).toBeVisible();
   await page.goto("/compatibility");
   await page.getByRole("button", { name: "궁합 보기" }).click();
+  await expect(page).toHaveURL(/\/compatibility\/result\/\d+$/, { timeout: 15_000 });
   await expect(page.getByRole("heading", { name: "관계 요약" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "서연님과 민준님" })).toBeVisible();
+  // 결과는 서버에 저장돼 있어서, 새로 열어도 같은 결과를 서버에서 다시 읽는다.
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "관계 요약" })).toBeVisible();
+  await expect(page.getByText("연인 관계로 봤어요")).toBeVisible();
 });
 
 test("renders today flow from the persisted server profile", async ({ page }) => {
