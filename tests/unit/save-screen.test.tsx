@@ -2,6 +2,8 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 import { SaveScreen } from "@/components/saju-screens";
+import { INITIAL_BIRTH } from "@/lib/fixtures";
+import type { BirthInfo } from "@/lib/domain";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
@@ -13,9 +15,21 @@ vi.mock("next/link", () => ({
 
 const AUTH_KEY = "sajurium.sasaju-auth.v1";
 const JOURNEY_KEY = "sajurium.server-journey.v1";
+const DRAFT_KEY = "sajurium-birth-draft";
+const REPORT_KEY = "sajurium-saju-report";
+const REAL_BIRTH: BirthInfo = { ...INITIAL_BIRTH, displayName: "지민", birthDate: "1995-03-04", birthTime: "09:10", birthplace: "부산" };
 const OLD_SENTENCE = "입력 정보는 이 기기 안에만 저장돼요";
 
-function serverReading(kind: "anonymous" | "account" = "anonymous") {
+function writeDraft(birth: BirthInfo = REAL_BIRTH) {
+  window.sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ version: 1, birth }));
+}
+
+function storedReport() {
+  return JSON.parse(window.localStorage.getItem(REPORT_KEY) ?? "null");
+}
+
+function serverReading(kind: "anonymous" | "account" = "anonymous", { draft = true } = {}) {
+  if (draft) writeDraft();
   window.localStorage.setItem(JOURNEY_KEY, JSON.stringify({ profileId: "11", chartId: "22", reportId: "33" }));
   window.localStorage.setItem(AUTH_KEY, JSON.stringify(kind === "account" ? { kind: "account", accessToken: "jwt", anonymousToken: null } : { kind: "anonymous", accessToken: "jwt", anonymousToken: "anon" }));
 }
@@ -97,6 +111,7 @@ describe("save screen storage copy", () => {
   });
 
   it("says the copy stays on this browser when no server reading exists", () => {
+    writeDraft();
     render(<SaveScreen topicId="career" feedback="helpful" />);
 
     const card = storageCard();
@@ -104,5 +119,78 @@ describe("save screen storage copy", () => {
     expect(within(card).getByText(/아직 서버에서 계산한 결과가 없어요/)).toBeInTheDocument();
     expect(within(card).getByText(/서버로는 보내지 않아요/)).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/서버 기록/);
+  });
+});
+
+describe("save screen without a real birth record", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+  });
+  afterEach(cleanup);
+
+  it("never stores the example birth when a server session has no draft on this device", () => {
+    serverReading("anonymous", { draft: false });
+    render(<SaveScreen topicId="career" feedback="helpful" />);
+
+    expect(screen.queryByRole("button", { name: "이 기기에 결과 저장" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "결과는 서버에 저장돼 있어요" })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("이미 서버에 저장돼 있어요");
+    const card = storageCard();
+    expect(within(card).getByRole("heading", { name: "사주리움 서버" })).toBeInTheDocument();
+    expect(within(card).getByText(/사본으로 남길 출생 정보가 없어요/)).toBeInTheDocument();
+    expect(within(card).queryByText(/저장하면 출생 정보와/)).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "결과 계속 보기" })).toHaveAttribute("href", "/report");
+    expect(document.body.textContent).not.toContain(INITIAL_BIRTH.displayName);
+    expect(window.localStorage.getItem(REPORT_KEY)).toBeNull();
+    expectNoClearingDeletesServer();
+  });
+
+  it("offers no device copy for a signed-in account without a draft either", () => {
+    serverReading("account", { draft: false });
+    render(<SaveScreen topicId="career" feedback="helpful" />);
+
+    expect(screen.queryByRole("button", { name: "이 기기에 결과 저장" })).not.toBeInTheDocument();
+    expect(within(storageCard()).getByText(/로그인한 계정에 저장돼 있어요/)).toBeInTheDocument();
+    expect(window.localStorage.getItem(REPORT_KEY)).toBeNull();
+  });
+
+  it("guides to the birth form and writes nothing without a session or a device record", () => {
+    render(<SaveScreen topicId="career" feedback="helpful" />);
+
+    expect(screen.getByRole("heading", { level: 1, name: "저장할 결과가 아직 없어요" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "출생 정보 입력하기" })).toHaveAttribute("href", "/birth");
+    expect(screen.queryByRole("button", { name: "이 기기에 결과 저장" })).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toContain(INITIAL_BIRTH.displayName);
+    expect(window.localStorage.length).toBe(0);
+    expect(window.sessionStorage.length).toBe(0);
+  });
+
+  it("still saves the real draft with a server session", () => {
+    serverReading();
+    render(<SaveScreen topicId="career" feedback="helpful" />);
+    fireEvent.click(screen.getByRole("button", { name: "이 기기에 결과 저장" }));
+
+    expect(screen.getByRole("heading", { name: "이 기기에 저장했어요" })).toBeInTheDocument();
+    expect(storedReport()).toMatchObject({ birth: REAL_BIRTH, topic: "career", feedback: "helpful" });
+    expect(window.sessionStorage.getItem(DRAFT_KEY)).toBeNull();
+  });
+
+  it("still saves the real draft on a device-only reading", () => {
+    writeDraft();
+    render(<SaveScreen topicId="career" feedback="helpful" />);
+    fireEvent.click(screen.getByRole("button", { name: "이 기기에 결과 저장" }));
+
+    expect(screen.getByRole("heading", { name: "이 기기에 저장했어요" })).toBeInTheDocument();
+    expect(storedReport()).toMatchObject({ birth: REAL_BIRTH, topic: "career", feedback: "helpful" });
+  });
+
+  it("keeps showing a copy saved earlier after the draft is gone", () => {
+    serverReading("anonymous", { draft: false });
+    window.localStorage.setItem(REPORT_KEY, JSON.stringify({ version: 1, savedAt: "2026-09-01T00:00:00.000Z", birth: REAL_BIRTH, topic: "career", feedback: "helpful" }));
+    render(<SaveScreen topicId="career" feedback="helpful" />);
+
+    expect(screen.getByRole("heading", { name: "이 기기에 저장했어요" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "이 기기에 결과 저장" })).not.toBeInTheDocument();
   });
 });
