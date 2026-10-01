@@ -815,6 +815,36 @@ html:has(.sj-topbar) { scroll-padding-top: 80px; }
 .sj-badge-accent { background: var(--sj-accent-soft); color: var(--sj-accent); }
 .sj-badge-dark { background: var(--sj-ink); color: #ffffff; }
 
+/* Unread count on the header bell; the link carries the count in its accessible name. */
+.sj-icon-button-with-count { position: relative; }
+.sj-count-badge {
+  position: absolute;
+  top: 6px;
+  right: 4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 99px;
+  background: var(--sj-accent);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* Unread marker in front of an inbox row. */
+.sj-unread-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  margin-top: 8px;
+  border-radius: 4px;
+  background: var(--sj-accent);
+}
+.sj-unread-dot-off { background: transparent; }
+
 .sj-banner {
   display: flex;
   align-items: flex-start;

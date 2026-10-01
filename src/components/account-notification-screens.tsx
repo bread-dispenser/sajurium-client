@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { formatApiRequestError, getNotificationPreferences, getSessionKind, listNotifications, loginAccount, loginSocialAccount, logoutAccount, registerAccount, requestAccountDeletion, type AnonymousMigrationStatus, type ServerNotification, type SocialProvider, updateNotificationPreferences } from "@/lib/api/service";
+import { announceUnreadCount, formatApiRequestError, getNotificationPreferences, getSessionKind, listNotifications, markAllNotificationsRead, markNotificationRead, loginAccount, loginSocialAccount, logoutAccount, registerAccount, requestAccountDeletion, type AnonymousMigrationStatus, type ServerNotification, type SocialProvider, updateNotificationPreferences } from "@/lib/api/service";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { pushEnabled } from "@/lib/feature-availability";
 import { SocialLoginOptions } from "./social-login-options";
@@ -141,9 +141,50 @@ export function NotificationPreferencesGroup() {
 
 /* ---------- Notification inbox ---------- */
 
+function internalHref(link: string | null | undefined) {
+  return link?.startsWith("/") && !link.startsWith("//") ? link : null;
+}
+
+function NotificationRow({ notification, first, onOpen }: { notification: ServerNotification; first: boolean; onOpen: (notification: ServerNotification) => void }) {
+  const read = Boolean(notification.read_at);
+  const href = internalHref(notification.deep_link);
+  const titleId = `notification-${notification.id}-title`;
+  const content = (
+    <>
+      <span className={read ? "sj-unread-dot sj-unread-dot-off" : "sj-unread-dot"} aria-hidden="true" />
+      <span className="sj-row-main">
+        <span className="sj-fine">{notificationTopicLabel(notification.topic)}, {formatNotificationDate(notification.created_at)}</span>
+        <span id={titleId} className="sj-row-title" style={read ? { color: "var(--sj-ink-strong-muted)" } : { fontWeight: 700 }}>{notification.title}</span>
+        {notification.body && <span className="sj-row-sub" style={{ color: "var(--sj-ink-strong-muted)" }}>{notification.body}</span>}
+        {!read && <span className="sj-visually-hidden">, 읽지 않음</span>}
+      </span>
+      {!read && <span className="sj-badge sj-badge-accent" aria-hidden="true">읽지 않음</span>}
+    </>
+  );
+  const rowStyle = { alignItems: "flex-start", padding: "14px 16px", borderTop: first ? 0 : undefined } as const;
+  if (href) {
+    return (
+      <li>
+        <Link className="sj-row-in-group" href={href} style={rowStyle} onClick={() => { if (!read) onOpen(notification); }}>{content}</Link>
+      </li>
+    );
+  }
+  if (!read) {
+    return (
+      <li>
+        <button className="sj-row-in-group" type="button" style={rowStyle} onClick={() => onOpen(notification)}>{content}</button>
+      </li>
+    );
+  }
+  return <li className="sj-row-in-group" style={{ ...rowStyle, cursor: "default" }}>{content}</li>;
+}
+
 export function LiveNotificationScreen() {
   const [notifications, setNotifications] = useState<ServerNotification[] | null>(null);
   const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [status, setStatus] = useState("");
+  const [markingAll, setMarkingAll] = useState(false);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let active = true;
@@ -160,10 +201,58 @@ export function LiveNotificationScreen() {
       </main>
     );
   }
+
+  const items = notifications ?? [];
+  const unread = items.filter((item) => !item.read_at);
+  const read = items.filter((item) => item.read_at);
+
+  function applyRead(updated: ServerNotification) {
+    setNotifications((current) => {
+      const next = current?.map((item) => (item.id === updated.id ? { ...item, read_at: updated.read_at ?? new Date().toISOString() } : item)) ?? null;
+      if (next) announceUnreadCount(next.filter((item) => !item.read_at).length);
+      return next;
+    });
+  }
+
+  function open(notification: ServerNotification) {
+    setActionError("");
+    setStatus("");
+    void markNotificationRead(notification.id)
+      .then((updated) => {
+        applyRead(updated);
+        if (!internalHref(notification.deep_link)) setStatus(`'${notification.title}' 알림을 읽음으로 표시했어요.`);
+      })
+      .catch((reason) => setActionError(formatApiRequestError(reason, "읽음으로 표시하지 못했어요. 잠시 후 다시 시도해 주세요.")));
+  }
+
+  async function markAll() {
+    setMarkingAll(true);
+    setActionError("");
+    setStatus("");
+    try {
+      const result = await markAllNotificationsRead();
+      const now = new Date().toISOString();
+      setNotifications((current) => current?.map((item) => (item.read_at ? item : { ...item, read_at: now })) ?? null);
+      announceUnreadCount(result.unreadCount);
+      setStatus("알림을 모두 읽음으로 표시했어요.");
+    } catch (reason) {
+      setActionError(formatApiRequestError(reason, "모두 읽음으로 표시하지 못했어요. 잠시 후 다시 시도해 주세요."));
+    } finally {
+      setMarkingAll(false);
+    }
+  }
+
   return (
     <main className="sj-page" aria-labelledby="notification-title">
-      <h1 id="notification-title" className="sj-visually-hidden">받은 알림</h1>
+      <div className="sj-section-head" style={{ alignItems: "center" }}>
+        <h1 id="notification-title" className="sj-h2">받은 알림</h1>
+        {!error && unread.length > 0 && (
+          <button className="sj-text-button" type="button" onClick={() => void markAll()} disabled={markingAll}>{markingAll ? "표시하고 있어요" : "모두 읽음"}</button>
+        )}
+      </div>
       {!pushEnabled && <Banner>휴대폰 푸시는 준비 중이고, 알림은 여기서 모두 볼 수 있어요.</Banner>}
+      {actionError && <p className="sj-error" role="alert">{actionError}</p>}
+      <p className="sj-meta" role="status">{status}</p>
 
       {error ? (
         <div className="sj-section">
@@ -171,23 +260,24 @@ export function LiveNotificationScreen() {
           <button className="sj-button-secondary" type="button" onClick={() => { setNotifications(null); setError(""); setAttempt((value) => value + 1); }}>알림 다시 불러오기</button>
         </div>
       ) : (
-        <section className="sj-section" style={{ gap: 0 }} aria-labelledby="notification-list-heading">
-          <h2 id="notification-list-heading" className="sj-group-title">받은 알림 {notifications?.length ?? 0}개</h2>
-          <ul className="sj-group" style={{ margin: 0, padding: 0, listStyle: "none" }}>
-            {(notifications ?? []).map((notification, index) => {
-              const href = notification.deep_link?.startsWith("/") && !notification.deep_link.startsWith("//") ? notification.deep_link : null;
-              const read = Boolean(notification.read_at);
-              return (
-                <li key={notification.id} className="sj-section" style={{ gap: 2, padding: "14px 16px", borderTop: index ? "1px solid var(--sj-track)" : undefined }}>
-                  <span className="sj-fine">{notificationTopicLabel(notification.topic)}, {formatNotificationDate(notification.created_at)}{read ? ", 읽음" : ""}</span>
-                  <h3 className="sj-h3" style={read ? { fontWeight: 500, color: "var(--sj-ink-strong-muted)" } : undefined}>{notification.title}</h3>
-                  {notification.body && <p className="sj-meta" style={{ color: "var(--sj-ink-strong-muted)" }}>{notification.body}</p>}
-                  {href && <Link className="sj-text-button" href={href} style={{ alignSelf: "flex-start" }}>내용 보기</Link>}
-                </li>
-              );
-            })}
-          </ul>
-        </section>
+        <>
+          {unread.length > 0 && (
+            <section className="sj-section" style={{ gap: 0 }} aria-labelledby="notification-unread-heading">
+              <h2 id="notification-unread-heading" className="sj-group-title">읽지 않음 {unread.length}개</h2>
+              <ul className="sj-group" style={{ margin: 0, padding: 0, listStyle: "none" }}>
+                {unread.map((notification, index) => <NotificationRow key={notification.id} notification={notification} first={index === 0} onOpen={open} />)}
+              </ul>
+            </section>
+          )}
+          {read.length > 0 && (
+            <section className="sj-section" style={{ gap: 0 }} aria-labelledby="notification-read-heading">
+              <h2 id="notification-read-heading" className="sj-group-title">읽음</h2>
+              <ul className="sj-group" style={{ margin: 0, padding: 0, listStyle: "none" }}>
+                {read.map((notification, index) => <NotificationRow key={notification.id} notification={notification} first={index === 0} onOpen={open} />)}
+              </ul>
+            </section>
+          )}
+        </>
       )}
 
       <section className="sj-section" style={{ gap: 0 }} aria-label="알림 설정">
