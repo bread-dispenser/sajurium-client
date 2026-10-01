@@ -38,6 +38,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/social/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Social Providers
+         * @description 현재 로그인에 쓸 수 있는 소셜 제공자 목록. 인증 없이 공개한다.
+         */
+        get: operations["social_providers_api_v1_auth_social_providers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/social": {
         parameters: {
             query?: never;
@@ -51,8 +71,9 @@ export interface paths {
          * Social Login
          * @description 소셜 토큰 검증 후 로그인/회원가입.
          *
-         *     실제 운영에서는 제공자별 토큰 검증 어댑터(공개키 검증·토큰 인트로스펙션)로 교체한다.
-         *     토큰 원문은 저장하지 않는다(§7).
+         *     제공자 JWKS로 서명·issuer·audience·만료를 확인한다. 토큰 원문은 저장하지 않는다(§7).
+         *     오류 구분: 비활성 제공자 503 SOCIAL_PROVIDER_DISABLED, 제공자 장애 503
+         *     SOCIAL_PROVIDER_UNAVAILABLE, 잘못된 토큰 401 INVALID_SOCIAL_TOKEN, 시도 한도 429.
          */
         post: operations["social_login_api_v1_auth_social_post"];
         delete?: never;
@@ -294,6 +315,49 @@ export interface paths {
          * @description 기본(무료) 리포트 생성. 동일 스냅샷·버전 중복 생성 방지 (§3.4).
          */
         post: operations["create_basic_report_api_v1_charts__chart_id__reports_basic_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/charts/{chart_id}/reports/topics/{topic}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Topic Report
+         * @description 주제별 리포트 생성 (#37).
+         *
+         *     무료 미리보기(강점·주의할 점·지금의 흐름)는 바로 열리고, 유료 섹션은 구매 전까지 제목만 내려간다.
+         *     지금의 흐름은 올해 기준 대운이라 기준 연도(period_key)가 dedupe 키에 들어간다.
+         */
+        post: operations["create_topic_report_api_v1_charts__chart_id__reports_topics__topic__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/charts/{chart_id}/reports/decade": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Decade Report
+         * @description 대운(10년) 리포트 생성 (#37). 구간 목록·현재 구간 해설은 무료, 구간별 심층 해설은 유료.
+         */
+        post: operations["create_decade_report_api_v1_charts__chart_id__reports_decade_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -567,8 +631,39 @@ export interface paths {
         /**
          * Create Refund
          * @description 부분·전체 환불과 지급 회수 (§3.7).
+         *
+         *     회수 정책은 app.services.fulfillment 모듈 설명에 있다. 요약:
+         *     - 전액(누적 환불액 = 결제액): 주문 REFUNDED, 이용권은 남은 지급분 전부 회수,
+         *       리포트·궁합은 구매 권한 회수(같은 대상을 산 다른 유효 주문이 있으면 유지).
+         *     - 부분: 이용권은 누적 환불 비율만큼 내림 회수, 리포트·궁합은 권한 유지.
+         *       지급 전(PAID) 주문은 부분 환불 불가.
+         *     - 사용한 이용권에 해당하는 금액은 환불하지 않는다(409 CREDITS_ALREADY_USED).
+         *
+         *     처리 순서: 환불 행(REQUESTED) 기록 → 제공자 환불 → APPROVED → 회수·정산(COMPLETED).
+         *     정산이 실패하면 APPROVED로 응답하고, 같은 idempotency_key 재요청이나 fulfillment_worker가
+         *     마무리한다(제공자 환불은 다시 보내지 않는다).
          */
         post: operations["create_refund_api_v1_orders__order_id__refunds_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/refunds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read My Refunds
+         * @description 내 환불 요청 목록 (최신순): 상태·금액·주문 번호. 결제가 꺼져 있어도 조회된다 (#39).
+         */
+        get: operations["read_my_refunds_api_v1_refunds_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1256,6 +1351,41 @@ export interface components {
              */
             created_at: string;
         };
+        /** DaeunPeriodView */
+        DaeunPeriodView: {
+            /** Sequence */
+            sequence?: number | null;
+            /** Ganji */
+            ganji: string;
+            /** Start Age */
+            start_age: number;
+            /** End Age */
+            end_age: number;
+            /** Start Year */
+            start_year?: number | null;
+            /** End Year */
+            end_year?: number | null;
+            /** Stem Ten God */
+            stem_ten_god: string;
+            /** Branch Ten God */
+            branch_ten_god: string;
+            /**
+             * Is Current
+             * @default false
+             */
+            is_current: boolean;
+            /** Evidence */
+            evidence?: string[];
+        };
+        /** ExcludedSection */
+        ExcludedSection: {
+            /** Key */
+            key: string;
+            /** Title */
+            title: string;
+            /** Reason */
+            reason: string;
+        };
         /** Feedback */
         Feedback: {
             /** Id */
@@ -1448,6 +1578,20 @@ export interface components {
             fulfillment_status?: string | null;
             /** Idempotency Key */
             idempotency_key?: string | null;
+            /** Profile Id */
+            profile_id?: number | null;
+            /** Profile Display Name */
+            profile_display_name?: string | null;
+            /** Partner Profile Id */
+            partner_profile_id?: number | null;
+            /** Partner Profile Display Name */
+            partner_profile_display_name?: string | null;
+            /** Relation Type */
+            relation_type?: string | null;
+            /** Fulfilled Report Id */
+            fulfilled_report_id?: number | null;
+            /** Fulfilled Compatibility Id */
+            fulfilled_compatibility_id?: number | null;
             /**
              * Created At
              * Format: date-time
@@ -1460,12 +1604,23 @@ export interface components {
             /** Completed At */
             completed_at?: string | null;
         };
-        /** OrderCreate */
+        /**
+         * OrderCreate
+         * @description 리포트 상품은 profile_id, 궁합 상품은 profile_id + partner_profile_id가 필요하다 (#39).
+         *
+         *     이용권 상품은 프로필을 받지 않는다(보내도 저장하지 않는다).
+         */
         OrderCreate: {
             /** Product Code */
             product_code: string;
             /** Idempotency Key */
             idempotency_key?: string | null;
+            /** Profile Id */
+            profile_id?: number | null;
+            /** Partner Profile Id */
+            partner_profile_id?: number | null;
+            /** Relation Type */
+            relation_type?: string | null;
         };
         /** PaymentConfirmRequest */
         PaymentConfirmRequest: {
@@ -1581,6 +1736,39 @@ export interface components {
             amount?: number | null;
             /** Reason */
             reason?: string | null;
+            /** Idempotency Key */
+            idempotency_key?: string | null;
+        };
+        /**
+         * RefundListItem
+         * @description GET /refunds: 내 환불 요청 목록 (주문 번호·상품명 포함).
+         */
+        RefundListItem: {
+            /** Id */
+            id: number;
+            /** Order Id */
+            order_id: number;
+            /** Amount */
+            amount: number;
+            /** Reason */
+            reason?: string | null;
+            /** Status */
+            status: string;
+            /** Fulfillment Revoked */
+            fulfillment_revoked: string;
+            /** Operator Note */
+            operator_note?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Updated At */
+            updated_at?: string | null;
+            /** Order Number */
+            order_number?: string | null;
+            /** Product Name */
+            product_name?: string | null;
         };
         /** Report */
         Report: {
@@ -1598,10 +1786,7 @@ export interface components {
             title: string;
             /** Content */
             content: string;
-            /** Content Json */
-            content_json?: {
-                [key: string]: unknown;
-            } | null;
+            content_json?: components["schemas"]["ReportContent"] | null;
             /** Summary */
             summary?: string | null;
             /** Generation Status */
@@ -1633,6 +1818,32 @@ export interface components {
             /** Generated At */
             generated_at?: string | null;
         };
+        /**
+         * ReportContent
+         * @description content_json 구조. 유형마다 쓰는 필드만 채워진다(topic: 주제별, periods: decade).
+         */
+        ReportContent: {
+            /** Sections */
+            sections?: components["schemas"]["ReportSection"][];
+            /**
+             * Excluded Due To Unknown Time
+             * @default false
+             */
+            excluded_due_to_unknown_time: boolean;
+            /** Excluded Sections */
+            excluded_sections?: components["schemas"]["ExcludedSection"][];
+            /** Template Version */
+            template_version?: string | null;
+            /** Topic */
+            topic?: string | null;
+            /** Reference Year */
+            reference_year?: number | null;
+            current_period?: components["schemas"]["DaeunPeriodView"] | null;
+            /** Periods */
+            periods?: components["schemas"]["DaeunPeriodView"][] | null;
+        } & {
+            [key: string]: unknown;
+        };
         /** ReportRetryResponse */
         ReportRetryResponse: {
             /** Report Id */
@@ -1641,6 +1852,37 @@ export interface components {
             job_id: string;
             /** Status */
             status: string;
+        };
+        /**
+         * ReportSection
+         * @description 리포트 섹션. 유료 섹션은 구매 전 `locked=true`, `body=null`, `evidence=[]`로 제목만 내려간다.
+         */
+        ReportSection: {
+            /** Key */
+            key: string;
+            /** Title */
+            title: string;
+            /** Body */
+            body?: string | null;
+            /** Is Free */
+            is_free: boolean;
+            /**
+             * Locked
+             * @default false
+             */
+            locked: boolean;
+            /**
+             * Evidence
+             * @description 근거가 된 명식 요소 (예: '월간 상관', '임인 대운')
+             */
+            evidence?: string[];
+            /**
+             * Requires Birth Time
+             * @default false
+             */
+            requires_birth_time: boolean;
+        } & {
+            [key: string]: unknown;
         };
         /**
          * SajuProfile
@@ -1926,7 +2168,7 @@ export interface components {
             /** Expires In Hours */
             expires_in_hours?: number | null;
             /** Include */
-            include?: ("summary" | "day_pillar" | "five_elements" | "birth_date" | "birth_time")[] | null;
+            include?: ("summary" | "day_pillar" | "five_elements" | "birth_date" | "birth_time" | "dimensions")[] | null;
         };
         /**
          * SharedContent
@@ -1942,8 +2184,18 @@ export interface components {
             sections: unknown[];
             /** Include */
             include?: string[] | null;
+            /** People */
+            people?: {
+                [key: string]: string;
+            }[] | null;
+            /** Relation Type */
+            relation_type?: string | null;
             /** Summary */
             summary?: string | null;
+            /** Dimensions */
+            dimensions?: {
+                [key: string]: string;
+            }[] | null;
             /** Day Pillar */
             day_pillar?: {
                 [key: string]: string;
@@ -1971,6 +2223,23 @@ export interface components {
             provider: string;
             /** Id Token */
             id_token: string;
+        };
+        /** SocialProviderStatus */
+        SocialProviderStatus: {
+            /** Provider */
+            provider: string;
+            /** Enabled */
+            enabled: boolean;
+        };
+        /**
+         * SocialProvidersResponse
+         * @description 클라이언트가 소셜 로그인 버튼을 서버 기준으로 그리기 위한 공개 목록.
+         */
+        SocialProvidersResponse: {
+            /** Enabled */
+            enabled: boolean;
+            /** Providers */
+            providers: components["schemas"]["SocialProviderStatus"][];
         };
         /** Token */
         Token: {
@@ -2106,6 +2375,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    social_providers_api_v1_auth_social_providers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SocialProvidersResponse"];
                 };
             };
         };
@@ -2543,6 +2832,69 @@ export interface operations {
         };
     };
     create_basic_report_api_v1_charts__chart_id__reports_basic_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chart_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Report"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_topic_report_api_v1_charts__chart_id__reports_topics__topic__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chart_id: number;
+                topic: "love" | "career" | "wealth" | "family";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Report"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_decade_report_api_v1_charts__chart_id__reports_decade_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -3172,6 +3524,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Refund"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_my_refunds_api_v1_refunds_get: {
+        parameters: {
+            query?: {
+                skip?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RefundListItem"][];
                 };
             };
             /** @description Validation Error */

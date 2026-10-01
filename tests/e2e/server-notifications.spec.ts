@@ -49,21 +49,33 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-test("shows an empty inbox and a bell without a badge for a new session", async ({ page, request }) => {
+test("a new report arrives as a real server notification and can be read", async ({ page, request }) => {
   await createServerReport(page, "알림 확인");
-  const { token } = await session(page);
-  expect((await api(request, token, "/notifications/unread-count")).body).toEqual({ unread_count: 0 });
+  const { token, journey } = await session(page);
+  // 백엔드가 리포트 생성 이벤트로 직접 만든 알림이다(시드 아님). 같은 리포트를 다시 열어도 한 건이다.
+  expect((await api(request, token, "/notifications/unread-count")).body).toEqual({ unread_count: 1 });
+  const [created] = (await api(request, token, "/notifications")).body as Array<{ topic: string; deep_link: string }>;
+  expect(created.topic).toBe("report_ready");
+  expect(created.deep_link).toBe(`/report?reportId=${journey.reportId}`);
+
   await page.goto("/home");
-  await expect(page.getByRole("link", { name: "알림", exact: true }).first()).toBeVisible();
-  await expect(page.getByRole("link", { name: /읽지 않은 알림/ })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "알림, 읽지 않은 알림 1개" }).first()).toBeVisible();
   await page.goto("/notifications");
-  await expect(page.getByRole("heading", { name: "아직 받은 알림이 없어요" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "읽지 않음 1개" })).toBeVisible();
+  await page.getByRole("button", { name: "모두 읽음" }).click();
+  await expect(page.getByRole("status")).toContainText("알림을 모두 읽음으로 표시했어요");
+  await expect(page.getByRole("link", { name: /읽지 않은 알림/ })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "읽음" }).getByRole("link", { name: /리포트가 준비됐어요/ }))
+    .toHaveAttribute("href", `/report?reportId=${journey.reportId}`);
+  expect((await api(request, token, "/notifications/unread-count")).body).toEqual({ unread_count: 0 });
 });
 
 test("marks server notifications read one by one and all at once", async ({ page, request }) => {
   test.skip(!existsSync(BACKEND_DB), "notification rows can only be seeded into the local backend database");
   await createServerReport(page, "알림 확인");
   const { token, userId } = await session(page);
+  // 리포트 생성으로 생긴 실제 알림은 먼저 읽음으로 돌려 두고, 시드한 세 건만 센다.
+  await request.post(`${API}/api/v1/notifications/read-all`, { headers: { Authorization: `Bearer ${token}` }, data: {} });
   seedNotifications(userId, [
     { topic: "daily_flow", title: "오늘의 흐름이 열렸어요", body: "하던 일을 매듭짓기 좋은 날이에요." },
     { topic: "report_ready", title: "기본 사주 리포트가 준비됐어요", deepLink: "/report" },
