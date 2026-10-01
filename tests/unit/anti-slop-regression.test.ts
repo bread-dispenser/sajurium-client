@@ -30,4 +30,18 @@ describe("network-free anti-slop structural regressions", () => {
     expect(consultation).toContain('className="sj-segmented"');
     expect(consultation).not.toContain("consult-topic-list");
   });
+
+  it("restores list markers for markdown answer lists after the global list reset", () => {
+    const rule = (selector: string) => {
+      const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const match = css.match(new RegExp(`(?:^|[}\\s])${escaped}\\s*\\{([^}]*)\\}`));
+      expect(match, selector).not.toBeNull();
+      return match![1];
+    };
+    expect(rule("ul.sj-md-list")).toMatch(/list-style(-type)?:\s*disc/);
+    expect(rule("ol.sj-md-list")).toMatch(/list-style(-type)?:\s*decimal/);
+    expect(rule(".sj-md-list")).not.toMatch(/list-style(-type)?:\s*none/);
+    expect(rule(".sj-md-item")).toMatch(/display:\s*list-item/);
+    expect(rule(".sj-md-item::marker")).toMatch(/color:\s*var\(--sj-muted\)/);
+  });
 });
