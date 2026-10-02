@@ -1,4 +1,4 @@
-import { LiveShareLinksScreen } from "@/components/distribution-future-prototype";
+import { LiveShareLinksScreen } from "@/components/share-screens";
 
 export default function ShareLinksPage() {
   return <LiveShareLinksScreen />;

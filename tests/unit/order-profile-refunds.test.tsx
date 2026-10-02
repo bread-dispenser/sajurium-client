@@ -236,7 +236,7 @@ describe("orders show the reference profile", () => {
       if (path === "/api/v1/products") return json(PRODUCTS);
       return undefined;
     });
-    render(<PaymentStatusScreen orderId="7" productId="compatibility-report" status="success" server />);
+    render(<PaymentStatusScreen orderId="7" />);
 
     const info = await screen.findByRole("region", { name: "주문 정보" });
     expect(info).toHaveTextContent("기준 명식나와 상대");
@@ -291,5 +291,103 @@ describe("refund history from GET /refunds", () => {
     render(<BillingScreen />);
     expect(await screen.findByRole("alert")).toHaveTextContent("환불 내역을 불러오지 못했어요");
     expect(screen.getByRole("list", { name: "주문 목록" })).toBeInTheDocument();
+  });
+});
+
+describe("order detail and refunds", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+    vi.resetModules();
+    window.localStorage.clear();
+    window.localStorage.setItem(AUTH_KEY, JSON.stringify({ kind: "anonymous", accessToken: "jwt", anonymousToken: "anon" }));
+  });
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllEnvs();
+  });
+
+  it("titles the order from the server and lists its refunds", async () => {
+    const calls = mockApi((_method, path) => {
+      if (path === "/api/v1/orders/7") return json(order({ id: 7, status: "COMPLETED", product_code: "credit_pack_5", product_name: "상담 이용권 5회", amount: 9900 }));
+      if (path === "/api/v1/orders/7/refunds") return json([{ id: 4, order_id: 7, amount: 1980, reason: "단순 변심", status: "REQUESTED", fulfillment_revoked: "NONE", created_at: "2026-10-01T09:00:00" }]);
+      return undefined;
+    });
+    render(<PaymentStatusScreen orderId="7" />);
+
+    expect(await screen.findByRole("heading", { name: "이용권이 지급됐어요" })).toBeInTheDocument();
+    const refunds = await screen.findByRole("list", { name: "이 주문의 환불 요청" });
+    expect(refunds).toHaveTextContent("1,980원");
+    expect(refunds).toHaveTextContent("환불 요청됨");
+    // 상품 카탈로그를 다시 부르지 않고 주문의 상품 이름을 쓴다.
+    expect(calls.some((call) => call.path === "/api/v1/products")).toBe(false);
+  });
+
+  it("keeps refund requests closed while payments are paused", async () => {
+    mockApi((_method, path) => {
+      if (path === "/api/v1/orders/7") return json(order({ id: 7, status: "COMPLETED" }));
+      if (path === "/api/v1/orders/7/refunds") return json([]);
+      return undefined;
+    });
+    render(<PaymentStatusScreen orderId="7" />);
+
+    expect(await screen.findByText("이 주문의 환불 요청이 없어요.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "환불 요청" })).not.toBeInTheDocument();
+    expect(screen.getByText("결제 연결이 준비 중이라 지금은 환불을 요청할 수 없어요.")).toBeInTheDocument();
+  });
+
+  it("requests a refund with a reason and reuses the key when the first attempt fails", async () => {
+    vi.stubEnv("NEXT_PUBLIC_PAYMENTS_ENABLED", "true");
+    const { PaymentStatusScreen: Screen } = await import("@/components/commerce-screens");
+    let posts = 0;
+    const calls = mockApi((method, path) => {
+      if (path === "/api/v1/orders/7" && method === "GET") return json(order({ id: 7, status: "COMPLETED" }));
+      if (path === "/api/v1/orders/7/refunds" && method === "GET") return json([]);
+      if (path === "/api/v1/orders/7/refunds" && method === "POST") {
+        posts += 1;
+        return posts === 1
+          ? json({ code: "PAYMENT_PROVIDER_UNAVAILABLE", message: "잠시 후 다시 시도해 주세요." }, 503)
+          : json({ id: 5, order_id: 7, amount: 4900, reason: "단순 변심", status: "COMPLETED", fulfillment_revoked: "REVOKED", created_at: "2026-10-02T09:00:00" }, 201);
+      }
+      return undefined;
+    });
+    render(<Screen orderId="7" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "환불 요청" }));
+    fireEvent.change(screen.getByLabelText(/환불 사유/), { target: { value: "단순 변심" } });
+    fireEvent.click(screen.getByRole("button", { name: "환불 요청하기" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("잠시 후 다시 시도해 주세요.");
+    fireEvent.click(screen.getByRole("button", { name: "환불 요청하기" }));
+
+    expect(await screen.findByRole("list", { name: "이 주문의 환불 요청" })).toHaveTextContent("환불 완료");
+    const bodies = calls.filter((call) => call.method === "POST").map((call) => call.body as { reason: string; idempotency_key: string });
+    expect(bodies).toHaveLength(2);
+    expect(bodies[0]).toMatchObject({ reason: "단순 변심" });
+    expect(bodies[0].idempotency_key).toBe(bodies[1].idempotency_key);
+  });
+
+  it("retries a checkout with the same order key, and starts a new key when the selection changes", async () => {
+    vi.stubEnv("NEXT_PUBLIC_PAYMENTS_ENABLED", "true");
+    const { CheckoutScreen: Checkout } = await import("@/components/commerce-screens");
+    let posts = 0;
+    const calls = mockApi((method, path) => {
+      if (path === "/api/v1/products") return json(PRODUCTS);
+      if (path === "/api/v1/orders" && method === "POST") {
+        posts += 1;
+        return posts < 3 ? json({ code: "SERVICE_UNAVAILABLE", message: "잠시 후 다시 시도해 주세요." }, 503) : json(order({ id: 11, status: "CREATED" }), 201);
+      }
+      return undefined;
+    });
+    render(<Checkout productId="consult-5" />);
+
+    await screen.findByRole("button", { name: /9,900원 결제하기/ });
+    fireEvent.click(screen.getByLabelText(/결제에 동의해요/));
+    fireEvent.click(screen.getByRole("button", { name: /9,900원 결제하기/ }));
+    await screen.findByRole("alert");
+    fireEvent.click(screen.getByRole("button", { name: /9,900원 결제하기/ }));
+    await waitFor(() => expect(posts).toBe(2));
+
+    const keys = calls.filter((call) => call.method === "POST").map((call) => (call.body as { idempotency_key: string }).idempotency_key);
+    expect(keys[0]).toBe(keys[1]);
   });
 });

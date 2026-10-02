@@ -69,6 +69,18 @@ describe("settings profile card", () => {
 
     expect(await within(profileCard()).findByText("검증서연")).toBeInTheDocument();
     expect(within(profileCard()).queryByText("민준")).toBeNull();
+    // 이미 계정으로 로그인했으니 계정을 만들라는 버튼은 보이지 않는다.
+    expect(within(profileCard()).queryByRole("link", { name: "계정 만들고 기록 옮기기" })).toBeNull();
+  });
+
+  it("offers to create an account to an anonymous session", async () => {
+    window.localStorage.setItem(AUTH_KEY, JSON.stringify({ kind: "anonymous", accessToken: "jwt", anonymousToken: "anon" }));
+    window.localStorage.setItem(JOURNEY_KEY, JSON.stringify({ profileId: "11", chartId: "22", reportId: "33" }));
+    mockApi((path) => (path === "/api/v1/profiles/11" ? json(serverProfile) : json({}, 404)));
+    render(<SettingsScreen />);
+
+    expect(await within(profileCard()).findByText("검증서연")).toBeInTheDocument();
+    expect(within(profileCard()).getByRole("link", { name: "계정 만들고 기록 옮기기" })).toHaveAttribute("href", "/login");
   });
 
   it("shows a loading state, then a retryable error when the server profile fails", async () => {

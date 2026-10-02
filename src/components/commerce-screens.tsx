@@ -2,19 +2,17 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useId, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import type { CommerceData, DemoOrderStatus, OrderDuplicateKey, ProductId } from "@/lib/domain";
-import type { CreditLedgerEntry, OrderStatus, ProductView } from "@/lib/contracts";
-import { commerceStore } from "@/lib/storage";
-import { getProduct, INITIAL_COMMERCE_DATA, isProductId } from "@/lib/fixtures";
+import type { ProductId } from "@/lib/domain";
+import type { CreditLedgerEntry, ProductView } from "@/lib/contracts";
+import { getProduct } from "@/lib/fixtures";
 import { useHydrated } from "@/hooks/use-hydrated";
-import { ConnectionErrorState, CorruptState, LoadingState } from "./page-state";
+import { ConnectionErrorState, EmptyState, LoadingState } from "./page-state";
 import { Banner } from "./ui/layout";
 import { ChevronIcon, InfoIcon } from "./ui/icons";
-import { createOrder, formatApiRequestError, formatConnectionError, formatOrderError, getCredits, getOrder, getProduct as getServerProduct, isAccountSessionExpired, listOrders, listProducts, listProfiles, listRefunds, orderProfileRequirement, validateOrderSelection, type CompatibilityRelation, type LiveOrder, type LiveRefundListItem, type OrderProfileSelection, type ServerProfile } from "@/lib/api/service";
+import { createOrder, formatApiRequestError, formatConnectionError, formatOrderError, getCredits, getOrder, getProduct as getServerProduct, isAccountSessionExpired, listOrderRefunds, listOrders, listProducts, listProfiles, listRefunds, newOrderIdempotencyKey, newRefundIdempotencyKey, orderProfileRequirement, requestRefund, validateOrderSelection, type CompatibilityRelation, type LiveOrder, type LiveOrderRefund, type LiveRefundListItem, type OrderProfileSelection, type ServerProfile } from "@/lib/api/service";
 
-const CURRENT_PROFILE_ID = "prf_01J62Z7M4Q8Y3T1K9A5C6N2R0X";
 const PAYMENTS_ENABLED = process.env.NEXT_PUBLIC_PAYMENTS_ENABLED === "true";
 const PAYMENTS_PAUSED_STATUS = "결제와 주문은 준비 중이에요. 지금은 구매할 수 없어요.";
 
@@ -49,33 +47,15 @@ const ORDER_STATUS_LABELS: Record<string, string> = {
   REFUNDED: "환불 완료",
 };
 
-function getOrderDuplicateKey(productId: ProductId, productVersion: string): OrderDuplicateKey {
-  return {
-    productId,
-    profileId: CURRENT_PROFILE_ID,
-    chartSnapshotId: "chart_fixture_primary",
-    periodKey: String(new Date().getFullYear()),
-    interpretationVersion: `fixture-${productVersion}`,
-  };
-}
-
-function hasSameOrderIdentity(order: OrderDuplicateKey, key: OrderDuplicateKey) {
-  return order.productId === key.productId
-    && order.profileId === key.profileId
-    && order.chartSnapshotId === key.chartSnapshotId
-    && order.periodKey === key.periodKey
-    && order.interpretationVersion === key.interpretationVersion;
-}
-
-function getCommerceData(): CommerceData | null {
-  const inspection = commerceStore.inspect();
-  if (inspection.status === "ok") return inspection.value;
-  if (inspection.status !== "empty") return null;
-  return { ...INITIAL_COMMERCE_DATA, orders: [], generations: [], creditHistory: [] };
-}
-
-function price(value: number) {
-  return `${value.toLocaleString("ko-KR")}원`;
+/** Amounts come from the server catalog or order in its currency's minor unit (KRW has none). */
+function price(value: number, currency = "KRW") {
+  if (currency.toUpperCase() === "KRW") return `${value.toLocaleString("ko-KR")}원`;
+  try {
+    const digits = new Intl.NumberFormat("ko-KR", { style: "currency", currency }).resolvedOptions().maximumFractionDigits ?? 0;
+    return new Intl.NumberFormat("ko-KR", { style: "currency", currency }).format(value / 10 ** digits);
+  } catch {
+    return `${value.toLocaleString("ko-KR")} ${currency}`;
+  }
 }
 
 /** Joins two names with the right particle: "나와 민준", "민준과 서연". */
@@ -128,10 +108,6 @@ function longDateTime(iso: string) {
 function reload() {
   window.location.reload();
   return true;
-}
-
-function commerceCorrupt() {
-  return <CorruptState title="체험 구매 기록을 읽을 수 없어요" description="손상된 구매 기록은 확인 없이 초기화하지 않아요. 초기화하면 이 브라우저의 체험 구매 기록만 지워져요." unavailable={commerceStore.inspect().status === "unavailable"} onReset={commerceStore.remove} />;
 }
 
 function ProductMark({ productId, size = "md" }: { productId: string; size?: "sm" | "md" | "lg" }) {
@@ -193,10 +169,10 @@ function OrderSteps({ steps }: { steps: Step[] }) {
 
 export function ProductListScreen() {
   const hydrated = useHydrated();
-  const raw = useSyncExternalStore(commerceStore.subscribe, commerceStore.rawSnapshot, () => null);
   const [liveProducts, setLiveProducts] = useState<ProductView[] | null>(null);
   const [loadError, setLoadError] = useState("");
   const [balance, setBalance] = useState<number | null | undefined>(undefined);
+  const [purchased, setPurchased] = useState<ReadonlySet<string>>(new Set());
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     if (!hydrated) return;
@@ -207,6 +183,10 @@ export function ProductListScreen() {
     void getCredits()
       .then((value) => active && setBalance(value.balance.balance))
       .catch(() => active && setBalance(null));
+    // 구매 표시는 서버 주문 기준이다. 불러오지 못하면 표시하지 않는다.
+    void listOrders()
+      .then((orders) => active && setPurchased(new Set(orders.filter((order) => order.status === "COMPLETED").map((order) => order.product_id))))
+      .catch(() => undefined);
     return () => { active = false; };
   }, [hydrated, attempt]);
   function retry() {
@@ -217,10 +197,6 @@ export function ProductListScreen() {
   }
   if (!hydrated || (!liveProducts && !loadError)) return <LoadingState title="리포트와 이용권을 불러오고 있어요" />;
   if (loadError || !liveProducts) return <ConnectionErrorState title="상품 정보를 불러오지 못했어요" description={loadError} onRetry={retry} />;
-  void raw;
-  const commerce = getCommerceData();
-  if (!commerce) return commerceCorrupt();
-  const purchased = new Set(commerce.orders.filter((order) => order.status === "COMPLETED").map((order) => order.productId));
   const creditProducts = liveProducts.filter((product) => product.kind === "consultation_credit");
   const reportProducts = liveProducts.filter((product) => product.kind === "report");
 
@@ -251,8 +227,8 @@ export function ProductListScreen() {
               <span className="sj-h3">{product.title}</span>
               <span style={{ fontSize: 13, lineHeight: 1.55, color: "var(--sj-ink-strong-muted)" }}>{product.description}</span>
               <span style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginTop: 6 }}>
-                <span style={{ fontSize: 15, fontWeight: 700 }}>{price(product.priceAmount)}</span>
-                {purchased.has(product.id) && <span className="sj-badge">구매 기록 있음</span>}
+                <span style={{ fontSize: 15, fontWeight: 700 }}>{price(product.priceAmount, product.priceCurrency)}</span>
+                {purchased.has(product.id) && <span className="sj-badge">구매함</span>}
               </span>
             </span>
             <ChevronIcon className="sj-chevron" style={{ alignSelf: "center" }} />
@@ -268,7 +244,7 @@ export function ProductListScreen() {
         {creditProducts.map((product) => (
           <Link key={product.id} href={`/products/${product.id}`} className="sj-card" style={{ gap: 6, padding: 16, color: "var(--sj-ink)", textDecoration: "none" }}>
             <span style={{ fontSize: 14, fontWeight: 700 }}>{product.title}</span>
-            <span style={{ fontSize: 18, fontWeight: 700 }}>{price(product.priceAmount)}</span>
+            <span style={{ fontSize: 18, fontWeight: 700 }}>{price(product.priceAmount, product.priceCurrency)}</span>
             <span style={{ fontSize: 12, color: "var(--sj-muted)" }}>{product.description}</span>
           </Link>
         ))}
@@ -324,7 +300,7 @@ export function LiveProductDetailScreen({ productId }: { productId: ProductId })
         <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
           <h1 id="product-title" className="sj-h1">{product.title}</h1>
           <p className="sj-lead">{product.description}</p>
-          <span style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-0.02em", marginTop: 2 }}>{price(product.priceAmount)}</span>
+          <span style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-0.02em", marginTop: 2 }}>{price(product.priceAmount, product.priceCurrency)}</span>
         </div>
       </section>
 
@@ -337,7 +313,7 @@ export function LiveProductDetailScreen({ productId }: { productId: ProductId })
               <span style={{ fontSize: 14, lineHeight: 1.65, color: "var(--sj-ink-body)" }}>한 줄 요약, 성격 경향, 관계에서의 모습까지 보여줘요. 명식 화면에서 바로 볼 수 있어요.</span>
             </div>
             <div className="sj-row-in-group" style={{ alignItems: "flex-start", padding: 16, cursor: "default" }}>
-              <span style={{ width: 88, flex: "0 0 auto", fontSize: 13, fontWeight: 700 }}>{product.title}<br /><span style={{ fontWeight: 400, color: "var(--sj-muted)" }}>{price(product.priceAmount)}</span></span>
+              <span style={{ width: 88, flex: "0 0 auto", fontSize: 13, fontWeight: 700 }}>{product.title}<br /><span style={{ fontWeight: 400, color: "var(--sj-muted)" }}>{price(product.priceAmount, product.priceCurrency)}</span></span>
               <span style={{ fontSize: 14, lineHeight: 1.65, color: "var(--sj-ink-body)" }}>{product.description}</span>
             </div>
           </div>
@@ -372,14 +348,14 @@ export function LiveProductDetailScreen({ productId }: { productId: ProductId })
 
       <div className="sj-sticky-cta">
         {PAYMENTS_ENABLED ? (
-          <Link className="sj-button sj-button-block" href={`/checkout/${productId}`}>{price(product.priceAmount)} 구매하기</Link>
+          <Link className="sj-button sj-button-block" href={`/checkout/${productId}`}>{price(product.priceAmount, product.priceCurrency)} 구매하기</Link>
         ) : (
           <>
             <p role="status" style={{ margin: 0, display: "flex", gap: 8, alignItems: "flex-start", fontSize: 13, lineHeight: 1.6, color: "var(--sj-ink-body)" }}>
               <InfoIcon className="sj-banner-icon" style={{ marginTop: 1 }} />
               {PAYMENTS_PAUSED_STATUS}
             </p>
-            <button className="sj-button sj-button-block" type="button" disabled>{price(product.priceAmount)} 구매하기</button>
+            <button className="sj-button sj-button-block" type="button" disabled>{price(product.priceAmount, product.priceCurrency)} 구매하기</button>
           </>
         )}
       </div>
@@ -503,6 +479,8 @@ export function CheckoutScreen({ productId }: { productId: ProductId }) {
   const [agreed, setAgreed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState("");
+  // 같은 주문을 다시 보내면(응답을 못 받은 재시도) 같은 키를 써서 주문이 두 번 생기지 않게 한다.
+  const orderKey = useRef(newOrderIdempotencyKey());
 
   useEffect(() => {
     let active = true;
@@ -533,6 +511,7 @@ export function CheckoutScreen({ productId }: { productId: ProductId }) {
   function changeSelection(next: OrderProfileSelection) {
     setSelection(next);
     setServerError("");
+    orderKey.current = newOrderIdempotencyKey();
   }
 
   const selectionError = requirement === "none" ? null
@@ -551,8 +530,8 @@ export function CheckoutScreen({ productId }: { productId: ProductId }) {
     setSubmitting(true);
     setServerError("");
     try {
-      const created = await createOrder(productId, selection);
-      router.push(`/orders/${created.order_id}?productId=${productId}&state=pending&source=server`);
+      const created = await createOrder(productId, selection, orderKey.current);
+      router.push(`/orders/${created.order_id}`);
     } catch (error) {
       setServerError(formatOrderError(error));
       setSubmitting(false);
@@ -561,7 +540,7 @@ export function CheckoutScreen({ productId }: { productId: ProductId }) {
 
   const title = product?.title ?? fallback.title;
   const isReport = (product?.kind ?? fallback.kind) === "report";
-  const amount = product ? price(product.priceAmount) : productError ? "확인하지 못했어요" : "확인 중";
+  const amount = product ? price(product.priceAmount, product.priceCurrency) : productError ? "확인하지 못했어요" : "확인 중";
   const canSubmit = PAYMENTS_ENABLED && Boolean(product) && !submitting && !selectionError;
   const reference = profileLoad.status === "ready" ? selectionLabel(profileLoad.profiles, selection, requirement === "pair") : null;
 
@@ -622,7 +601,7 @@ export function CheckoutScreen({ productId }: { productId: ProductId }) {
       <div className="sj-sticky-cta">
         {serverError && <p className="sj-error" role="alert">{serverError}</p>}
         <button className="sj-button sj-button-block" type="button" disabled={!canSubmit} onClick={() => { void submitOrder(); }}>
-          {submitting ? "주문을 만들고 있어요" : product ? `${price(product.priceAmount)} 결제하기` : "결제하기"}
+          {submitting ? "주문을 만들고 있어요" : product ? `${price(product.priceAmount, product.priceCurrency)} 결제하기` : "결제하기"}
         </button>
         <p className="sj-fine sj-center">{isReport ? "결제가 확인된 뒤에 리포트를 만들기 시작해요" : "결제가 확인된 뒤에 이용권이 지급돼요"}</p>
       </div>
@@ -631,18 +610,6 @@ export function CheckoutScreen({ productId }: { productId: ProductId }) {
 }
 
 /* ---------- 주문 상세 ---------- */
-
-const STATUS_COPY: Record<DemoOrderStatus, { title: string; description: string }> = {
-  pending: { title: "결제 대기 상태 안내", description: "실제 결제 요청은 보내지 않았어요." },
-  success: { title: "결제 성공 상태 안내", description: "이 기기에 기록을 남겨도 실제 구매나 상품 지급은 일어나지 않아요." },
-  failure: { title: "결제 실패 상태 안내", description: "결제 수단이나 주문에는 아무 변화가 없어요." },
-};
-
-const ORDER_STATUS_ADAPTER: Record<DemoOrderStatus, OrderStatus> = {
-  pending: "PAYMENT_PENDING",
-  success: "COMPLETED",
-  failure: "FAILED",
-};
 
 function serverOrderSteps(status: string, createdAt: string): Step[] {
   const created = { name: "주문 접수", detail: longDateTime(createdAt) };
@@ -653,129 +620,153 @@ function serverOrderSteps(status: string, createdAt: string): Step[] {
   return [{ ...created, state: "done" }, { name: "결제 확인", detail: "결제를 기다리고 있어요", state: "now" }, { name: "지급 완료", state: "todo" }];
 }
 
-function demoOrderSteps(status: DemoOrderStatus): Step[] {
-  if (status === "success") return [{ name: "주문 접수", state: "done" }, { name: "결제 확인", state: "done" }, { name: "지급 완료", state: "done" }];
-  if (status === "failure") return [{ name: "주문 접수", state: "done" }, { name: "결제 확인", detail: "결제가 완료되지 않았어요", state: "failed" }, { name: "지급 완료", state: "todo" }];
-  return [{ name: "주문 접수", state: "done" }, { name: "결제 확인", detail: "결제를 기다리고 있어요", state: "now" }, { name: "지급 완료", state: "todo" }];
+/** Credit packs grant consultation credits; every other product is a report or compatibility result. */
+function isCreditOrder(order: LiveOrder) {
+  return order.product_id === "consult-5" || order.product_id === "consult-1" || order.product_id.startsWith("credit_pack");
 }
 
-export function PaymentStatusScreen({ orderId, productId, status, server = false }: { orderId: string; productId: ProductId; status: DemoOrderStatus; server?: boolean }) {
-  const hydrated = useHydrated();
-  const raw = useSyncExternalStore(commerceStore.subscribe, commerceStore.rawSnapshot, () => null);
-  const [message, setMessage] = useState("");
-  const [serverOrder, setServerOrder] = useState<LiveOrder | null>(null);
-  const [serverProductTitle, setServerProductTitle] = useState<string | null>(null);
-  const [serverError, setServerError] = useState(false);
+const REFUNDABLE_ORDER_STATUSES = new Set(["COMPLETED", "PAID"]);
+/** Orders that were paid at some point, so they can have refunds to show. */
+const PAID_ORDER_STATUSES = new Set(["COMPLETED", "PAID", "FULFILLING", "REFUNDED"]);
+const OPEN_REFUND_STATUSES = new Set(["REQUESTED", "APPROVED"]);
+
+function OrderRefunds({ order, onRefunded }: { order: LiveOrder; onRefunded: () => void }) {
+  const reasonId = useId();
+  const [refunds, setRefunds] = useState<LiveOrderRefund[] | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+  const refundKey = useRef(newRefundIdempotencyKey());
   useEffect(() => {
-    if (!hydrated || !server) return;
     let active = true;
-    void getOrder(orderId).then((value) => active && setServerOrder(value)).catch(() => active && setServerError(true));
-    void getServerProduct(productId).then((value) => active && setServerProductTitle(value.title)).catch(() => undefined);
+    void listOrderRefunds(order.order_id).then((items) => active && setRefunds(items)).catch(() => active && setLoadError(true));
     return () => { active = false; };
-  }, [hydrated, orderId, productId, server]);
-  if (!hydrated || (server && !serverOrder && !serverError)) return <LoadingState title="주문을 확인하고 있어요" />;
-  if (server && (serverError || !serverOrder)) return <ConnectionErrorState title="주문을 불러오지 못했어요" description="이 계정의 주문인지, 연결 상태가 괜찮은지 확인한 뒤 다시 시도해 주세요." onRetry={reload} />;
-  void raw;
-  const product = getProduct(productId);
+  }, [order.order_id]);
 
-  if (serverOrder) {
-    const title = serverProductTitle ?? product.title;
-    const completed = serverOrder.status === "COMPLETED";
-    const statusLabel = ORDER_STATUS_LABELS[serverOrder.status] ?? serverOrder.status;
-    const reference = orderReferenceLabel(serverOrder);
-    const relation = serverOrder.relation_type ? COMPAT_RELATIONS.find((item) => item.id === serverOrder.relation_type)?.label ?? null : null;
-    const headline = completed ? (product.kind === "report" ? "리포트가 준비됐어요" : "이용권이 지급됐어요")
-      : serverOrder.status === "FAILED" ? "결제가 완료되지 않았어요"
-      : serverOrder.status === "REFUNDED" ? "환불이 끝났어요"
-      : serverOrder.status === "PAID" || serverOrder.status === "FULFILLING" ? "결제가 확인됐어요"
-      : "주문을 만들었어요";
-    const lead = completed ? (product.kind === "report" ? `${title}를 보관함에 넣었어요. 언제든 다시 열어볼 수 있어요.` : "상담 이용권이 지급됐어요. 이용권 내역에서 확인할 수 있어요.")
-      : serverOrder.status === "FAILED" ? "결제 수단에서 금액이 빠져나가지 않았어요. 다시 주문하려면 상품 화면에서 시작해 주세요."
-      : serverOrder.status === "REFUNDED" ? "지급된 이용권이나 리포트는 회수됐어요."
-      : serverOrder.status === "PAID" || serverOrder.status === "FULFILLING" ? `${title}를 보관함에 넣는 중이에요.`
-      : "결제가 확인되면 상품을 지급해요.";
-    return (
-      <main className="sj-page" aria-labelledby="payment-status-title">
-        <section style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <h1 id="payment-status-title" className="sj-h1">{headline}</h1>
-          <p className="sj-lead">{lead}</p>
-        </section>
-        <section className="sj-card" aria-label="진행 상태">
-          <OrderSteps steps={serverOrderSteps(serverOrder.status, serverOrder.created_at)} />
-        </section>
-        <section className="sj-group" aria-label="주문 정보">
-          <SummaryRow label="상품" value={title} strong />
-          {reference && <SummaryRow label="기준 명식" value={reference} />}
-          {relation && <SummaryRow label="관계" value={relation} />}
-          <SummaryRow label="주문번호" value={serverOrder.order_number} />
-          <SummaryRow label="결제 금액" value={price(serverOrder.amount_minor)} strong />
-          <SummaryRow label="주문 일시" value={longDateTime(serverOrder.created_at)} />
-          <SummaryRow label="상태" value={statusLabel} />
-        </section>
-        <div className="sj-actions">
-          {completed
-            ? <Link className="sj-button sj-button-block" href={product.kind === "report" ? "/library" : "/products/credits"}>{product.kind === "report" ? "보관함에서 보기" : "이용권 내역 보기"}</Link>
-            : !PAYMENTS_ENABLED && serverOrder.status !== "FAILED" && serverOrder.status !== "REFUNDED" && <p className="sj-banner" role="status" style={{ margin: 0 }}>결제 연결이 준비 중이라 지금은 결제를 진행할 수 없어요.</p>}
-          <Link className="sj-button-secondary" href="/products">리포트와 이용권으로</Link>
+  async function submit() {
+    setSending(true);
+    setError("");
+    try {
+      const refund = await requestRefund(order.order_id, reason, refundKey.current);
+      setRefunds((current) => [refund, ...(current ?? []).filter((item) => item.id !== refund.id)]);
+      setOpen(false);
+      setReason("");
+      refundKey.current = newRefundIdempotencyKey();
+      onRefunded();
+    } catch (reasonError) {
+      setError(formatApiRequestError(reasonError, "환불을 요청하지 못했어요. 잠시 후 다시 시도해 주세요."));
+    } finally {
+      setSending(false);
+    }
+  }
+
+  const pending = refunds?.some((refund) => OPEN_REFUND_STATUSES.has(refund.status)) ?? false;
+  const canRequest = PAYMENTS_ENABLED && REFUNDABLE_ORDER_STATUSES.has(order.status) && refunds !== null && !pending;
+  return (
+    <section className="sj-section" aria-labelledby="order-refunds-title">
+      <h2 id="order-refunds-title" className="sj-h2">환불</h2>
+      {loadError ? (
+        <p className="sj-error" role="alert">환불 내역을 불러오지 못했어요. 새로고침한 뒤 다시 확인해 주세요.</p>
+      ) : refunds === null ? (
+        <p className="sj-meta" aria-busy="true">환불 내역을 불러오고 있어요</p>
+      ) : refunds.length === 0 ? (
+        <p className="sj-meta">이 주문의 환불 요청이 없어요.</p>
+      ) : (
+        <ul className="sj-list" aria-label="이 주문의 환불 요청" style={{ borderTop: "1px solid var(--sj-line)" }}>
+          {refunds.map((refund) => {
+            const status = REFUND_STATUS_LABELS[refund.status] ?? { label: refund.status, tone: "plain" as const };
+            return (
+              <li key={refund.id} className="sj-row" style={{ cursor: "default" }}>
+                <span className="sj-row-main">
+                  <span className="sj-row-title">{price(refund.amount, order.currency)}</span>
+                  <span className="sj-row-sub"><time dateTime={refund.createdAt}>{shortDate(refund.createdAt)}</time> 요청{refund.reason ? `, ${refund.reason}` : ""}</span>
+                </span>
+                <span className={badgeClass(status.tone)}>{status.label}</span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {pending && <p className="sj-meta">처리 중인 환불 요청이 있어요. 끝나면 이 화면과 주문 내역에 반영돼요.</p>}
+      {canRequest && (open ? (
+        <div className="sj-card" role="group" aria-label="환불 요청">
+          <label className="sj-label" htmlFor={reasonId}>환불 사유 <span style={{ fontWeight: 400, color: "var(--sj-muted)" }}>(선택)</span></label>
+          <textarea id={reasonId} className="sj-textarea" rows={2} maxLength={200} value={reason} onChange={(event) => setReason(event.target.value)} />
+          <p className="sj-fine">{isCreditOrder(order) ? "남은 이용권만큼 환불돼요. 이미 쓴 이용권은 환불되지 않아요." : "환불이 끝나면 이 주문으로 연 리포트는 다시 잠겨요."}</p>
+          {error && <p className="sj-error" role="alert">{error}</p>}
+          <div className="sj-actions-row">
+            <button className="sj-button-danger" type="button" disabled={sending} onClick={() => void submit()}>{sending ? "요청하고 있어요" : "환불 요청하기"}</button>
+            <button className="sj-button-secondary" type="button" disabled={sending} onClick={() => { setOpen(false); setError(""); }}>취소</button>
+          </div>
         </div>
-        <p className="sj-fine">환불은 규정에 맞는지 확인한 뒤 처리돼요.</p>
-      </main>
-    );
+      ) : (
+        <button className="sj-text-button" type="button" style={{ alignSelf: "flex-start" }} onClick={() => setOpen(true)}>환불 요청</button>
+      ))}
+      {!PAYMENTS_ENABLED && REFUNDABLE_ORDER_STATUSES.has(order.status) && <p className="sj-fine">결제 연결이 준비 중이라 지금은 환불을 요청할 수 없어요.</p>}
+    </section>
+  );
+}
+
+export function PaymentStatusScreen({ orderId }: { orderId: string }) {
+  const hydrated = useHydrated();
+  const [serverOrder, setServerOrder] = useState<LiveOrder | null>(null);
+  const [serverError, setServerError] = useState<unknown>(null);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    if (!hydrated) return;
+    let active = true;
+    void getOrder(orderId).then((value) => active && setServerOrder(value)).catch((reason) => active && setServerError(reason ?? new Error("load failed")));
+    return () => { active = false; };
+  }, [hydrated, orderId, attempt]);
+  if (!hydrated || (!serverOrder && !serverError)) return <LoadingState title="주문을 확인하고 있어요" />;
+  if (serverError || !serverOrder) {
+    if (isAccountSessionExpired(serverError)) return <EmptyState title="다시 로그인해 주세요" description="로그인 세션이 만료됐어요. 다시 로그인하면 주문을 볼 수 있어요." action={{ href: "/login", label: "로그인하기" }} />;
+    return <ConnectionErrorState title="주문을 불러오지 못했어요" description="이 계정의 주문인지, 연결 상태가 괜찮은지 확인한 뒤 다시 시도해 주세요." onRetry={reload} />;
   }
 
-  const copy = STATUS_COPY[status];
-  const duplicateKey = getOrderDuplicateKey(productId, product.version);
-  const current = getCommerceData();
-  if (!current) return commerceCorrupt();
-
-  function recordDemoState() {
-    const data = getCommerceData();
-    if (!data) return setMessage("손상된 구매 기록을 초기화한 뒤 다시 시도해 주세요.");
-    const orderStatus = ORDER_STATUS_ADAPTER[status];
-    if (data.orders.some((order) => order.orderId === orderId)) {
-      return setMessage(`예시 주문 ${orderId}은 이미 기록돼 있어서 다시 기록하지 않았어요.`);
-    }
-    if (orderStatus === "COMPLETED" && data.orders.some((order) => order.status === "COMPLETED" && hasSameOrderIdentity(order, duplicateKey))) {
-      return setMessage("같은 상품과 기간의 예시 구매 기록이 이미 있어서 한 번 더 지급하지 않았어요. 보관함에서 기존 리포트를 열어 주세요.");
-    }
-    const now = new Date().toISOString();
-    const resourceSuffix = crypto.randomUUID().replaceAll("-", "");
-    const generationId = `gen_${crypto.randomUUID().replaceAll("-", "")}`;
-    const order = { orderId, productVersion: product.version, ...duplicateKey, status: orderStatus, amount: product.priceAmount, currency: product.priceCurrency, provider: "WEB", createdAt: now, updatedAt: now } as const;
-    const grantsCredits = orderStatus === "COMPLETED" && product.kind === "consultation_credit";
-    const generation = product.kind === "report" ? { id: generationId, orderId, productId, reportId: orderStatus === "COMPLETED" ? `rpt_${resourceSuffix}` : null, status: orderStatus === "COMPLETED" ? "completed" : orderStatus === "FAILED" ? "failed" : "payment_pending", attemptCount: orderStatus === "FAILED" ? 1 : 0, error: null, createdAt: now, updatedAt: now } as const : null;
-    const next: CommerceData = {
-      ...data,
-      orders: [order, ...data.orders],
-      generations: generation ? [generation, ...data.generations] : data.generations,
-      consultationCredits: data.consultationCredits + (grantsCredits ? 5 : 0),
-      creditHistory: grantsCredits ? [{ id: `ledger_${resourceSuffix}`, description: "상담 5회 체험 기록", delta: 5, balanceAfter: data.consultationCredits + 5, source: "order", sourceId: orderId, reason: "purchase", createdAt: now }, ...data.creditHistory] : data.creditHistory,
-    };
-    if (!commerceStore.write(next)) return setMessage("이 브라우저에서는 예시 기록을 저장할 수 없어요. 저장소 설정을 확인해 주세요.");
-    setMessage(`예시 주문 ${orderId}을 이 브라우저에 기록했어요.`);
-  }
-
+  const title = serverOrder.product_name;
+  const credit = isCreditOrder(serverOrder);
+  const completed = serverOrder.status === "COMPLETED";
+  const statusLabel = ORDER_STATUS_LABELS[serverOrder.status] ?? serverOrder.status;
+  const reference = orderReferenceLabel(serverOrder);
+  const relation = serverOrder.relation_type ? COMPAT_RELATIONS.find((item) => item.id === serverOrder.relation_type)?.label ?? null : null;
+  const headline = completed ? (credit ? "이용권이 지급됐어요" : "리포트가 준비됐어요")
+    : serverOrder.status === "FAILED" ? "결제가 완료되지 않았어요"
+    : serverOrder.status === "REFUNDED" ? "환불이 끝났어요"
+    : serverOrder.status === "PAID" || serverOrder.status === "FULFILLING" ? "결제가 확인됐어요"
+    : "주문을 만들었어요";
+  const lead = completed ? (credit ? "상담 이용권이 지급됐어요. 이용권 내역에서 확인할 수 있어요." : `${title}를 보관함에 넣었어요. 언제든 다시 열어볼 수 있어요.`)
+    : serverOrder.status === "FAILED" ? "결제 수단에서 금액이 빠져나가지 않았어요. 다시 주문하려면 상품 화면에서 시작해 주세요."
+    : serverOrder.status === "REFUNDED" ? "지급된 이용권이나 리포트는 회수됐어요."
+    : serverOrder.status === "PAID" || serverOrder.status === "FULFILLING" ? `${title}를 보관함에 넣는 중이에요.`
+    : "결제가 확인되면 상품을 지급해요.";
   return (
     <main className="sj-page" aria-labelledby="payment-status-title">
       <section style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        <h1 id="payment-status-title" className="sj-h1">{copy.title}</h1>
-        <p className="sj-lead">{copy.description}</p>
+        <h1 id="payment-status-title" className="sj-h1">{headline}</h1>
+        <p className="sj-lead">{lead}</p>
       </section>
-      <Banner>이 화면은 결제 흐름을 보여주는 예시예요. 실제 결제와 상품 지급은 일어나지 않아요.</Banner>
       <section className="sj-card" aria-label="진행 상태">
-        <OrderSteps steps={demoOrderSteps(status)} />
+        <OrderSteps steps={serverOrderSteps(serverOrder.status, serverOrder.created_at)} />
       </section>
       <section className="sj-group" aria-label="주문 정보">
-        <SummaryRow label="상품" value={product.title} strong />
-        <SummaryRow label="주문번호" value={orderId} />
-        <SummaryRow label="상태" value={ORDER_STATUS_LABELS[ORDER_STATUS_ADAPTER[status]]} />
-        <SummaryRow label="실제 결제액" value="0원" strong />
+        <SummaryRow label="상품" value={title} strong />
+        {reference && <SummaryRow label="기준 명식" value={reference} />}
+        {relation && <SummaryRow label="관계" value={relation} />}
+        <SummaryRow label="주문번호" value={serverOrder.order_number} />
+        <SummaryRow label="결제 금액" value={price(serverOrder.amount_minor, serverOrder.currency)} strong />
+        <SummaryRow label="주문 일시" value={longDateTime(serverOrder.created_at)} />
+        <SummaryRow label="상태" value={statusLabel} />
       </section>
       <div className="sj-actions">
-        <button className="sj-button sj-button-block" type="button" onClick={recordDemoState}>이 기기에 예시 기록 남기기</button>
-        {message && <p className="sj-meta" role="status">{message}</p>}
-        <Link className="sj-button-secondary" href={`/products/${productId}`}>상품 화면으로 돌아가기</Link>
+        {completed
+          ? <Link className="sj-button sj-button-block" href={credit ? "/products/credits" : "/library"}>{credit ? "이용권 내역 보기" : "보관함에서 보기"}</Link>
+          : !PAYMENTS_ENABLED && serverOrder.status !== "FAILED" && serverOrder.status !== "REFUNDED" && <p className="sj-banner" role="status" style={{ margin: 0 }}>결제 연결이 준비 중이라 지금은 결제를 진행할 수 없어요.</p>}
+        <Link className="sj-button-secondary" href="/billing">주문 내역으로</Link>
       </div>
+      {PAID_ORDER_STATUSES.has(serverOrder.status) && <OrderRefunds order={serverOrder} onRefunded={() => setAttempt((value) => value + 1)} />}
     </main>
   );
 }
@@ -784,7 +775,6 @@ export function PaymentStatusScreen({ orderId, productId, status, server = false
 
 export function CreditsScreen() {
   const hydrated = useHydrated();
-  const raw = useSyncExternalStore(commerceStore.subscribe, commerceStore.rawSnapshot, () => null);
   const [liveCredits, setLiveCredits] = useState<{ balance: number; history: CreditLedgerEntry[] } | null>(null);
   const [loadError, setLoadError] = useState(false);
   useEffect(() => {
@@ -794,7 +784,6 @@ export function CreditsScreen() {
     return () => { active = false; };
   }, [hydrated]);
   if (!hydrated || (!liveCredits && !loadError)) return <LoadingState title="이용권 내역을 불러오고 있어요" />;
-  void raw;
   if (loadError || !liveCredits) return <ConnectionErrorState title="이용권 내역을 불러오지 못했어요" onRetry={reload} />;
   return (
     <main className="sj-page" aria-labelledby="credits-title">
@@ -859,12 +848,6 @@ function badgeClass(tone: "dark" | "accent" | "plain") {
   return `sj-badge${tone === "dark" ? " sj-badge-dark" : tone === "accent" ? " sj-badge-accent" : ""}`;
 }
 
-function orderLinkState(status: string): DemoOrderStatus {
-  if (status === "COMPLETED" || status === "PAID" || status === "FULFILLING" || status === "REFUNDED") return "success";
-  if (status === "FAILED") return "failure";
-  return "pending";
-}
-
 export function BillingScreen() {
   const hydrated = useHydrated();
   const [orders, setOrders] = useState<LiveOrder[] | null>(null);
@@ -921,7 +904,6 @@ export function BillingScreen() {
           <ul className="sj-list" aria-label="주문 목록" style={{ borderTop: "1px solid var(--sj-line)" }}>
             {orders.map((order) => {
               const status = BILLING_STATUS_LABELS[order.status] ?? { label: order.status, tone: "plain" as const };
-              const known = isProductId(order.product_id);
               const reference = orderReferenceLabel(order);
               const content = (
                 <>
@@ -931,17 +913,15 @@ export function BillingScreen() {
                     {reference && <span className="sj-row-sub">기준: {reference}</span>}
                   </span>
                   <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flex: "0 0 auto" }}>
-                    <span style={{ fontSize: 15, fontWeight: 700 }}>{price(order.amount_minor)}</span>
+                    <span style={{ fontSize: 15, fontWeight: 700 }}>{price(order.amount_minor, order.currency)}</span>
                     <span className={badgeClass(status.tone)}>{status.label}</span>
                   </span>
-                  {known && <ChevronIcon className="sj-chevron" />}
+                  <ChevronIcon className="sj-chevron" />
                 </>
               );
               return (
                 <li key={order.order_id}>
-                  {known
-                    ? <Link className="sj-row" href={`/orders/${order.order_id}?source=server&productId=${order.product_id}&state=${orderLinkState(order.status)}`}>{content}</Link>
-                    : <div className="sj-row" style={{ cursor: "default" }}>{content}</div>}
+                  <Link className="sj-row" href={`/orders/${order.order_id}`}>{content}</Link>
                 </li>
               );
             })}

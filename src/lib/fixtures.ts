@@ -1,11 +1,6 @@
 import type {
-  AppNavGroup,
-  AppNavItem,
-  BasicReport,
   BirthInfo,
   ConsultationData,
-  ConsultationDraft,
-  CompatibilityDimension,
   CommerceData,
   DailyFlow,
   FeedbackId,
@@ -14,7 +9,6 @@ import type {
   PeopleData,
   Product,
   ProductId,
-  ReportSection,
   SettingsData,
   FeedbackOption,
   Topic,
@@ -87,60 +81,6 @@ export const TOPIC_PREVIEWS: Readonly<Record<TopicId, TopicPreview>> = {
     flow: "상대의 기대를 짐작하기보다 내가 가능한 범위를 짧고 분명하게 말해보세요.",
   },
 };
-
-export const BASIC_REPORT: BasicReport = {
-  currentFlow: "속도를 내기보다 기준을 다시 세우는 때로 보여요.",
-  insights: [
-    { id: "depth", title: "깊이 보는 사람", description: "겉보다 맥락을 읽고 신중하게 판단해요." },
-    { id: "drive", title: "꾸준한 추진력", description: "기준이 서면 오래 집중하는 힘이 있어요." },
-    { id: "balance", title: "섬세한 균형감", description: "관계의 분위기와 작은 변화를 잘 알아차려요." },
-  ],
-  caution: "혼자 충분히 검토하느라 타이밍을 놓칠 수 있어요.",
-  suggestion: "결정 기준을 2~3개로 줄여보세요.",
-};
-
-export const REPORT_SECTIONS: readonly ReportSection[] = [
-  {
-    id: "temperament",
-    title: "기본 성향",
-    summary: "맥락을 충분히 이해한 뒤 움직일 때 강점이 잘 드러나요.",
-    details: ["낯선 상황을 빠르게 단정하지 않아요.", "기준이 분명해지면 꾸준히 밀고 나가는 힘이 있어요."],
-    evidence: "신중한 판단과 지속성에 관한 체험용 예시 조합을 근거로 보여주는 화면입니다.",
-    access: "free",
-  },
-  {
-    id: "relationship",
-    title: "관계",
-    summary: "가까워질수록 서로의 속도와 기대를 확인하는 편이 중요해요.",
-    details: ["상대의 감정과 상황을 함께 고려해요.", "표현을 미루면 마음이 전달되지 않을 수 있어요."],
-    evidence: "관계 성향과 현재 흐름에 관한 체험용 예시를 함께 표시합니다.",
-    access: "free",
-  },
-  {
-    id: "career",
-    title: "직업과 커리어",
-    summary: "납득할 수 있는 목표와 일하는 방식이 집중력을 좌우해요.",
-    details: ["복잡한 일을 순서대로 정리하는 힘이 있어요.", "완벽한 조건을 기다리다 기회를 늦출 수 있어요."],
-    evidence: "커리어 주제의 체험용 강점·주의 문장을 함께 보여줍니다.",
-    access: "free",
-  },
-  {
-    id: "money",
-    title: "재물",
-    summary: "큰 결정보다 반복 가능한 관리 기준을 세울 때 안정적이에요.",
-    details: ["필요와 욕구를 구분하려는 편이에요.", "불안 때문에 필요한 기회까지 미루지 않도록 살펴보세요."],
-    evidence: "재물 주제의 체험용 예시이며 실제 계산 결과가 아닙니다.",
-    access: "paid",
-  },
-  {
-    id: "long-flow",
-    title: "장기 흐름",
-    summary: "여러 해의 변화와 선택 기준을 함께 보는 심층 영역입니다.",
-    details: ["장기 흐름과 구체적인 시기는 제공하지 않아요."],
-    evidence: "이 내용은 실제 계산 결과가 아니며 현재 제공 범위에 포함되지 않습니다.",
-    access: "paid",
-  },
-] as const;
 
 const FLOW_HEADLINES = [
   "빠르게 결정하기보다 조건을 확인할 때예요.",
@@ -272,18 +212,6 @@ export const INITIAL_CONSULTATION_DATA: ConsultationData = {
   freeUsesRemaining: 1,
 };
 
-export function getFixtureConsultationResponse(draft: ConsultationDraft) {
-  const preview = getTopicPreview(draft.topic);
-  return [
-    "이 답변은 실제 AI 상담이나 사주 계산이 아닌 체험용 예시입니다.",
-    preview.introduction,
-    `지금 점검할 부분은 “${preview.caution}”입니다.`,
-    draft.situation.trim()
-      ? "적어주신 상황을 결정의 유일한 근거로 삼지 말고, 실제 조건과 상대방의 의사를 함께 확인해보세요."
-      : "현재 상황을 조금 더 구체적으로 적으면 어떤 조건을 확인해야 하는지 정리하기 쉬워요.",
-  ].join("\\n\\n");
-}
-
 export function isRestrictedConsultationQuestion(question: string) {
   const normalized = question.replace(/\s+/g, " ").trim();
   return [
@@ -325,14 +253,6 @@ export const INITIAL_PEOPLE_DATA: PeopleData = {
     },
   ],
 };
-
-export const COMPATIBILITY_DIMENSIONS: readonly CompatibilityDimension[] = [
-  { id: "communication", title: "소통", summary: "서로 결론에 도달하는 속도가 달라 확인 질문이 중요해요." },
-  { id: "affection", title: "애정 표현", summary: "표현 방식보다 상대가 편하게 받아들이는 방식을 함께 살펴보세요." },
-  { id: "lifestyle", title: "생활 리듬", summary: "혼자 쉬는 시간과 함께 보내는 시간의 기준을 정하면 좋아요." },
-  { id: "conflict", title: "갈등", summary: "감정이 커지기 전에 사실과 기대를 나누어 말하는 편이 유리해요." },
-  { id: "long-term", title: "장기 관계", summary: "중요한 선택에서 서로 포기할 수 없는 조건을 확인해보세요." },
-] as const;
 
 export const PRODUCTS: readonly Product[] = [
   {
@@ -455,64 +375,6 @@ export function getProduct(productId: ProductId): Product {
   if (!product) throw new Error(`Unknown product fixture: ${productId}`);
   return product;
 }
-
-const HOME_NAV_ITEM: AppNavItem = { href: "/home", label: "플랫폼 홈", shortLabel: "홈", description: "오늘의 흐름과 전체 서비스를 한곳에서 확인" };
-const REPORT_NAV_ITEM: AppNavItem = { href: "/report", label: "내 사주", shortLabel: "사주", description: "기기에 저장된 출생 정보로 예시 리포트 확인" };
-const CONSULT_NAV_ITEM: AppNavItem = { href: "/consult", label: "고민 상담", shortLabel: "상담", description: "고민 주제별 질문과 체험용 답변 관리" };
-const COMPATIBILITY_NAV_ITEM: AppNavItem = { href: "/compatibility", label: "두 사람의 관계", shortLabel: "궁합", description: "저장한 두 사람으로 관계 예시 살펴보기" };
-const LIBRARY_NAV_ITEM: AppNavItem = { href: "/library", label: "통합 보관함", shortLabel: "보관함", description: "리포트·상담·관계 결과를 모아 관리" };
-
-export const APP_PRIMARY_NAV_ITEMS: readonly AppNavItem[] = [
-  HOME_NAV_ITEM,
-  REPORT_NAV_ITEM,
-  CONSULT_NAV_ITEM,
-  COMPATIBILITY_NAV_ITEM,
-  LIBRARY_NAV_ITEM,
-] as const;
-
-export const APP_NAV_GROUPS: readonly AppNavGroup[] = [
-  { label: "개요", items: [HOME_NAV_ITEM] },
-  { label: "사주와 흐름", items: [
-    REPORT_NAV_ITEM,
-    { href: "/flow/today", label: "오늘의 흐름", shortLabel: "오늘", description: "날짜에 따라 일관된 체험용 흐름 확인" },
-    { href: "/flow/month", label: "이번 달 흐름", shortLabel: "이번 달", description: "월별 관계·일·재물 흐름 예시 확인" },
-    { href: "/calendar", label: "시기 캘린더", shortLabel: "캘린더", description: "날짜별 관계·일·재물 흐름 프로토타입" },
-    { href: "/reports/year", label: "연간 리포트", shortLabel: "연간", description: "한 해의 방향을 네 장면으로 읽는 예시" },
-    { href: "/reports/decade", label: "10년 리포트", shortLabel: "10년", description: "장기 변화를 세 구간으로 읽는 예시" },
-  ] },
-  { label: "상담과 관계", items: [
-    CONSULT_NAV_ITEM,
-    { href: "/people", label: "사람 보관함", shortLabel: "사람", description: "관계를 살펴볼 인물 정보를 이 기기에 저장" },
-    COMPATIBILITY_NAV_ITEM,
-  ] },
-  { label: "기록과 상품", items: [
-    LIBRARY_NAV_ITEM,
-    { href: "/products", label: "리포트와 이용권", shortLabel: "상품", description: "상품 미리보기와 주문 상태 예시 확인" },
-    { href: "/products/credits", label: "이용권 내역", shortLabel: "이용권", description: "체험용 상담 이용권과 변동 기록 확인" },
-    { href: "/billing", label: "결제·복구 센터", shortLabel: "결제", description: "주문·지급·환불·멱등성·복구 상태 프로토타입" },
-    { href: "/share", label: "공유 카드", shortLabel: "공유", description: "개인정보를 선택해 안전한 공유 카드 미리보기" },
-    { href: "/share/links", label: "공유 링크 관리", shortLabel: "공유 링크", description: "만료·비활성화·민감정보 제한 프로토타입" },
-    { href: "/shared/V7m2Q9x4Ka8Nz3Rt", label: "공개 관계 결과", shortLabel: "공개 결과", description: "민감정보를 제외한 공개 관계 요약 화면" },
-    { href: "/life-log", label: "라이프 로그", shortLabel: "기록", description: "실제 사건과 선택을 시간순으로 기록하는 예시" },
-  ] },
-  { label: "계정과 관리", items: [
-    { href: "/account", label: "계정 전환·삭제", shortLabel: "계정", description: "비회원 이전·중복 병합·삭제 검토 프로토타입" },
-    { href: "/profile", label: "내 프로필", shortLabel: "프로필", description: "전체 출생 정보·관심사·스냅샷 수정 프로토타입" },
-    { href: "/login", label: "로그인", shortLabel: "로그인", description: "소셜 로그인과 계정 전환 화면 프로토타입" },
-    { href: "/notifications", label: "알림 센터", shortLabel: "알림", description: "흐름·리포트·결제 알림과 수신 선호 체험" },
-    { href: "/notifications/policy", label: "알림 정책", shortLabel: "알림 정책", description: "조용한 시간·중복 억제·딥링크 정책 프로토타입" },
-    { href: "/settings", label: "설정과 개인정보", shortLabel: "설정", description: "기기 저장 정보·알림 선호·안내 관리" },
-    { href: "/settings/feedback", label: "피드백과 신고", shortLabel: "피드백", description: "저장한 평가와 품질 신고 내용 관리" },
-  ] },
-  { label: "운영", items: [
-    { href: "/admin", label: "관리자 워크스페이스", shortLabel: "관리자", description: "사용자·주문·리포트·상담·품질 운영 프로토타입" },
-    { href: "/admin/operations", label: "운영 상세", shortLabel: "운영", description: "템플릿·프롬프트·환불·복구·감사 프로토타입" },
-    { href: "/admin/analytics", label: "분석 대시보드", shortLabel: "분석", description: "퍼널·전환·실패·품질 지표 프로토타입" },
-  ] },
-  { label: "플랫폼 랩스", items: [
-    { href: "/platform-labs", label: "장기 확장 실험", shortLabel: "랩스", description: "검증·가족·자동 리포트·구독·전문가·글로벌 체험" },
-  ] },
-] as const;
 
 export function isTopicId(value: unknown): value is TopicId {
   return typeof value === "string" && TOPICS.some((topic) => topic.id === value);

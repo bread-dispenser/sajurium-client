@@ -3,7 +3,7 @@
 import Script from "next/script";
 import { useEffect, useRef, useState } from "react";
 import { appleClientId, appleLoginAvailable, appleRedirectUri, googleClientId, googleLoginAvailable } from "@/lib/feature-availability";
-import type { SocialProvider } from "@/lib/api/service";
+import { listEnabledSocialProviders, type SocialProvider } from "@/lib/api/service";
 
 type GoogleCredential = { credential?: string; state?: string };
 type AppleAuthorization = { authorization?: { id_token?: string; state?: string } };
@@ -118,7 +118,19 @@ export function SocialLoginOptions({
   onError: (message: string) => void;
   pending: boolean;
 }) {
-  const providers = clientSocialProviders();
+  // 이 빌드가 인증 화면을 띄울 수 있는 제공자 중 서버가 켜 둔 것만 그린다. 서버가 끈 제공자는
+  // 버튼이 있어도 503으로 끝나기 때문이다. 목록을 못 받으면 버튼 없이 이메일 로그인만 남긴다.
+  const buildProviders = clientSocialProviders();
+  const [serverProviders, setServerProviders] = useState<readonly SocialProvider[] | null>(buildProviders.length ? null : []);
+  useEffect(() => {
+    if (!buildProviders.length) return;
+    let active = true;
+    void listEnabledSocialProviders()
+      .then((value) => { if (active) setServerProviders(value); })
+      .catch(() => { if (active) setServerProviders([]); });
+    return () => { active = false; };
+  }, [buildProviders.length]);
+  const providers = serverProviders ? buildProviders.filter((provider) => serverProviders.includes(provider)) : [];
 
   return (
     <section className="sj-section" style={{ gap: 10 }} aria-label="다른 방법으로 계속하기">
@@ -132,7 +144,9 @@ export function SocialLoginOptions({
               style={{ minHeight: 52, borderStyle: "dashed", background: "var(--sj-sunk)", color: "var(--sj-muted)" }}>
         카카오로 계속<span id="kakao-login-note" className="sj-badge" style={{ background: "var(--sj-surface)" }}>준비 중</span>
       </button>
-      {providers.length === 0 && <p className="sj-fine sj-center">소셜 로그인은 준비 중이에요. 지금은 이메일로 로그인할 수 있어요.</p>}
+      {serverProviders === null
+        ? <p className="sj-fine sj-center" aria-busy="true">로그인 방법을 확인하고 있어요</p>
+        : providers.length === 0 && <p className="sj-fine sj-center">소셜 로그인은 준비 중이에요. 지금은 이메일로 로그인할 수 있어요.</p>}
     </section>
   );
 }

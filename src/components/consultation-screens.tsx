@@ -4,16 +4,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import type { CommerceData, ConsultationData, ConsultationDraft, ConsultationSession, LibraryData, TopicId } from "@/lib/domain";
-import { withAllowedLibraryActions } from "@/lib/contracts";
+import type { ConsultationData, ConsultationDraft, TopicId } from "@/lib/domain";
 import {
-  INITIAL_COMMERCE_DATA,
   INITIAL_CONSULTATION_DATA,
-  INITIAL_LIBRARY_ITEMS,
   RECOMMENDED_QUESTIONS,
   isRestrictedConsultationQuestion,
 } from "@/lib/fixtures";
-import { commerceStore, consultationStore, createTransactionStep, libraryStore, runStorageTransaction } from "@/lib/storage";
+import { consultationStore, createTransactionStep, libraryStore, runStorageTransaction } from "@/lib/storage";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { ApiRequestError } from "@/lib/api/client";
 import { MarkdownBlocks, blockToPlainText, parseMarkdown, plainInline, type MarkdownBlock } from "@/lib/markdown";
@@ -31,6 +28,7 @@ import {
   getCurrentChart,
   isAccountSessionExpired,
   listConsultations,
+  newConsultationAttempt,
   sendConsultationMessage,
   submitFeedback,
   type ApiConsultation,
@@ -110,36 +108,6 @@ function DayPillarTile({ chart }: { chart: ChartView }) {
   );
 }
 
-function toLocalConsultation(item: ApiConsultation, topic: TopicId): ConsultationSession {
-  const firstUser = item.messages.find((message) => message.role === "user");
-  const lastAssistant = [...item.messages].reverse().find((message) => message.role === "assistant");
-  return {
-    id: String(item.id),
-    title: item.session_title ?? firstUser?.content.slice(0, 36) ?? `${serverTypeLabel(item.consultation_type)} 상담`,
-    status: item.status === "DELETED" ? "deleted" : item.status === "ACTIVE" ? "active" : "completed",
-    context: {
-      profileId: String(item.profile_id ?? ""),
-      chartSnapshotId: "latest-snapshot",
-      periodKey: item.created_at.slice(0, 7),
-      topic,
-      situation: null,
-      referencedProfileIds: [],
-    },
-    createdAt: item.created_at,
-    updatedAt: item.updated_at ?? item.created_at,
-    summary: lastAssistant?.content ?? "답변을 준비하고 있어요.",
-    messages: item.messages.map((message) => ({
-      id: String(message.id),
-      role: message.role === "user" ? "user" : "assistant",
-      status: "completed",
-      content: message.content,
-      createdAt: message.created_at,
-      completedAt: message.created_at,
-      provenance: null,
-    })),
-  };
-}
-
 function getConsultationData(): ConsultationData | null {
   const inspection = consultationStore.inspect();
   if (inspection.status === "ok") return inspection.value;
@@ -150,38 +118,17 @@ function getConsultationData(): ConsultationData | null {
   };
 }
 
-function getCommerceData(): CommerceData | null {
-  const inspection = commerceStore.inspect();
-  if (inspection.status === "ok") return inspection.value;
-  if (inspection.status !== "empty") return null;
-  return { ...INITIAL_COMMERCE_DATA, orders: [], generations: [], creditHistory: [] };
-}
-
-function buildLibraryWithSession(session: ConsultationSession): LibraryData | null {
-  const inspection = libraryStore.inspect();
-  if (inspection.status === "corrupt" || inspection.status === "unavailable") return null;
-  const current = inspection.status === "ok" ? inspection.value.items : [...INITIAL_LIBRARY_ITEMS];
-  const withoutExisting = current.filter((item) => item.id !== `library-${session.id}`);
-  return {
-    version: 1,
-    items: [
-      withAllowedLibraryActions({
-        id: `library-${session.id}`,
-        type: "consultation",
-        title: session.title,
-        subtitle: "기기에 저장한 상담",
-        createdAt: session.updatedAt,
-        href: `/consult/session/${session.id}`,
-        access: "available",
-        purchased: false,
-        read: false,
-        hidden: false,
-        profile: { id: session.context.profileId, displayName: "서연" },
-        topic: session.context.topic,
-      }),
-      ...withoutExisting,
-    ],
-  };
+function removeLegacyConsultationCopies(sessionId: string) {
+  const consultations = consultationStore.inspect();
+  const library = libraryStore.inspect();
+  const steps = [];
+  if (consultations.status === "ok") {
+    steps.push(createTransactionStep(consultationStore, { ...consultations.value, sessions: consultations.value.sessions.filter((item) => item.id !== sessionId) }));
+  }
+  if (library.status === "ok") {
+    steps.push(createTransactionStep(libraryStore, { ...library.value, items: library.value.items.filter((item) => item.href !== `/consult/session/${sessionId}`) }));
+  }
+  if (steps.length) runStorageTransaction(steps);
 }
 
 function CreditCard({ credits, firstTime, idPrefix }: { credits: number; firstTime: boolean; idPrefix: string }) {
@@ -262,7 +209,7 @@ export function ConsultationHomeScreen() {
   );
 }
 
-export function ConsultationNewScreen({ failFirstResponse, initialTopic }: { failFirstResponse: boolean; initialTopic?: TopicId }) {
+export function ConsultationNewScreen({ initialTopic }: { initialTopic?: TopicId }) {
   const hydrated = useHydrated();
   if (!hydrated) return <LoadingState title="작성 중인 질문을 확인하고 있어요" />;
   const data = getConsultationData();
@@ -270,10 +217,10 @@ export function ConsultationNewScreen({ failFirstResponse, initialTopic }: { fai
   const initialDraft = data.draft
     ? { ...data.draft, topic: initialTopic ?? data.draft.topic }
     : { topic: initialTopic ?? ("career" as TopicId), question: "", situation: "" };
-  return <ConsultationComposer key={JSON.stringify(initialDraft)} initialDraft={initialDraft} failFirstResponse={failFirstResponse} />;
+  return <ConsultationComposer key={JSON.stringify(initialDraft)} initialDraft={initialDraft} />;
 }
 
-function ConsultationComposer({ initialDraft, failFirstResponse }: { initialDraft: ConsultationDraft; failFirstResponse: boolean }) {
+function ConsultationComposer({ initialDraft }: { initialDraft: ConsultationDraft }) {
   const router = useRouter();
   const [draft, setDraft] = useState(initialDraft);
   const [phase, setPhase] = useState<"compose" | "loading" | "failure">("compose");
@@ -281,7 +228,8 @@ function ConsultationComposer({ initialDraft, failFirstResponse }: { initialDraf
   const [noCredits, setNoCredits] = useState(false);
   const [chart, setChart] = useState<ChartView | null>(null);
   const [credits, setCredits] = useState<number | null>(null);
-  const failNext = useRef(failFirstResponse);
+  // 같은 질문을 다시 보내면 같은 세션·멱등 키를 쓴다. 질문을 고치면 새 시도로 본다.
+  const attempt = useRef(newConsultationAttempt());
   const restricted = isRestrictedConsultationQuestion(draft.question);
   const topicOption = TOPIC_OPTIONS.find((option) => option.id === draft.topic) ?? TOPIC_OPTIONS[0];
   const recommended = RECOMMENDED_QUESTIONS[draft.topic] ?? [];
@@ -297,96 +245,44 @@ function ConsultationComposer({ initialDraft, failFirstResponse }: { initialDraf
     const next = { ...draft, ...update };
     setDraft(next);
     setError("");
+    if (update.question !== undefined || update.situation !== undefined || update.topic !== undefined) attempt.current = newConsultationAttempt();
     const current = getConsultationData();
     if (!current || !consultationStore.write({ ...current, draft: next })) {
       setError("작성 중인 질문을 이 브라우저에 저장할 수 없어요.");
     }
   }
 
-  async function persistSession() {
-    if (isRestrictedConsultationQuestion(draft.question)) {
-      setPhase("compose");
-      setError(RESTRICTED_CONSULTATION_MESSAGE);
-      return;
-    }
-    const current = getConsultationData();
-    const commerce = getCommerceData();
-    if (!current || !commerce) {
-      setPhase("compose");
-      setError("이 기기에 저장된 정보가 손상됐어요. 설정에서 기기 저장 정보를 확인한 뒤 다시 시도해 주세요.");
-      return;
-    }
-    if (current.freeUsesRemaining <= 0 && commerce.consultationCredits <= 0) {
-      setPhase("compose");
-      setError("이 기기에 남은 이용권이 없어요. 설정에서 기기 저장 정보를 초기화하면 다시 확인할 수 있어요.");
-      return;
-    }
-    let session: ConsultationSession;
-    try {
-      const content = draft.situation.trim() ? `${draft.question.trim()}\n\n현재 상황: ${draft.situation.trim()}` : draft.question.trim();
-      session = toLocalConsultation(await createConsultation(topicOption.server, content), draft.topic);
-    } catch (requestError) {
-      setNoCredits(isInsufficientCredits(requestError));
-      setPhase("failure");
-      setError(formatApiRequestError(requestError, "답변을 만들지 못했어요."));
-      return;
-    }
-    const nextData: ConsultationData = {
-      ...current,
-      draft: null,
-      sessions: [session, ...current.sessions],
-      freeUsesRemaining: Math.max(0, current.freeUsesRemaining - 1),
-    };
-    const usesPaidCredit = current.freeUsesRemaining <= 0;
-    const nextCommerce: CommerceData = usesPaidCredit ? {
-      ...commerce,
-      consultationCredits: commerce.consultationCredits - 1,
-      creditHistory: [{ id: `credit-use-${session.id}`, description: "상담 질문 사용", delta: -1, balanceAfter: commerce.consultationCredits - 1, source: "consultation", sourceId: session.id, reason: "consultation_use", createdAt: session.updatedAt }, ...commerce.creditHistory],
-    } : commerce;
-    const nextLibrary = buildLibraryWithSession(session);
-    if (!nextLibrary) {
-      setPhase("compose");
-      setError("보관함 정보를 확인한 뒤 다시 시도해 주세요.");
-      return;
-    }
-    const steps = [
-      ...(usesPaidCredit ? [createTransactionStep(commerceStore, nextCommerce)] : []),
-      createTransactionStep(consultationStore, nextData),
-      createTransactionStep(libraryStore, nextLibrary),
-    ];
-    const transaction = runStorageTransaction(steps);
-    if (transaction !== "committed") {
-      setPhase("compose");
-      setError(transaction === "rolled-back" ? "상담을 저장하지 못해 모든 변경을 취소했어요." : "저장 복구가 필요해요. 설정에서 기기 저장 정보를 확인해 주세요.");
-      return;
-    }
-    router.push(`/consult/session/${session.id}`);
-  }
-
-  function requestAnswer() {
+  async function requestAnswer() {
     if (isRestrictedConsultationQuestion(draft.question)) {
       setPhase("compose");
       setError(RESTRICTED_CONSULTATION_MESSAGE);
       return;
     }
     setNoCredits(false);
+    setError("");
     setPhase("loading");
-    window.setTimeout(() => {
-      if (failNext.current) {
-        failNext.current = false;
-        setError("");
-        setPhase("failure");
-      } else {
-        void persistSession();
-      }
-    }, 900);
+    // 이용권 잔액과 차감은 서버가 판단한다. 부족하면 서버가 402를 돌려준다.
+    let sessionId: string;
+    try {
+      const content = draft.situation.trim() ? `${draft.question.trim()}\n\n현재 상황: ${draft.situation.trim()}` : draft.question.trim();
+      sessionId = String((await createConsultation(topicOption.server, content, attempt.current)).id);
+    } catch (requestError) {
+      setNoCredits(isInsufficientCredits(requestError));
+      setPhase("failure");
+      setError(formatApiRequestError(requestError, "답변을 만들지 못했어요."));
+      return;
+    }
+    // 보낸 질문은 서버에 남았으니 이 기기의 작성 중 초안만 비운다.
+    const current = getConsultationData();
+    if (current) consultationStore.write({ ...current, draft: null });
+    router.push(`/consult/session/${sessionId}`);
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!draft.question.trim()) return setError("질문을 입력하거나 추천 질문을 골라 주세요.");
     if (restricted) return setError(RESTRICTED_CONSULTATION_MESSAGE);
-    requestAnswer();
+    void requestAnswer();
   }
 
   if (phase === "loading") {
@@ -402,7 +298,7 @@ function ConsultationComposer({ initialDraft, failFirstResponse }: { initialDraf
         <div className="sj-actions" style={{ marginTop: 16 }}>
           {noCredits
             ? <Link className="sj-button sj-button-block" href="/products/credits">이용권 내역 보기</Link>
-            : <button className="sj-button sj-button-block" type="button" onClick={requestAnswer}>다시 시도</button>}
+            : <button className="sj-button sj-button-block" type="button" onClick={() => void requestAnswer()}>다시 시도</button>}
           <button className="sj-button-secondary" type="button" onClick={() => { setError(""); setPhase("compose"); }}>질문 수정</button>
         </div>
       </section>
@@ -523,6 +419,8 @@ export function LiveConsultationSessionScreen({ sessionId }: { sessionId: string
   const [error, setError] = useState("");
   const [noCredits, setNoCredits] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // 같은 추가 질문을 다시 보내면 같은 멱등 키를 써서 이용권이 두 번 차감되지 않게 한다.
+  const followUpAttempt = useRef<{ content: string; key: string } | null>(null);
   useEffect(() => {
     let active = true;
     void getConsultation(sessionId).then((value) => active && setSession(value)).catch((reason) => active && setLoadError(formatApiRequestError(reason, "상담을 불러오지 못했어요.")));
@@ -544,7 +442,9 @@ export function LiveConsultationSessionScreen({ sessionId }: { sessionId: string
     setError("");
     setNoCredits(false);
     try {
-      const value = await sendConsultationMessage(sessionId, content);
+      if (followUpAttempt.current?.content !== content) followUpAttempt.current = { content, key: newConsultationAttempt().idempotencyKey };
+      const value = await sendConsultationMessage(sessionId, content, followUpAttempt.current.key);
+      followUpAttempt.current = null;
       setSession(value);
       setQuestion("");
       void getCredits().then((snapshot) => setCredits(snapshot.balance.balance)).catch(() => undefined);
@@ -559,26 +459,13 @@ export function LiveConsultationSessionScreen({ sessionId }: { sessionId: string
   async function deleteLiveSession() {
     try {
       await deleteConsultation(sessionId);
-      const consultationInspection = consultationStore.inspect();
-      const libraryInspection = libraryStore.inspect();
-      if (consultationInspection.status === "corrupt" || consultationInspection.status === "unavailable" || libraryInspection.status === "corrupt" || libraryInspection.status === "unavailable") {
-        setError("상담은 삭제했지만 이 기기에 남은 연결 기록을 정리하지 못했어요.");
-        return;
-      }
-      const consultationData = consultationInspection.status === "ok" ? consultationInspection.value : INITIAL_CONSULTATION_DATA;
-      const libraryItems = libraryInspection.status === "ok" ? libraryInspection.value.items : INITIAL_LIBRARY_ITEMS;
-      const transaction = runStorageTransaction([
-        createTransactionStep(consultationStore, { ...consultationData, sessions: consultationData.sessions.filter((item) => item.id !== sessionId) }),
-        createTransactionStep(libraryStore, { version: 1, items: libraryItems.filter((item) => item.href !== `/consult/session/${sessionId}`) }),
-      ]);
-      if (transaction !== "committed") {
-        setError("상담은 삭제했지만 이 기기에 남은 연결 기록을 정리하지 못했어요.");
-        return;
-      }
-      router.push("/consult");
     } catch {
       setError("상담을 삭제하지 못했어요. 잠시 후 다시 시도해 주세요.");
+      return;
     }
+    // 예전 버전이 이 기기에 남긴 상담 사본과 보관함 연결도 함께 지운다. 실패해도 서버 삭제는 끝났다.
+    removeLegacyConsultationCopies(sessionId);
+    router.push("/consult");
   }
 
   return (

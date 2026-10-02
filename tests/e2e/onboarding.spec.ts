@@ -42,9 +42,15 @@ test("completes routed onboarding and stores the local report", async ({ page })
   await expect(page.getByRole("button", { name: "이 기기에 저장한 결과 이어보기" })).toBeVisible();
 });
 
-test("recovers from the explicit one-time calculation failure", async ({ page }) => {
-  await page.goto("/?calculation=fail");
-  await expect(page.getByRole("link", START_LINK)).toHaveAttribute("href", "/birth?calculation=fail");
+test("recovers from a failed calculation request", async ({ page }) => {
+  let failed = false;
+  await page.route("**/api/v1/profiles/", async (route) => {
+    if (failed || route.request().method() !== "POST") return route.fallback();
+    failed = true;
+    await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ code: "SERVICE_UNAVAILABLE", message: "잠시 후 다시 시도해 주세요.", retryable: true }) });
+  });
+  await page.goto("/");
+  await expect(page.getByRole("link", START_LINK)).toHaveAttribute("href", "/birth");
   await page.getByRole("link", START_LINK).click();
   await submitBirth(page);
   await expect(page.getByRole("heading", { name: "결과를 불러오지 못했어요" })).toBeVisible({ timeout: 5_000 });

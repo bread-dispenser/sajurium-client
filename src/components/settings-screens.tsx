@@ -244,7 +244,7 @@ export function SettingsScreen() {
 
       <section className="sj-section" aria-label="내 프로필">
         <SettingsProfileCard deviceBirth={deviceBirth} />
-        <Link className="sj-button-secondary" href="/login">계정 만들고 기록 옮기기</Link>
+        {getSessionKind() !== "account" && <Link className="sj-button-secondary" href="/login">계정 만들고 기록 옮기기</Link>}
       </section>
 
       <section className="sj-section" style={{ gap: 0 }} aria-labelledby="settings-me-title">
