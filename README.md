@@ -31,11 +31,11 @@ CI에서는 GitHub Actions variable `SAJURIUM_API_URL`이 위 환경변수로 �
 bunx bun@1.3.14 run test:quality
 ```
 
-이 명령은 저장소 OpenAPI와 실제 FastAPI OpenAPI 생성물 드리프트, lint, TypeScript, 단위 테스트, production build, Playwright E2E를 차례로 검사합니다. 실제 백엔드 계약 검사를 위해 `SAJURIUM_BACKEND_OPENAPI_URL`에 실행 중인 서버의 OpenAPI JSON URL을 지정해야 합니다.
+이 명령은 실제 FastAPI OpenAPI와 `src/lib/api/sasaju.generated.ts`의 드리프트, lint, TypeScript, 단위 테스트, production build, Playwright E2E를 차례로 검사합니다. 실제 백엔드 계약 검사를 위해 `SAJURIUM_BACKEND_OPENAPI_URL`에 실행 중인 서버의 OpenAPI JSON URL을 지정해야 합니다.
 
 ## 저장소 경계
 
-- `openapi/sajurium.yaml`은 클라이언트가 기대하는 API wire contract입니다.
+- API 타입은 실행 중인 백엔드의 OpenAPI에서 만든 `src/lib/api/sasaju.generated.ts`를 씁니다. 백엔드 계약이 바뀌면 `bunx openapi-typescript <OpenAPI URL> -o src/lib/api/sasaju.generated.ts`로 다시 만듭니다.
 - API 세션의 리소스 ID와 작성 중인 초안만 브라우저에 보존하고, 핵심 결과와 원장은 백엔드가 관리합니다.
 - 소셜 로그인·결제·외부 LLM의 운영 자격증명과 실제 사용자 데이터는 이 저장소에 포함하지 않습니다.
 

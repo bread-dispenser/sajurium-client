@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
-import { LiveSharedResultScreen, ShareCreateScreen } from "@/components/distribution-future-prototype";
+import { LiveSharedResultScreen, ShareCreateScreen } from "@/components/share-screens";
 
 vi.mock("next/link", () => ({
   default: ({ href, children, ...rest }: { href: string; children: ReactNode }) => <a href={href} {...rest}>{children}</a>,

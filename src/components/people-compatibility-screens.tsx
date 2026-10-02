@@ -13,7 +13,7 @@ import { useHydrated } from "@/hooks/use-hydrated";
 import type { ChartView } from "@/lib/saju";
 import { ConnectionErrorState, CorruptState, EmptyState, LoadingState } from "./page-state";
 import { InfoIcon, LockIcon, PlusIcon } from "./ui/icons";
-import { COMPATIBILITY_SHARE_OPTIONS, ShareLinkBuilder } from "./distribution-future-prototype";
+import { COMPATIBILITY_SHARE_OPTIONS, ShareLinkBuilder } from "./share-screens";
 import { DEFAULT_SHARE_INCLUDE, createCompatibility, createCompatibilityShare, createProfile, deleteProfile, formatApiRequestError, formatConnectionError, getChart, getCompatibility, getCurrentChart, isAccountSessionExpired, listProfiles, type CompatibilityDimension, type CompatibilityEvidence, type CompatibilityPaidSection, type ServerCompatibilityDetail, type ServerProfile } from "@/lib/api/service";
 import { ApiRequestError } from "@/lib/api/client";
 

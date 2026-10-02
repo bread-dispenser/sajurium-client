@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { LiveSharedResultScreen, MALFORMED_SHARE_LINK_MESSAGE, SharedResultUnavailable } from "@/components/distribution-future-prototype";
+import { LiveSharedResultScreen, MALFORMED_SHARE_LINK_MESSAGE, SharedResultUnavailable } from "@/components/share-screens";
 
 export const metadata: Metadata = {
   title: "공유된 사주 결과 | 사주리움",
