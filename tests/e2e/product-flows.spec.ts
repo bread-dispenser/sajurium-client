@@ -34,7 +34,7 @@ test("discloses the live-service boundary", async ({ page }) => {
   await expect(page.getByRole("status")).toContainText("결제와 주문은 준비 중이에요");
 });
 
-test("persists a server consultation locally for immediate continuity", async ({ page }) => {
+test("creates and deletes a server consultation without leaving device copies", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("link", { name: "내 명식 계산하기" }).click();
   await submitBirth(page);
@@ -183,12 +183,12 @@ test("recovers a corrupt transaction record before reading settings stores", asy
   }))).toEqual({ journal: null, draft: null, settings: before, unowned: "keep-me" });
 });
 
-test("rejects a demo order ID paired with another product", async ({ page }) => {
+test("opens only server order numbers", async ({ page }) => {
+  // 예전 예시 주문 주소는 더 이상 화면이 없고, 기기에 예시 구매 기록도 남기지 않는다.
   const response = await page.goto("/orders/ord_demo_love_report?productId=consult-5&state=success");
   expect(response?.status()).toBe(404);
   expect(await page.evaluate(() => localStorage.getItem("sajurium-commerce"))).toBeNull();
 });
-
 test("validates known birth time before settings persistence", async ({ page }) => {
   await page.goto("/settings");
   await page.getByRole("button", { name: /출생 정보 수정/ }).click();
@@ -198,52 +198,24 @@ test("validates known birth time before settings persistence", async ({ page }) 
   expect(await page.evaluate(() => localStorage.getItem("sajurium-profile"))).toBeNull();
 });
 
-test("shows pending and failure as non-payment example states", async ({ page }) => {
-  await page.goto("/orders/ord_demo_love_report?productId=love-report&state=pending");
-  await expect(page.getByRole("heading", { name: "결제 대기 상태 안내" })).toBeVisible();
-  await expect(page.getByText("실제 결제액")).toBeVisible();
-  await page.goto("/orders/ord_demo_love_report?productId=love-report&state=failure");
-  await expect(page.getByRole("heading", { name: "결제 실패 상태 안내" })).toBeVisible();
-  await expect(page.getByText("결제 수단이나 주문에는 아무 변화가 없어요.")).toBeVisible();
-});
-
-test("rolls back linked consultation writes when library persistence fails", async ({ page }) => {
+test("a consultation leaves credits and the library to the server", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("link", { name: "내 명식 계산하기" }).click();
   await submitBirth(page);
   await expect(page).toHaveURL(/\/report$/);
   await page.goto("/consult/new");
   await page.getByRole("button", { name: "이직을 고민할 때 어떤 조건을 먼저 봐야 하나요?" }).click();
-  const before = await page.evaluate(() => ({
-    consultation: localStorage.getItem("sajurium-consultations"),
-    library: localStorage.getItem("sajurium-library"),
-  }));
-  await page.evaluate(() => {
-    const original = Storage.prototype.setItem;
-    let failLibraryOnce = true;
-    Object.defineProperty(window, "__restoreSetItem", { value: () => { Storage.prototype.setItem = original; }, configurable: true });
-    Storage.prototype.setItem = function setItem(key, value) {
-      if (key === "sajurium-library" && failLibraryOnce) {
-        failLibraryOnce = false;
-        throw new Error("injected library failure");
-      }
-      return original.call(this, key, value);
-    };
-  });
   await page.getByRole("button", { name: "질문 보내기" }).click();
-  // 이 단언은 상담 생성 왕복 뒤에 온다 — 실제 LLM이면 수 초가 걸린다.
-  await expect(page.locator(".sj-error[role=alert]")).toContainText("모든 변경을 취소했어요", { timeout: 30_000 });
-  const state = await page.evaluate(() => {
-    (window as typeof window & { __restoreSetItem?: () => void }).__restoreSetItem?.();
-    return {
-      consultation: localStorage.getItem("sajurium-consultations"),
-      library: localStorage.getItem("sajurium-library"),
-      journal: localStorage.getItem("sajurium-storage-transaction"),
-    };
-  });
-  expect(state).toEqual({ ...before, journal: null });
+  await expect(page).toHaveURL(/\/consult\/session\//, { timeout: 30_000 });
+  const state = await page.evaluate(() => ({
+    commerce: localStorage.getItem("sajurium-commerce"),
+    library: localStorage.getItem("sajurium-library"),
+    consultation: JSON.parse(localStorage.getItem("sajurium-consultations") ?? "null") as { draft: unknown; sessions: unknown[] } | null,
+  }));
+  expect(state.commerce).toBeNull();
+  expect(state.library).toBeNull();
+  expect(state.consultation).toMatchObject({ draft: null, sessions: [] });
 });
-
 test("reports partial failure instead of claiming full local deletion", async ({ page }) => {
   await page.goto("/settings");
   await page.evaluate((birth) => {

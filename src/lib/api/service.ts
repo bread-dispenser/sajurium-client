@@ -1199,8 +1199,13 @@ export function formatOrderError(error: unknown): string {
   return formatApiRequestError(error, "주문을 만들지 못했어요. 잠시 후 다시 시도해 주세요.");
 }
 
-export async function createOrder(productId: string, selection: OrderProfileSelection = {}): Promise<LiveOrder> {
-  const body = buildOrderRequest(productId, selection, newIdempotencyKey("order"));
+export function newOrderIdempotencyKey() {
+  return newIdempotencyKey("order");
+}
+
+/** Pass the same key when retrying the same order so a lost response does not create a second order. */
+export async function createOrder(productId: string, selection: OrderProfileSelection = {}, idempotencyKey = newOrderIdempotencyKey()): Promise<LiveOrder> {
+  const body = buildOrderRequest(productId, selection, idempotencyKey);
   const order = (await request<ApiOrder>("/api/v1/orders", { method: "POST", body })).data;
   return toLiveOrder(order);
 }
@@ -1245,6 +1250,27 @@ export async function listRefunds(): Promise<LiveRefundListItem[]> {
 
 export async function getOrder(orderId: string): Promise<LiveOrder> {
   return toLiveOrder((await request<ApiOrder>(`/api/v1/orders/${orderId}`)).data);
+}
+
+export type LiveOrderRefund = { id: string; amount: number; reason: string | null; status: string; createdAt: string };
+
+function toOrderRefund(refund: Schema<"Refund">): LiveOrderRefund {
+  return { id: String(refund.id), amount: refund.amount, reason: refund.reason ?? null, status: refund.status, createdAt: toIso(refund.created_at)! };
+}
+
+/** Refund requests for one order. Works while payments are paused. */
+export async function listOrderRefunds(orderId: string): Promise<LiveOrderRefund[]> {
+  return (await request<Schema<"Refund">[]>(`/api/v1/orders/${orderId}/refunds`)).data.map(toOrderRefund);
+}
+
+export function newRefundIdempotencyKey() {
+  return newIdempotencyKey("refund");
+}
+
+/** Requests a full refund of what is left on the order. Retrying with the same key returns the same refund. */
+export async function requestRefund(orderId: string, reason: string, idempotencyKey: string): Promise<LiveOrderRefund> {
+  const body: Schema<"RefundCreate"> = { reason: reason.trim() || null, idempotency_key: idempotencyKey };
+  return toOrderRefund((await request<Schema<"Refund">>(`/api/v1/orders/${orderId}/refunds`, { method: "POST", body })).data);
 }
 
 function ledgerReason(value: string): CreditLedgerEntry["reason"] {
