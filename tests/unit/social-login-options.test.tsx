@@ -18,8 +18,14 @@ vi.mock("next/script", async () => {
   } };
 });
 
+function serveProviders(providers: Array<{ provider: string; enabled: boolean }>, enabled = true) {
+  return vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(JSON.stringify({ enabled, providers }), { status: 200, headers: { "Content-Type": "application/json" } }));
+}
+
 describe("configured social provider controls", () => {
   beforeEach(() => {
+    vi.restoreAllMocks();
+    serveProviders([{ provider: "google", enabled: true }, { provider: "apple", enabled: true }, { provider: "kakao", enabled: false }]);
     let googleCallback: ((response: { credential?: string }) => void) | undefined;
     window.google = { accounts: { id: {
       initialize: vi.fn((options) => { googleCallback = options.callback; }),
@@ -59,8 +65,28 @@ describe("configured social provider controls", () => {
     window.AppleID!.auth.signIn = vi.fn(async () => ({ authorization: { state: "wrong", id_token: "apple-id-token" } }));
     render(<SocialLoginOptions onCredential={onCredential} onError={onError} pending={false} />);
 
-    await act(async () => { fireEvent.click(await screen.findByRole("button", { name: "Apple로 계속" })); });
+    const apple = await screen.findByRole("button", { name: "Apple로 계속" });
+    await waitFor(() => expect(apple).toBeEnabled());
+    await act(async () => { fireEvent.click(apple); });
     await waitFor(() => expect(onError).toHaveBeenCalled());
     expect(onCredential).not.toHaveBeenCalled();
+  });
+
+  it("hides a provider the server has switched off", async () => {
+    vi.restoreAllMocks();
+    serveProviders([{ provider: "google", enabled: false }, { provider: "apple", enabled: true }]);
+    render(<SocialLoginOptions onCredential={vi.fn(async () => undefined)} onError={vi.fn()} pending={false} />);
+
+    expect(await screen.findByRole("button", { name: "Apple로 계속" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Google provider" })).not.toBeInTheDocument();
+  });
+
+  it("falls back to email only when the provider list cannot be loaded", async () => {
+    vi.restoreAllMocks();
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("offline"));
+    render(<SocialLoginOptions onCredential={vi.fn(async () => undefined)} onError={vi.fn()} pending={false} />);
+
+    expect(await screen.findByText("소셜 로그인은 준비 중이에요. 지금은 이메일로 로그인할 수 있어요.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Apple로 계속" })).not.toBeInTheDocument();
   });
 });

@@ -4,11 +4,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import type { FormEvent } from "react";
-import type { BirthInfo, CompatibilityData, CompatibilityRelationshipType, PeopleData } from "@/lib/domain";
+import type { BirthInfo, CompatibilityData, CompatibilityRelationshipType } from "@/lib/domain";
 import type { CalculationGender, OwnerRelationship } from "@/lib/contracts";
 import { hasValidLeapMonthSemantics, parseBirthDate } from "@/lib/contracts";
-import { INITIAL_BIRTH, INITIAL_PEOPLE_DATA } from "@/lib/fixtures";
-import { compatibilityStore, peopleStore } from "@/lib/storage";
+import { INITIAL_BIRTH } from "@/lib/fixtures";
+import { compatibilityStore } from "@/lib/storage";
 import { useHydrated } from "@/hooks/use-hydrated";
 import type { ChartView } from "@/lib/saju";
 import { ConnectionErrorState, CorruptState, EmptyState, LoadingState } from "./page-state";
@@ -50,13 +50,6 @@ function relationLabel(profile: ServerProfile) {
 
 function profileSub(profile: ServerProfile) {
   return `${profile.birthYear}년생${profile.birthTimeUnknown ? ", 태어난 시간 모름" : ""}`;
-}
-
-function getPeopleData(): PeopleData | null {
-  const inspection = peopleStore.inspect();
-  if (inspection.status === "ok") return inspection.value;
-  if (inspection.status !== "empty") return null;
-  return { ...INITIAL_PEOPLE_DATA, people: [] };
 }
 
 function getCompatibilityData(): CompatibilityData | null {
@@ -188,8 +181,7 @@ export function LivePeopleScreen() {
 export function PersonFormScreen() {
   const hydrated = useHydrated();
   if (!hydrated) return <LoadingState title="입력 화면을 준비하고 있어요" />;
-  const data = getPeopleData();
-  if (!data) return <CorruptState title="이 기기의 사람 정보를 읽을 수 없어요" description="손상된 정보를 확인 없이 덮어쓰지 않아요." unavailable={peopleStore.inspect().status === "unavailable"} onReset={peopleStore.remove} />;
+  // 사람은 서버에만 저장한다. 예전 버전이 이 기기에 남긴 사람 기록의 상태와는 관계없다.
   return <PersonForm />;
 }
 
@@ -683,6 +675,10 @@ function LocalCompatibilityResult({ resultId }: { resultId: string }) {
       <div className="sj-section" style={{ gap: 6 }}>
         <p className="sj-meta">{result.personA.displayName}님과 {result.personB.displayName}님, {LOCAL_COMPAT_LABELS[result.relationshipType]} 관계로 봤어요</p>
         <h1 id="compatibility-result-title" className="sj-h1" style={{ fontSize: 24 }}>{result.summary}</h1>
+      </div>
+      <div className="sj-banner" role="note">
+        <InfoIcon className="sj-banner-icon" />
+        <p style={{ margin: 0 }}>예전 버전에서 이 브라우저에만 저장한 궁합 결과예요. 서버에는 없어서 다른 기기에서는 볼 수 없어요. 설정의 ‘이 기기’에서 지울 수 있어요.</p>
       </div>
       {unknownTime && <UnknownTimeNote subject={unknownSubject} />}
       <DeepReportCard />

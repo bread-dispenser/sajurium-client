@@ -555,7 +555,7 @@ export function BirthScreen() {
         <div className="sj-sticky-cta" style={{ marginTop: "auto" }}>
           {errorNode}
           <button className="sj-button sj-button-block" type="submit">{step === 1 ? "다음" : "명식 계산하기"}</button>
-          <p className="sj-fine sj-center">입력한 정보는 이 기기의 익명 세션에만 연결돼요.</p>
+          <p className="sj-fine sj-center">입력한 정보로 서버에서 명식을 계산하고, 지금 쓰는 계정이나 익명 세션에 저장해요.</p>
         </div>
       </form>
     </div>
@@ -1355,11 +1355,10 @@ export function SaveScreen({ topicId, feedback }: { topicId: TopicId; feedback: 
       {error && <p className="sj-error" role="alert">{error}</p>}
       <div className="sj-actions">
         {!localSaved && <button className="sj-button sj-button-block" type="button" onClick={save}>이 기기에 결과 저장</button>}
-        <Link className="sj-button-secondary" href="/login">이메일로 로그인하거나 가입하기</Link>
-        <button className="sj-button-secondary" type="button" disabled>소셜 로그인은 준비 중이에요</button>
+        <Link className="sj-button-secondary" href="/login">로그인하거나 가입하기</Link>
         <Link className="sj-text-button" style={{ alignSelf: "center" }} href="/report" onClick={(event) => { if (!localSaved && !birthDraftStore.remove()) { event.preventDefault(); setError("입력 정보를 지우지 못해 이동을 중단했어요."); } }}>{localSaved ? "저장된 결과 계속 보기" : "저장하지 않고 계속 보기"}</Link>
       </div>
-      <p className="sj-fine">이메일 계정 기능은 사용할 수 있으며, 외부 결제 제공자 연결은 아직 준비 중이에요.</p>
+      <p className="sj-fine">로그인 화면에서 지금 열려 있는 로그인 방법을 고를 수 있어요. 외부 결제 제공자 연결은 아직 준비 중이에요.</p>
     </main>
   );
 }
