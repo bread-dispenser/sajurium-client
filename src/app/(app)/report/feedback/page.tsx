@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { FeedbackScreen } from "@/components/saju-screens";
+import { FeedbackScreen, FeedbackStartScreen } from "@/components/saju-screens";
 import { isFeedbackId, isTopicId } from "@/lib/fixtures";
 
 type FeedbackPageProps = {
@@ -21,6 +21,9 @@ export default async function FeedbackPage({ searchParams }: FeedbackPageProps) 
   const { targetType, reportId, sessionId, messageId, topic, rating, report, reportKind } = await searchParams;
   const initialRating = isFeedbackId(rating) ? rating : null;
   const initialReported = report === "1";
+
+  // 설정·안내 화면에서 대상 없이 들어오면 어디에 의견을 남기는지 안내한다.
+  if (targetType === undefined && reportId === undefined && sessionId === undefined) return <FeedbackStartScreen />;
 
   // 상담 답변: 서버 상담 메시지 하나가 대상이다. 주제는 표시용이라 없으면 일반으로 본다.
   if (targetType === "consultation") {

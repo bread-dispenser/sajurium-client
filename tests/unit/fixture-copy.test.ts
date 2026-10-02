@@ -20,6 +20,8 @@ describe("service calculation provenance", () => {
     }
     expect(runtime).toContain("명식과 오행 계산");
     expect(runtime).toContain("버전이 기록된 계산 스냅샷");
-    expect(runtime).toContain("출생 시간에 의존하는 시주와 대운 해석은 결과에서 제외했어요");
+    expect(runtime).toContain("태어난 시간을 몰라 시주와 시주에 기대는 해석은 결과에서 제외했어요");
+    // 대운은 생년월일과 절기로 계산하므로 시간을 몰라도 제외하지 않는다.
+    expect(runtime).not.toContain("시주와 대운 해석은 결과에서 제외");
   });
 });

@@ -23,6 +23,7 @@ export type ServerJourney = {
 
 export type LiveReport = {
   report_id: string;
+  title: string;
   chart_id: string;
   profile_id: string;
   kind: string;
@@ -770,21 +771,31 @@ function reportSections(report: ApiReport) {
       section_id: String(record.key ?? index),
       title: String(record.title ?? report.title),
       access: locked ? "LOCKED" : report.requires_payment ? "PAID" : "FREE",
-      content: typeof record.body === "string" ? record.body : null,
-      evidence: [],
+      content: locked ? null : typeof record.body === "string" ? record.body : null,
+      evidence: locked ? [] : stringList(record.evidence),
     };
   }) as LiveReport["sections"];
+}
+
+/** Section keys the server excluded because the birth time is unknown. Empty when nothing was excluded. */
+function excludedScopes(report: ApiReport): string[] {
+  const content = report.content_json ?? null;
+  const listed = (content?.excluded_sections ?? []).map((section) => section.key);
+  if (listed.length) return listed;
+  const sections = Array.isArray(content?.sections) ? content.sections : [];
+  return sections.some((section) => (section as { key?: unknown }).key === "excluded_scope") ? ["hour_pillar"] : [];
 }
 
 function toLiveReport(report: ApiReport, journey?: ServerJourney | null): LiveReport {
   return {
     report_id: String(report.id),
+    title: report.title,
     chart_id: String(report.chart_snapshot_id),
     profile_id: journey?.profileId ?? "",
     kind: report.report_type.toUpperCase(),
     status: reportStatus(report.generation_status),
     sections: reportSections(report),
-    excluded_scopes: [],
+    excluded_scopes: excludedScopes(report),
     provenance: {
       model_version: report.model_version ?? "template",
       prompt_version: report.prompt_version ?? "template",
@@ -921,6 +932,18 @@ export async function getCurrentReport(): Promise<LiveReport | null> {
   const journey = readServerJourney();
   if (!journey) return null;
   return toLiveReport((await request<ApiReport>(`/api/v1/reports/${journey.reportId}`)).data, journey);
+}
+
+/** A stored report by id, such as one opened from the library, with the chart it was written from. */
+export async function getReportWithChart(reportId: string): Promise<{ report: LiveReport; chart: ChartView | null }> {
+  const report = (await request<ApiReport>(`/api/v1/reports/${encodeURIComponent(reportId)}`)).data;
+  const chart = await request<ApiChart>(`/api/v1/charts/${report.chart_snapshot_id}`).then((response) => toChartView(response.data)).catch(() => null);
+  return { report: toLiveReport(report), chart };
+}
+
+/** Asks the server to generate a FAILED report again. */
+export async function retryReport(reportId: string) {
+  await request(`/api/v1/reports/${encodeURIComponent(reportId)}/retry`, { method: "POST", body: {} });
 }
 
 export async function getCurrentChart(): Promise<ChartView | null> {
@@ -1249,15 +1272,26 @@ function normalizeConsultation(session: ApiConsultation): ApiConsultation {
   };
 }
 
-export async function createConsultation(topic: string, content: string): Promise<ApiConsultation> {
-  const journey = readServerJourney();
-  if (!journey) throw new Error("먼저 출생 정보와 명식 계산을 완료해 주세요.");
-  const session = (await request<ApiConsultation>("/api/v1/consultations", { method: "POST", body: { profile_id: Number(journey.profileId), consultation_type: consultationTopic(topic) } })).data;
-  return sendConsultationMessage(String(session.id), content);
+/** One first question. Retrying the same attempt reuses its session and idempotency key, so a
+ * retry after a lost response neither opens a second session nor spends a second credit. */
+export type ConsultationAttempt = { sessionId: string | null; idempotencyKey: string };
+
+export function newConsultationAttempt(): ConsultationAttempt {
+  return { sessionId: null, idempotencyKey: newIdempotencyKey("consultation") };
 }
 
-export async function sendConsultationMessage(sessionId: string, content: string): Promise<ApiConsultation> {
-  await request<Schema<"MessageAcceptedResponse">>(`/api/v1/consultations/${sessionId}/messages`, { method: "POST", body: { content, idempotency_key: newIdempotencyKey("consultation") } });
+export async function createConsultation(topic: string, content: string, attempt: ConsultationAttempt = newConsultationAttempt()): Promise<ApiConsultation> {
+  if (!attempt.sessionId) {
+    const journey = readServerJourney();
+    if (!journey) throw new Error("먼저 출생 정보와 명식 계산을 완료해 주세요.");
+    const session = (await request<ApiConsultation>("/api/v1/consultations", { method: "POST", body: { profile_id: Number(journey.profileId), consultation_type: consultationTopic(topic) } })).data;
+    attempt.sessionId = String(session.id);
+  }
+  return sendConsultationMessage(attempt.sessionId, content, attempt.idempotencyKey);
+}
+
+export async function sendConsultationMessage(sessionId: string, content: string, idempotencyKey = newIdempotencyKey("consultation")): Promise<ApiConsultation> {
+  await request<Schema<"MessageAcceptedResponse">>(`/api/v1/consultations/${sessionId}/messages`, { method: "POST", body: { content, idempotency_key: idempotencyKey } });
   return normalizeConsultation((await request<ApiConsultation>(`/api/v1/consultations/${sessionId}`)).data);
 }
 

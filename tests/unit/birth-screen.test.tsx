@@ -43,7 +43,7 @@ describe("birth calculation failure surface", () => {
     ];
     vi.spyOn(globalThis, "fetch").mockImplementation(async () => responses.shift() ?? json({}, 500));
 
-    render(<BirthScreen initialCalculationFailure={false} />);
+    render(<BirthScreen />);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     fillBirth();
 
@@ -51,14 +51,6 @@ describe("birth calculation failure surface", () => {
     expect(screen.getByRole("heading", { name: "결과를 불러오지 못했어요" })).toBeInTheDocument();
     expect(alert).toHaveTextContent("서버에서 명식을 만들지 못했어요.");
     expect(alert).toHaveTextContent("문의 시 참조 ID: req_birth_500");
-  });
-
-  it("keeps the failure screen free of an alert when no request error was recorded", async () => {
-    render(<BirthScreen initialCalculationFailure />);
-    fillBirth();
-
-    expect(await screen.findByRole("heading", { name: "결과를 불러오지 못했어요" })).toBeInTheDocument();
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("keeps step one validation and maps a 시진 to the backend hour", async () => {
@@ -70,7 +62,7 @@ describe("birth calculation failure surface", () => {
       return json({ code: "REPORT_FAILED", message: "실패", request_id: "req_x", retryable: true }, 500);
     });
 
-    render(<BirthScreen initialCalculationFailure={false} />);
+    render(<BirthScreen />);
     fireEvent.click(screen.getByRole("button", { name: "다음" }));
     expect(screen.getByRole("alert")).toHaveTextContent("부를 이름을 입력해 주세요.");
 

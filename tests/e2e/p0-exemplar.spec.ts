@@ -47,7 +47,15 @@ for (const colorScheme of ["light", "dark"] as const) {
 }
 
 test("birth preserves validation, conditional fields and failure values without replaying entry", async ({ page }) => {
-  await page.goto("/birth?calculation=fail");
+  // 첫 계산만 실패시킨다. 계산 중 화면을 확인할 수 있게 응답을 잠깐 늦춘다.
+  let failed = false;
+  await page.route("**/api/v1/profiles/", async (route) => {
+    if (failed || route.request().method() !== "POST") return route.fallback();
+    failed = true;
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ code: "SERVICE_UNAVAILABLE", message: "잠시 후 다시 시도해 주세요.", retryable: true }) });
+  });
+  await page.goto("/birth");
   await page.locator("#nickname").fill("");
   await page.getByRole("button", { name: "다음", exact: true }).click();
   await expect(page.locator("#birth-error")).toHaveText("부를 이름을 입력해 주세요.");

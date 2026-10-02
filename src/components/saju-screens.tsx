@@ -14,8 +14,9 @@ import type { FeedbackTarget, OwnerRelationship, TopicId as ProfileTopicId } fro
 import { hasValidLeapMonthSemantics, parseBirthDate } from "@/lib/contracts";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { FEEDBACK_OPTIONS, INITIAL_BIRTH, TOPICS, getTopicPreview } from "@/lib/fixtures";
-import { createBasicReading, formatApiRequestError, formatConnectionError, getCurrentChart, getCurrentReport, getTopicReport, isAccountSessionExpired, submitFeedback, toServerReportTopic, type LiveReport, type TopicReport } from "@/lib/api/service";
+import { createBasicReading, formatApiRequestError, formatConnectionError, getCurrentChart, getCurrentReport, getReportWithChart, getTopicReport, retryReport, isAccountSessionExpired, submitFeedback, toServerReportTopic, type LiveReport, type TopicReport } from "@/lib/api/service";
 import { getSessionKind, readServerJourney } from "@/lib/api/service";
+import { ApiRequestError } from "@/lib/api/client";
 import { ELEMENTS, currentDaeun, ganjiGlyphs, ganjiHanja, type ChartView, type Pillar } from "@/lib/saju";
 import {
   birthDraftStore,
@@ -102,7 +103,7 @@ const SAMPLE_CHART: ChartView = {
   calculationMethod: "",
 };
 
-export function LandingScreen({ initialCalculationFailure }: { initialCalculationFailure: boolean }) {
+export function LandingScreen() {
   const router = useRouter();
   const hydrated = useHydrated();
   const reportRaw = useSyncExternalStore(reportStore.subscribe, reportStore.rawSnapshot, () => null);
@@ -116,7 +117,7 @@ export function LandingScreen({ initialCalculationFailure }: { initialCalculatio
     );
   }
   const hasSavedReport = reportInspection?.status === "ok";
-  const birthHref = initialCalculationFailure ? "/birth?calculation=fail" : "/birth";
+  const birthHref = "/birth";
 
   return (
     <div className="sj-public">
@@ -201,7 +202,7 @@ function composeDate(year: string, month: string, day: string) {
   return `${year.padStart(4, "0")}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
 }
 
-export function BirthScreen({ initialCalculationFailure }: { initialCalculationFailure: boolean }) {
+export function BirthScreen() {
   const router = useRouter();
   const [birth, setBirth] = useState<BirthInfo>(EMPTY_BIRTH);
   const [dateParts, setDateParts] = useState({ year: "", month: "", day: "" });
@@ -211,7 +212,6 @@ export function BirthScreen({ initialCalculationFailure }: { initialCalculationF
   const [step, setStep] = useState<1 | 2>(1);
   const [phase, setPhase] = useState<"form" | "loading" | "failure">("form");
   const [formError, setFormError] = useState("");
-  const failNextCalculation = useRef(initialCalculationFailure);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const shownView = useRef(`${step}-${phase}`);
 
@@ -290,11 +290,6 @@ export function BirthScreen({ initialCalculationFailure }: { initialCalculationF
   }
 
   async function finishCalculation(profile: BirthInfo) {
-    if (failNextCalculation.current) {
-      failNextCalculation.current = false;
-      window.setTimeout(() => setPhase("failure"), 500);
-      return;
-    }
     try {
       await createBasicReading(profile);
       router.push("/report");
@@ -626,7 +621,7 @@ function BasisList({ chart, birth }: { chart: ChartView; birth: BirthInfo | null
   rows.push(["일 경계", "밤 11시 이후 출생은 다음 날 일주로 계산해요"]);
   const daeun = daeunSummary(chart);
   if (daeun) rows.push(["대운", `${birth ? `${birth.calculationGender === "female" ? "여성" : "남성"} 기준, ` : ""}${daeun}`]);
-  rows.push(["계산 엔진", chart.engineVersion]);
+  if (chart.engineVersion) rows.push(["계산 버전", `사주리움 계산 ${chart.engineVersion}`]);
   return (
     <dl className="sj-list" style={{ margin: 0 }}>
       {rows.map(([key, value]) => (
@@ -671,7 +666,101 @@ function ReportSections({ report }: { report: LiveReport }) {
   );
 }
 
-export function ReportScreen() {
+const REPORT_KIND_LABELS: Record<string, string> = {
+  BASIC: "기본 리포트",
+  LOVE: "연애 리포트",
+  CAREER: "커리어 리포트",
+  WEALTH: "재물 리포트",
+  FAMILY: "가족 리포트",
+  DECADE: "대운 리포트",
+  TODAY: "오늘의 흐름",
+  MONTH: "이번 달 흐름",
+  YEAR: "올해 흐름",
+};
+
+function reportKindLabel(kind: string) {
+  return REPORT_KIND_LABELS[kind] ?? "리포트";
+}
+
+/** A report opened by id, usually from the library. It shows that report, not the current journey's basic report. */
+function StoredReportScreen({ reportId }: { reportId: string }) {
+  const [state, setState] = useState<{ report: LiveReport; chart: ChartView | null } | null>(null);
+  const [loadError, setLoadError] = useState<unknown>(null);
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState("");
+  useEffect(() => {
+    let active = true;
+    void getReportWithChart(reportId)
+      .then((value) => active && setState(value))
+      .catch((reason) => active && setLoadError(reason ?? new Error("load failed")));
+    return () => { active = false; };
+  }, [reportId]);
+
+  async function retry() {
+    setRetrying(true);
+    setRetryError("");
+    try {
+      await retryReport(reportId);
+      setState(await getReportWithChart(reportId));
+    } catch (reason) {
+      setRetryError(formatApiRequestError(reason, "리포트를 다시 만들지 못했어요. 잠시 후 다시 시도해 주세요."));
+    } finally {
+      setRetrying(false);
+    }
+  }
+
+  if (!state && !loadError) return <LoadingState title="리포트를 불러오고 있어요" />;
+  if (loadError || !state) {
+    if (loadError instanceof ApiRequestError && loadError.status === 404) return <EmptyState title="리포트를 찾을 수 없어요" description="삭제됐거나 다른 계정의 리포트예요." action={{ href: "/library", label: "보관함으로" }} />;
+    return <ConnectionErrorState title="리포트를 불러오지 못했어요" description={formatConnectionError(loadError)} onRetry={() => window.location.reload()} />;
+  }
+  const { report, chart } = state;
+  const day = chart?.pillars.day ?? null;
+  return (
+    <main className="sj-page" aria-labelledby="stored-report-title">
+      <section className="sj-section" style={{ gap: 8 }}>
+        <p className="sj-meta">{reportKindLabel(report.kind)}{day ? `, ${day.stem.ko}${day.branch.ko} 일주` : ""}</p>
+        <h1 id="stored-report-title" className="sj-h1">{report.title}</h1>
+        <Link className="sj-text-button" href="/library" style={{ alignSelf: "flex-start" }}>보관함으로</Link>
+      </section>
+      {chart && (
+        <section className="sj-section" aria-labelledby="stored-pillars-title">
+          <h2 id="stored-pillars-title" className="sj-visually-hidden">네 기둥</h2>
+          <PillarGrid chart={chart} reveal />
+        </section>
+      )}
+      {report.status === "READY" ? (
+        <section className="sj-section" aria-labelledby="stored-sections-title">
+          <h2 id="stored-sections-title" className="sj-visually-hidden">리포트 내용</h2>
+          <ReportSections report={report} />
+          <p className="sj-fine">계산 요소를 바탕으로 한 일반적인 경향이에요. 선택을 대신하지 않는 참고 정보예요.</p>
+        </section>
+      ) : report.status === "FAILED" ? (
+        <section className="sj-state" aria-labelledby="stored-failed-title">
+          <h2 id="stored-failed-title" className="sj-h2">리포트를 만들지 못했어요</h2>
+          <p className="sj-lead">다시 만들기를 누르면 같은 명식으로 다시 시도해요.</p>
+          {retryError && <p className="sj-error" role="alert">{retryError}</p>}
+          <button className="sj-button sj-button-block" type="button" disabled={retrying} onClick={() => void retry()}>{retrying ? "다시 만들고 있어요" : "다시 만들기"}</button>
+        </section>
+      ) : (
+        <section className="sj-state" aria-labelledby="stored-pending-title">
+          <h2 id="stored-pending-title" className="sj-h2">리포트를 만들고 있어요</h2>
+          <p className="sj-lead">잠시 후 다시 불러와 주세요.</p>
+          <button className="sj-button sj-button-block" type="button" onClick={() => window.location.reload()}>다시 불러오기</button>
+        </section>
+      )}
+    </main>
+  );
+}
+
+export function ReportScreen({ reportId }: { reportId?: string } = {}) {
+  const hydrated = useHydrated();
+  if (!hydrated) return <LoadingState title="저장한 결과를 확인하고 있어요" />;
+  if (reportId) return <StoredReportScreen reportId={reportId} />;
+  return <CurrentReportScreen />;
+}
+
+function CurrentReportScreen() {
   const hydrated = useHydrated();
   const [serverReport, setServerReport] = useState<LiveReport | null>(null);
   const [chart, setChart] = useState<ChartView | null>(null);
@@ -741,7 +830,7 @@ export function ReportScreen() {
             </section>
           )}
 
-          {timeUnknown && <Banner>출생 시간에 의존하는 시주와 대운 해석은 결과에서 제외했어요.</Banner>}
+          {timeUnknown && <Banner>태어난 시간을 몰라 시주와 시주에 기대는 해석은 결과에서 제외했어요.</Banner>}
 
           {chart && (
             <section className="sj-section" aria-labelledby="elements-title">
@@ -768,6 +857,7 @@ export function ReportScreen() {
               <RowLink href="/report/topics" title="관심 주제로 더 보기" sub="연애, 커리어, 재물, 가족 미리보기" />
               <RowLink href="/flow/today" title="오늘의 흐름" />
               <RowLink href="/flow/month" title="이번 달 흐름" />
+              <RowLink href={basicReportFeedbackHref(serverReport.report_id)} title="이 리포트에 의견 남기기" sub="틀린 해석이나 불편한 표현을 알려 주세요" />
             </div>
             <button className="sj-text-button" type="button" onClick={() => window.print()} style={{ alignSelf: "flex-start" }}>인쇄하거나 PDF로 저장하기</button>
           </section>
@@ -971,6 +1061,31 @@ const FEEDBACK_REASONS: ReadonlyArray<{ code: FeedbackReason; label: string }> =
   { code: "purchase_mismatch", label: "결제 내용과 달라요" },
   { code: "other", label: "기타" },
 ];
+
+export function basicReportFeedbackHref(reportId: string) {
+  return `/report/feedback?targetType=report&reportId=${reportId}&topic=family`;
+}
+
+/** /report/feedback without a target: feedback always belongs to one report or answer, so point to them. */
+export function FeedbackStartScreen() {
+  const hydrated = useHydrated();
+  if (!hydrated) return <LoadingState />;
+  const journey = readServerJourney();
+  return (
+    <main className="sj-page" aria-labelledby="feedback-start-title">
+      <section className="sj-section" style={{ gap: 8 }}>
+        <h1 id="feedback-start-title" className="sj-h1">어떤 결과에 의견을 남길까요?</h1>
+        <p className="sj-lead">의견과 신고는 리포트나 상담 답변 하나에 남겨요. 그래야 어떤 내용이 문제였는지 확인할 수 있어요.</p>
+      </section>
+      <div className="sj-list">
+        {journey && <RowLink href={basicReportFeedbackHref(journey.reportId)} title="기본 사주 리포트" sub="지금 보고 있는 내 명식 리포트" />}
+        <RowLink href="/library" title="보관함의 리포트" sub="리포트를 열고 아래의 의견 남기기를 눌러 주세요" />
+        <RowLink href="/consult" title="상담 답변" sub="답변 아래의 문제 신고를 눌러 주세요" />
+        <RowLink href="/settings/feedback" title="내가 보낸 피드백과 신고" />
+      </div>
+    </main>
+  );
+}
 
 type FeedbackScreenTarget = Extract<FeedbackTarget, { type: "report" } | { type: "consultation_message" }>;
 
